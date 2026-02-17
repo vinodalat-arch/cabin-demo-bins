@@ -1,0 +1,223 @@
+package com.incabin
+
+import android.content.Context
+import android.media.AudioAttributes
+import android.os.Handler
+import android.os.Looper
+import android.speech.tts.TextToSpeech
+import android.util.Log
+import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
+
+/**
+ * Audio alerter that announces danger state changes and distraction durations
+ * via Android TextToSpeech. Messages are queued to a background worker thread
+ * and spoken sequentially. At most one message is enqueued per inference cycle.
+ */
+class AudioAlerter(context: Context) {
+
+    companion object {
+        private const val TAG = "AudioAlerter"
+
+        val DANGER_FIELDS = listOf(
+            "driver_using_phone",
+            "driver_eyes_closed",
+            "driver_yawning",
+            "driver_distracted",
+            "driver_eating_drinking",
+            "dangerous_posture",
+            "child_slouching"
+        )
+
+        val FRIENDLY_NAMES = mapOf(
+            "driver_using_phone" to "phone detected",
+            "driver_eyes_closed" to "eyes closed",
+            "driver_yawning" to "yawning detected",
+            "driver_distracted" to "driver distracted",
+            "driver_eating_drinking" to "eating or drinking",
+            "dangerous_posture" to "dangerous posture",
+            "child_slouching" to "child slouching"
+        )
+    }
+
+    /** Snapshot of the previous frame's risk level and danger booleans. */
+    private data class AlertState(
+        val riskLevel: String,
+        val dangers: Map<String, Boolean>
+    )
+
+    private var prevState: AlertState? = null
+    private val announcedDurations = mutableSetOf<Int>()
+
+    private val messageQueue = LinkedBlockingQueue<String?>()
+
+    @Volatile
+    private var ttsReady = false
+    private var tts: TextToSpeech
+    private var ttsRetried = false
+    private val appContext: Context = context.applicationContext
+
+    private val workerThread: Thread
+
+    init {
+        tts = TextToSpeech(appContext) { status ->
+            onTtsInit(status)
+        }
+
+        workerThread = Thread({
+            Log.d(TAG, "Worker thread started")
+            while (true) {
+                val message = messageQueue.take() // blocks until available
+                if (message == null) {
+                    Log.d(TAG, "Worker received stop signal")
+                    break
+                }
+                if (ttsReady) {
+                    val utteranceId = UUID.randomUUID().toString()
+                    tts.speak(message, TextToSpeech.QUEUE_ADD, null, utteranceId)
+                    Log.d(TAG, "Speaking: $message")
+                } else {
+                    Log.i(TAG, "[ALERT] $message")
+                }
+            }
+        }, "AudioAlerter-Worker")
+        workerThread.isDaemon = true
+        workerThread.start()
+    }
+
+    private fun onTtsInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts.language = Locale.US
+            tts.setSpeechRate(0.8f)
+            val audioAttrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            tts.setAudioAttributes(audioAttrs)
+            ttsReady = true
+            Log.i(TAG, "TTS initialized successfully")
+        } else {
+            Log.e(TAG, "TTS initialization failed with status: $status")
+            if (!ttsRetried) {
+                ttsRetried = true
+                Log.i(TAG, "Scheduling TTS retry in 3 seconds")
+                Handler(Looper.getMainLooper()).postDelayed({
+                    Log.i(TAG, "Retrying TTS initialization")
+                    tts.shutdown()
+                    tts = TextToSpeech(appContext) { retryStatus ->
+                        if (retryStatus == TextToSpeech.SUCCESS) {
+                            tts.language = Locale.US
+                            tts.setSpeechRate(0.8f)
+                            val audioAttrs = AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build()
+                            tts.setAudioAttributes(audioAttrs)
+                            ttsReady = true
+                            Log.i(TAG, "TTS retry succeeded")
+                        } else {
+                            Log.e(TAG, "TTS retry failed with status: $retryStatus")
+                        }
+                    }
+                }, 3000)
+            }
+        }
+    }
+
+    /**
+     * Examines the current [result], compares with previous state, and enqueues
+     * an audio announcement if a state change warrants one.
+     *
+     * Must be called from the main/inference thread (not the TTS worker).
+     */
+    fun checkAndAnnounce(result: OutputResult) {
+        val currentRisk = result.riskLevel
+        val currentDangers = extractDangers(result)
+        val duration = result.distractionDurationS
+
+        // First frame: store state and return without speaking
+        if (prevState == null) {
+            prevState = AlertState(riskLevel = currentRisk, dangers = currentDangers)
+            return
+        }
+
+        val prevRisk = prevState!!.riskLevel
+        val prevDangers = prevState!!.dangers
+        val parts = mutableListOf<String>()
+
+        // Step 1: New dangers activated (in DANGER_FIELDS order)
+        for (field in DANGER_FIELDS) {
+            val current = currentDangers[field] ?: false
+            val previous = prevDangers[field] ?: false
+            if (current && !previous) {
+                FRIENDLY_NAMES[field]?.let { parts.add(it) }
+            }
+        }
+
+        // Step 2: Risk level change
+        if (currentRisk != prevRisk) {
+            parts.add("risk $currentRisk")
+        }
+
+        // Step 3: All-clear override
+        val anyPrevDanger = prevDangers.values.any { it }
+        val anyCurrDanger = currentDangers.values.any { it }
+        if (anyPrevDanger && !anyCurrDanger) {
+            parts.clear()
+            parts.add("all clear")
+        }
+
+        // Step 4: Distraction duration (only if no other message from Steps 1-3)
+        if (parts.isEmpty()) {
+            for (threshold in Config.DISTRACTION_ALERT_THRESHOLDS) {
+                if (duration >= threshold && threshold !in announcedDurations) {
+                    announcedDurations.add(threshold)
+                    parts.add("distracted $threshold seconds")
+                    break // one per cycle
+                }
+            }
+        }
+
+        // Reset announced durations when distraction clears
+        if (duration == 0) {
+            announcedDurations.clear()
+        }
+
+        // Enqueue message if we have anything to say
+        if (parts.isNotEmpty()) {
+            val message = parts.joinToString(". ")
+            messageQueue.put(message)
+        }
+
+        // Update previous state
+        prevState = AlertState(riskLevel = currentRisk, dangers = currentDangers)
+    }
+
+    /**
+     * Extracts the danger boolean fields from an [OutputResult] into a map
+     * keyed by the JSON field names used in [DANGER_FIELDS].
+     */
+    private fun extractDangers(result: OutputResult): Map<String, Boolean> {
+        return mapOf(
+            "driver_using_phone" to result.driverUsingPhone,
+            "driver_eyes_closed" to result.driverEyesClosed,
+            "driver_yawning" to result.driverYawning,
+            "driver_distracted" to result.driverDistracted,
+            "driver_eating_drinking" to result.driverEatingDrinking,
+            "dangerous_posture" to result.dangerousPosture,
+            "child_slouching" to result.childSlouching
+        )
+    }
+
+    /**
+     * Shuts down the TTS engine and stops the background worker thread.
+     * Call this from service onDestroy or when the alerter is no longer needed.
+     */
+    fun close() {
+        messageQueue.put(null) // stop signal to worker
+        tts.stop()
+        tts.shutdown()
+        Log.i(TAG, "AudioAlerter closed")
+    }
+}

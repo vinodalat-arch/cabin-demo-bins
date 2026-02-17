@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+local.properties
+app/.cxx/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Model assets (large binary files - download separately)
+app/src/main/assets/*.onnx
+app/src/main/assets/*.task
+
+# ONNX Runtime extracted from AAR (can be re-extracted)
+app/src/main/cpp/onnxruntime/lib/
