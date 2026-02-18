@@ -45,4 +45,30 @@ std::vector<uint8_t> yuvToBgr(
     return bgr;
 }
 
+std::vector<uint8_t> yuyvToBgr(const uint8_t* yuyv, int w, int h) {
+    std::vector<uint8_t> bgr(w * h * 3);
+
+    for (int i = 0; i < w * h; i += 2) {
+        int yi = i * 2;  // YUYV byte offset (4 bytes per 2 pixels)
+        int y0 = yuyv[yi];
+        int u  = yuyv[yi + 1] - 128;
+        int y1 = yuyv[yi + 2];
+        int v  = yuyv[yi + 3] - 128;
+
+        // BT.601 conversion, output BGR order
+        // Pixel 0
+        int oi = i * 3;
+        bgr[oi]     = clamp(y0 + ((454 * u) >> 8));   // B
+        bgr[oi + 1] = clamp(y0 - ((88 * u + 183 * v) >> 8)); // G
+        bgr[oi + 2] = clamp(y0 + ((359 * v) >> 8));   // R
+
+        // Pixel 1
+        bgr[oi + 3] = clamp(y1 + ((454 * u) >> 8));   // B
+        bgr[oi + 4] = clamp(y1 - ((88 * u + 183 * v) >> 8)); // G
+        bgr[oi + 5] = clamp(y1 + ((359 * v) >> 8));   // R
+    }
+
+    return bgr;
+}
+
 } // namespace incabin

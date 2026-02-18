@@ -34,6 +34,9 @@ object Config {
     // Audio
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
 
+    // V4L2
+    const val V4L2_SELECT_TIMEOUT_S = 5
+
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3
     const val RISK_WEIGHT_EYES = 3

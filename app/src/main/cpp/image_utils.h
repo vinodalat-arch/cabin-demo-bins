@@ -29,4 +29,21 @@ std::vector<uint8_t> yuvToBgr(
     int uv_pixel_stride
 );
 
+/**
+ * Convert YUYV (YUV 4:2:2 packed) to BGR.
+ *
+ * YUYV packs 2 pixels in 4 bytes: [Y0 U Y1 V].
+ * Uses BT.601 color conversion (same coefficients as yuvToBgr).
+ *
+ * @param yuyv_data  YUYV packed data (width * height * 2 bytes)
+ * @param width      Frame width (must be even)
+ * @param height     Frame height
+ * @return BGR byte vector (width * height * 3)
+ */
+std::vector<uint8_t> yuyvToBgr(
+    const uint8_t* yuyv_data,
+    int width,
+    int height
+);
+
 } // namespace incabin

@@ -4,6 +4,7 @@
 #include <android/asset_manager_jni.h>
 #include "image_utils.h"
 #include "pose_analyzer.h"
+#include "v4l2_camera.h"
 
 #define TAG "InCabin-JNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -141,6 +142,86 @@ Java_com_incabin_PoseAnalyzerBridge_nativeDestroyPoseAnalyzer(
         auto* analyzer = reinterpret_cast<incabin::PoseAnalyzer*>(analyzer_ptr);
         LOGI("Destroying PoseAnalyzer at %p", analyzer);
         delete analyzer;
+    }
+}
+
+// ---- V4L2 Camera JNI ----
+
+JNIEXPORT jstring JNICALL
+Java_com_incabin_NativeLib_nativeFindV4l2Device(
+    JNIEnv* env,
+    jobject /* this */
+) {
+    std::string path = incabin::V4l2Camera::findCaptureDevice();
+    if (path.empty()) {
+        return nullptr;
+    }
+    return env->NewStringUTF(path.c_str());
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_incabin_NativeLib_nativeCreateV4l2Camera(
+    JNIEnv* env,
+    jobject /* this */,
+    jstring devicePath,
+    jint width,
+    jint height
+) {
+    const char* path = env->GetStringUTFChars(devicePath, nullptr);
+    if (!path) {
+        LOGE("V4L2: Failed to get device path string");
+        return 0;
+    }
+
+    auto* camera = new incabin::V4l2Camera(path, width, height);
+    env->ReleaseStringUTFChars(devicePath, path);
+
+    if (!camera->isOpen()) {
+        LOGE("V4L2: Camera failed to open/configure");
+        delete camera;
+        return 0;
+    }
+
+    LOGI("V4L2: Camera created at %p (%dx%d)", camera, camera->width(), camera->height());
+    return reinterpret_cast<jlong>(camera);
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_com_incabin_NativeLib_nativeGrabBgrFrame(
+    JNIEnv* env,
+    jobject /* this */,
+    jlong cameraPtr
+) {
+    if (cameraPtr == 0) {
+        LOGE("V4L2: nativeGrabBgrFrame: null camera pointer");
+        return nullptr;
+    }
+
+    auto* camera = reinterpret_cast<incabin::V4l2Camera*>(cameraPtr);
+    auto bgr = camera->grabBgrFrame();
+
+    if (bgr.empty()) {
+        return nullptr;
+    }
+
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(bgr.size()));
+    if (result) {
+        env->SetByteArrayRegion(result, 0, static_cast<jsize>(bgr.size()),
+                                reinterpret_cast<const jbyte*>(bgr.data()));
+    }
+    return result;
+}
+
+JNIEXPORT void JNICALL
+Java_com_incabin_NativeLib_nativeDestroyV4l2Camera(
+    JNIEnv* /* env */,
+    jobject /* this */,
+    jlong cameraPtr
+) {
+    if (cameraPtr != 0) {
+        auto* camera = reinterpret_cast<incabin::V4l2Camera*>(cameraPtr);
+        LOGI("V4L2: Destroying camera at %p", camera);
+        delete camera;
     }
 }
 

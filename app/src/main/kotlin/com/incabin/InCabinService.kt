@@ -40,6 +40,7 @@ class InCabinService : Service() {
 
     // --- Core components ---
     private val nativeLib = NativeLib()
+    private var v4l2Camera: V4l2CameraManager? = null
     private var cameraManager: CameraManager? = null
     private var faceAnalyzer: FaceAnalyzer? = null
     private var poseAnalyzer: PoseAnalyzerBridge? = null
@@ -76,6 +77,9 @@ class InCabinService : Service() {
     }
 
     override fun onDestroy() {
+        v4l2Camera?.stop()
+        v4l2Camera = null
+
         cameraManager?.stop()
         cameraManager = null
 
@@ -176,6 +180,16 @@ class InCabinService : Service() {
     // -------------------------------------------------------------------------
 
     private fun startCamera() {
+        // Try V4L2 first (for USB webcam on Honda BSP where Camera2 is unavailable)
+        val v4l2 = V4l2CameraManager(nativeLib, ::onBgrFrame)
+        if (v4l2.start()) {
+            v4l2Camera = v4l2
+            Log.i(TAG, "Using V4L2 camera")
+            return
+        }
+        Log.w(TAG, "V4L2 not available, falling back to Camera2")
+
+        // Fallback to Camera2
         cameraManager = CameraManager(this, ::onFrame)
         cameraManager?.start()
     }
@@ -184,14 +198,12 @@ class InCabinService : Service() {
     // Per-Frame Pipeline
     // -------------------------------------------------------------------------
 
+    /** Camera2 callback: receives YUV planes, converts to BGR, then runs pipeline. */
     private fun onFrame(
         y: ByteArray, u: ByteArray, v: ByteArray,
         yRowStride: Int, uvRowStride: Int, uvPixelStride: Int,
         width: Int, height: Int
     ) {
-        val frameStartMs = System.currentTimeMillis()
-
-        // Step 1: YUV -> BGR conversion
         val bgrData = nativeLib.nativeYuvToBgr(
             y, u, v, yRowStride, uvRowStride, uvPixelStride, width, height
         )
@@ -201,48 +213,58 @@ class InCabinService : Service() {
             return
         }
 
-        val yuvElapsed = System.currentTimeMillis() - frameStartMs
+        processFrame(bgrData, width, height)
+    }
+
+    /** V4L2 callback: receives BGR data directly. */
+    private fun onBgrFrame(bgrData: ByteArray, width: Int, height: Int) {
+        processFrame(bgrData, width, height)
+    }
+
+    /** Common inference pipeline for both Camera2 and V4L2 paths. */
+    private fun processFrame(bgrData: ByteArray, width: Int, height: Int) {
+        val frameStartMs = System.currentTimeMillis()
 
         try {
-            // Step 2: Run PoseAnalyzer (C++/JNI)
+            // Step 1: Run PoseAnalyzer (C++/JNI)
             val poseStartMs = System.currentTimeMillis()
             val poseResult = poseAnalyzer?.analyze(bgrData, width, height) ?: PoseResult()
             val poseElapsed = System.currentTimeMillis() - poseStartMs
 
-            // Step 3: BGR -> Bitmap conversion for FaceAnalyzer
+            // Step 2: BGR -> Bitmap conversion for FaceAnalyzer
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
             val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
             bitmap.recycle()
             val faceElapsed = System.currentTimeMillis() - faceStartMs
 
-            // Step 4: Merge results
+            // Step 3: Merge results
             val merged = mergeResults(faceResult, poseResult)
 
-            // Step 5: Temporal smoothing
+            // Step 4: Temporal smoothing
             val smoothed = smoother?.smooth(merged) ?: merged
 
-            // Step 6: Update distraction duration counter
+            // Step 5: Update distraction duration counter
             if (DISTRACTION_FIELDS_CHECK(smoothed)) {
                 distractionDurationS += 1
             } else {
                 distractionDurationS = 0
             }
 
-            // Step 7: Inject distraction_duration_s into result
+            // Step 6: Inject distraction_duration_s into result
             val finalResult = smoothed.copy(distractionDurationS = distractionDurationS)
 
-            // Step 8: Audio alerter
+            // Step 7: Audio alerter
             audioAlerter?.checkAndAnnounce(finalResult)
 
-            // Step 9: Log JSON output
+            // Step 8: Log JSON output
             Log.i(TAG, finalResult.toJson())
 
             // Timing summary
             val totalElapsed = System.currentTimeMillis() - frameStartMs
             Log.d(
                 TAG,
-                "Frame timing: YUV=${yuvElapsed}ms, Pose=${poseElapsed}ms, " +
+                "Frame timing: Pose=${poseElapsed}ms, " +
                     "Face=${faceElapsed}ms, Total=${totalElapsed}ms"
             )
 

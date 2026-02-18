@@ -43,4 +43,18 @@ class NativeLib {
         width: Int,
         height: Int
     ): ByteArray?
+
+    // --- V4L2 direct camera access ---
+
+    /** Scan /dev/video0-63, return first V4L2 capture device path or null. */
+    external fun nativeFindV4l2Device(): String?
+
+    /** Create V4L2 camera: open + configure YUYV + mmap + start streaming. Returns handle or 0. */
+    external fun nativeCreateV4l2Camera(devicePath: String, width: Int, height: Int): Long
+
+    /** Grab one YUYV frame, convert to BGR, return byte[]. Null on error. */
+    external fun nativeGrabBgrFrame(cameraPtr: Long): ByteArray?
+
+    /** Destroy camera (stop stream + unmap + close). */
+    external fun nativeDestroyV4l2Camera(cameraPtr: Long)
 }
