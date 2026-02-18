@@ -22,4 +22,5 @@ app/src/main/assets/*.task
 app/src/main/cpp/onnxruntime/lib/
 
 # Device debug logs
+logs/
 *.txt
