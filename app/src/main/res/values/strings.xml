@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">InCabin Monitor</string>
+    <string name="app_name">HONDA-Smart-Cabin-App</string>
     <string name="start_service">Start Monitoring</string>
     <string name="stop_service">Stop Monitoring</string>
     <string name="notification_channel">InCabin Service</string>
