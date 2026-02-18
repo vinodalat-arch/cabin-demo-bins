@@ -5,7 +5,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import android.app.Activity
 import android.util.Log
@@ -15,11 +18,24 @@ class MainActivity : Activity() {
     companion object {
         private const val TAG = "InCabin-Activity"
         private const val PERMISSION_REQUEST_CODE = 100
+        private const val PREVIEW_POLL_MS = 500L
     }
 
     private lateinit var toggleButton: Button
     private lateinit var statusText: TextView
+    private lateinit var previewImage: ImageView
     private var isRunning = false
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val previewPoller = object : Runnable {
+        override fun run() {
+            val frame = FrameHolder.getLatestFrame()
+            if (frame != null && !frame.isRecycled) {
+                previewImage.setImageBitmap(frame)
+            }
+            handler.postDelayed(this, PREVIEW_POLL_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,6 +43,7 @@ class MainActivity : Activity() {
 
         toggleButton = findViewById(R.id.toggleButton)
         statusText = findViewById(R.id.statusText)
+        previewImage = findViewById(R.id.previewImage)
 
         toggleButton.setOnClickListener {
             if (isRunning) {
@@ -35,6 +52,18 @@ class MainActivity : Activity() {
                 checkPermissionsAndStart()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (isRunning) {
+            handler.post(previewPoller)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(previewPoller)
     }
 
     private fun checkPermissionsAndStart() {
@@ -80,6 +109,7 @@ class MainActivity : Activity() {
         isRunning = true
         toggleButton.text = getString(R.string.stop_service)
         statusText.text = "Status: Monitoring active"
+        handler.post(previewPoller)
         Log.i(TAG, "Monitoring started")
     }
 
@@ -91,6 +121,8 @@ class MainActivity : Activity() {
         isRunning = false
         toggleButton.text = getString(R.string.start_service)
         statusText.text = "Status: Idle"
+        handler.removeCallbacks(previewPoller)
+        previewImage.setImageBitmap(null)
         Log.i(TAG, "Monitoring stopped")
     }
 }

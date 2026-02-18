@@ -1,6 +1,11 @@
 package com.incabin
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +24,8 @@ class AudioAlerter(context: Context) {
 
     companion object {
         private const val TAG = "AudioAlerter"
+        private const val ALERT_CHANNEL_ID = "incabin_alerts"
+        private const val ALERT_NOTIFICATION_ID = 2
 
         val DANGER_FIELDS = listOf(
             "driver_using_phone",
@@ -57,10 +64,22 @@ class AudioAlerter(context: Context) {
     private var tts: TextToSpeech
     private var ttsRetried = false
     private val appContext: Context = context.applicationContext
+    private val notificationManager: NotificationManager =
+        appContext.getSystemService(NotificationManager::class.java)
 
     private val workerThread: Thread
 
     init {
+        // Create high-importance channel for alert notifications
+        val alertChannel = NotificationChannel(
+            ALERT_CHANNEL_ID,
+            "InCabin Alerts",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Driver safety alert notifications"
+        }
+        notificationManager.createNotificationChannel(alertChannel)
+
         tts = TextToSpeech(appContext) { status ->
             onTtsInit(status)
         }
@@ -188,10 +207,41 @@ class AudioAlerter(context: Context) {
         if (parts.isNotEmpty()) {
             val message = parts.joinToString(". ")
             messageQueue.put(message)
+            postAlertNotification(message, currentRisk)
+        }
+
+        // Dismiss alert notification when all dangers clear
+        if (!anyCurrDanger) {
+            notificationManager.cancel(ALERT_NOTIFICATION_ID)
         }
 
         // Update previous state
         prevState = AlertState(riskLevel = currentRisk, dangers = currentDangers)
+    }
+
+    private fun postAlertNotification(message: String, riskLevel: String) {
+        val title = when (riskLevel) {
+            "high" -> "HIGH RISK Alert"
+            "medium" -> "Medium Risk Alert"
+            else -> "InCabin Alert"
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            appContext, 0,
+            Intent(appContext, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = Notification.Builder(appContext, ALERT_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(message.replaceFirstChar { it.uppercaseChar() })
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(ALERT_NOTIFICATION_ID, notification)
+        Log.d(TAG, "Posted notification: $message")
     }
 
     /**

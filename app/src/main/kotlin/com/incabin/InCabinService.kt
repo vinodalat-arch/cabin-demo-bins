@@ -77,6 +77,8 @@ class InCabinService : Service() {
     }
 
     override fun onDestroy() {
+        FrameHolder.clear()
+
         v4l2Camera?.stop()
         v4l2Camera = null
 
@@ -235,7 +237,7 @@ class InCabinService : Service() {
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
             val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
-            bitmap.recycle()
+            FrameHolder.postFrame(bitmap)
             val faceElapsed = System.currentTimeMillis() - faceStartMs
 
             // Step 3: Merge results
