@@ -14,8 +14,9 @@ Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 1
 
 ## Architecture
 ```
-USB Webcam (Camera2 ImageReader, 1280x720, YUV_420_888)
-  → BT.601 YUV→BGR (C++ via JNI, manual conversion in image_utils.cpp)
+USB Webcam
+  → V4L2 ioctl (/dev/videoN, YUYV 1280x720, mmap) → YUYV→BGR (C++ via JNI)
+    [fallback: Camera2 ImageReader → YUV_420_888 → BT.601 YUV→BGR]
   → YOLOv8n-pose (ONNX Runtime C++, CPU EP) → posture, child, passenger count
   → YOLOv8n detection (ONNX Runtime C++, CPU EP) → phone, food/drink in driver ROI
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
@@ -25,11 +26,18 @@ USB Webcam (Camera2 ImageReader, 1280x720, YUV_420_888)
   → JSON output (Logcat)
 ```
 
+### Camera Strategy
+The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Camera HAL, so Camera2 API cannot see USB webcams. The app uses **V4L2 direct ioctl access** as the primary camera path, with Camera2 as a fallback.
+- `V4l2CameraManager` (Kotlin) → `V4l2Camera` (C++/JNI) → `/dev/videoN`
+- Scans `/dev/video0-63`, skips Qualcomm internal devices (`cam-req-mgr`, `cam_sync`)
+- Configures YUYV capture, 4 mmap buffers, converts YUYV→BGR in native code
+- If no V4L2 device found, falls back to `CameraManager` (Camera2 API)
+
 ## Tech Stack
 | Layer | Language | Purpose |
 |---|---|---|
-| Android lifecycle, camera, TTS | Kotlin | Camera2, TextToSpeech, foreground service |
-| Inference hot path | C++ (NDK) | ONNX Runtime, YOLO preprocessing/postprocessing |
+| Android lifecycle, camera, TTS | Kotlin | V4L2 manager, Camera2 fallback, TextToSpeech, foreground service |
+| Inference hot path | C++ (NDK) | ONNX Runtime, YOLO preprocessing/postprocessing, V4L2 camera access |
 | Face analysis | Kotlin | MediaPipe FaceLandmarker, OpenCV solvePnP |
 | Bridge | JNI | Frame data + results between Kotlin ↔ C++ |
 
@@ -132,11 +140,11 @@ in_cabin_poc-sa8155/
 │   ├── assets/          (ONNX models + face_landmarker.task, gitignored)
 │   ├── cpp/
 │   │   ├── onnxruntime/ (extracted headers + arm64-v8a lib from AAR)
-│   │   ├── pose_analyzer, yolo_utils, image_utils, jni_bridge
+│   │   ├── v4l2_camera, pose_analyzer, yolo_utils, image_utils, jni_bridge
 │   │   └── CMakeLists.txt
 │   ├── kotlin/com/incabin/
-│   │   ├── Config, InCabinService, CameraManager, FaceAnalyzer
-│   │   ├── PoseAnalyzerBridge, Merger, TemporalSmoother
+│   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager
+│   │   ├── FaceAnalyzer, PoseAnalyzerBridge, Merger, TemporalSmoother
 │   │   ├── AudioAlerter, OutputResult, NativeLib, MainActivity
 │   └── res/             (layout, strings, notification icon)
 ├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest)
@@ -148,7 +156,7 @@ in_cabin_poc-sa8155/
   - MergerTest: 19 tests (risk scoring + merge logic)
   - TemporalSmootherTest: 20 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
   - OutputResultTest: 25 tests (schema validation — valid and invalid payloads)
-- On-device validation pending (requires SA8155P hardware)
+- On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
 ~500-800ms/frame estimated on Kryo 485 (FP32). Within 1000ms (1fps) budget. INT8 quantization available as optimization if needed.
@@ -161,13 +169,45 @@ in_cabin_poc-sa8155/
 - **Diagnostic logging at startup**: device info (model, Android version, CPU count, RAM), asset verification (file sizes), component init timing, OpenCV version
 - **Periodic stats (every 30 frames)**: avg/min/max frame time, Java heap, native heap, distraction duration
 - **First-frame confirmation**: CameraManager logs actual frame dimensions, format, and plane count
+- **V4L2 permission diagnostics**: `findCaptureDevice()` logs `permission denied` with fix hint when device nodes have restrictive permissions
 
 ## Deployment
+
+### Honda SA8155P BSP Setup (one-time per boot)
+```bash
+# 1. Remove ODK hook that blocks UVC webcam binding
+adb shell rmmod odk_hook_module
+
+# 2. Reconnect USB webcam physically, then verify it appeared
+adb shell "ls -la /dev/video*"
+adb shell "for d in /sys/class/video4linux/video*; do echo \$(basename \$d): \$(cat \$d/name 2>/dev/null); done"
+# Should see e.g. "video2: C270 HD WEBCAM"
+
+# 3. Fix device node permissions (resets on each webcam reconnect)
+adb shell chmod 666 /dev/video2 /dev/video3   # adjust numbers to match webcam
+
+# 4. Install APK
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# 5. Grant permissions (app runs as user 10 on this BSP)
+adb shell pm grant --user 10 com.incabin android.permission.CAMERA
+
+# 6. Start service and monitor
+adb shell am start-foreground-service -a com.incabin.START com.incabin/.InCabinService
+adb logcat -s 'InCabin:*' 'InCabin-V4L2:*' 'InCabin-JNI:*' 'InCabin-Camera:*' 'AudioAlerter:*'
+```
+
+### Generic Android (Camera2 fallback)
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell pm grant com.incabin android.permission.CAMERA
-adb shell pm grant com.incabin android.permission.FOREGROUND_SERVICE
-adb shell pm grant com.incabin android.permission.FOREGROUND_SERVICE_CAMERA
-adb shell am start -n com.incabin/.MainActivity
-adb logcat -s InCabin:* InCabin-Camera:* AudioAlerter:* OnnxRuntime:*
+adb shell am start-foreground-service -a com.incabin.START com.incabin/.InCabinService
+adb logcat -s 'InCabin:*' 'InCabin-Camera:*' 'AudioAlerter:*'
 ```
+
+### Known Honda BSP Quirks
+- **ODK hook module**: `odk_hook_module` blocks UVC driver binding. Must `rmmod` each boot before webcam use.
+- **Camera service disabled**: `config.disable_cameraservice=true` means Camera2 API sees no cameras. V4L2 is the only path.
+- **User 10**: App runs under Android user 10 (not user 0). Use `--user 10` for `pm grant`.
+- **Device permissions**: `/dev/video*` nodes are `660 system:camera`. App needs `chmod 666` to open them via V4L2. Resets on webcam reconnect.
+- **SELinux**: Permissive on this BSP (no SELinux blocks).

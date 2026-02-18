@@ -34,7 +34,12 @@ std::string V4l2Camera::findCaptureDevice() {
     for (int i = 0; i < 64; i++) {
         snprintf(path, sizeof(path), "/dev/video%d", i);
         int fd = open(path, O_RDWR | O_NONBLOCK);
-        if (fd < 0) continue;
+        if (fd < 0) {
+            if (errno == EACCES) {
+                LOGW("V4L2: %s: permission denied (need chmod 666)", path);
+            }
+            continue;
+        }
 
         struct v4l2_capability cap;
         memset(&cap, 0, sizeof(cap));
