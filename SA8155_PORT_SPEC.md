@@ -134,7 +134,7 @@ fun validateOutput(data: Map<String, Any?>): List<String> {
 
 | Layer | Language | Purpose |
 |---|---|---|
-| Android lifecycle, camera, TTS, UI | **Kotlin** | Camera2 API, TextToSpeech, foreground service |
+| Android lifecycle, camera, TTS, UI | **Kotlin** | Camera2 API, TextToSpeech, foreground service, overlay renderer, dashboard |
 | Inference hot path | **C++ (NDK)** | ONNX Runtime C API, image preprocessing |
 | Bridge | **JNI** | Pass camera frames Kotlin→C++, return JSON result C++→Kotlin |
 
@@ -181,16 +181,18 @@ Android Studio / Gradle 8.9 (Kotlin DSL)
 │   └── jni_bridge.cpp         (JNI entry points)
 ├── app/src/main/kotlin/com/incabin/
 │   ├── Config.kt              (all thresholds from §12)
-│   ├── InCabinService.kt      (foreground service, 9-step main loop)
+│   ├── InCabinService.kt      (foreground service, 10-step main loop)
 │   ├── CameraManager.kt       (Camera2 + ImageReader, 1fps throttle)
-│   ├── FaceAnalyzer.kt        (MediaPipe FaceLandmarker + EAR/MAR/solvePnP)
-│   ├── PoseAnalyzerBridge.kt  (JNI bridge to C++ PoseAnalyzer)
+│   ├── FaceAnalyzer.kt        (MediaPipe FaceLandmarker + EAR/MAR/solvePnP + face overlay data)
+│   ├── PoseAnalyzerBridge.kt  (JNI bridge to C++ PoseAnalyzer + overlay person data)
 │   ├── Merger.kt              (merge face+pose results, risk scoring)
 │   ├── TemporalSmoother.kt    (5-frame sliding window, face-gating, fast-clear)
 │   ├── AudioAlerter.kt        (TextToSpeech + background queue)
 │   ├── OutputResult.kt        (16-field data class + JSON + validation)
 │   ├── NativeLib.kt           (JNI external fun declarations)
-│   └── MainActivity.kt        (start/stop service, permission handling)
+│   ├── OverlayRenderer.kt     (draws bboxes, skeleton, face landmarks, metrics on bitmap)
+│   ├── FrameHolder.kt         (thread-safe bitmap + OutputResult holder for UI)
+│   └── MainActivity.kt        (start/stop service, dashboard, permission handling)
 ├── app/src/test/kotlin/com/incabin/
 │   ├── MergerTest.kt          (19 tests)
 │   ├── TemporalSmootherTest.kt (20 tests)
@@ -391,7 +393,23 @@ driver_distracted = |yaw_deg| > 30 OR |pitch_deg| > 25
 
 **On Android:** Use OpenCV Android SDK's `Calib3d.solvePnP()`. Can run in Kotlin or C++.
 
-### 5d. No-Face Default Return
+### 5d. Face Overlay Data
+
+After computing EAR, MAR, and head pose, the FaceAnalyzer also extracts pixel-coordinate landmarks for visual overlay:
+
+```kotlin
+data class OverlayLandmark(val x: Float, val y: Float)
+data class FaceOverlayData(
+    val rightEye: List<OverlayLandmark>,   // 6 landmarks (RIGHT_EYE_INDICES)
+    val leftEye: List<OverlayLandmark>,    // 6 landmarks (LEFT_EYE_INDICES)
+    val mouth: List<OverlayLandmark>,      // 6 landmarks (MAR_TOP, MAR_BOTTOM, MAR_LEFT, MAR_RIGHT, MAR_UPPER_MID, MAR_LOWER_MID)
+    val noseTip: OverlayLandmark           // landmark index 1
+)
+```
+
+Populated from the same MediaPipe landmarks used for EAR/MAR computation. Returned as `FaceResult.faceOverlay` (null when no face detected).
+
+### 5e. No-Face Default Return
 
 When no face detected, return:
 ```json
@@ -402,11 +420,12 @@ When no face detected, return:
   "mar_value": null,
   "driver_distracted": false,
   "head_yaw": null,
-  "head_pitch": null
+  "head_pitch": null,
+  "faceOverlay": null
 }
 ```
 
-### 5e. Complete FaceAnalyzer Reference Implementation
+### 5f. Complete FaceAnalyzer Reference Implementation
 
 ```
 class FaceAnalyzer:
@@ -693,7 +712,24 @@ Each prediction: `[0:4] = cx, cy, w, h`, `[4:84] = 80 class scores`.
 3. NMS with IoU threshold 0.45
 4. Check if desired class_id is in results
 
-### 6g. Complete PoseAnalyzer Reference Implementation
+### 6g. Overlay Person Data
+
+After identifying the driver, the PoseAnalyzer populates a `persons` vector in the result with per-person geometry for visual overlay:
+
+```cpp
+struct OverlayKeypoint { float x, y, conf; };
+struct OverlayPerson {
+    float x1, y1, x2, y2;   // bounding box in original frame coords
+    float confidence;
+    bool is_driver;
+    OverlayKeypoint keypoints[17];  // COCO keypoints
+};
+// PoseResult.persons: std::vector<OverlayPerson>
+```
+
+Serialized in `toJson()` as a `"persons"` array. On the Kotlin side, parsed automatically by Gson into `List<OverlayPerson>` with `List<OverlayKeypoint>`.
+
+### 6h. Complete PoseAnalyzer Reference Implementation
 
 ```
 class PoseAnalyzer:
@@ -1183,8 +1219,14 @@ InCabinService (foreground service)
   ├── PoseAnalyzer (ONNX Runtime via JNI, C++)
   ├── Merger (Kotlin)
   ├── TemporalSmoother (Kotlin)
+  ├── OverlayRenderer (Kotlin) → annotated bitmap
+  ├── FrameHolder (bitmap + OutputResult → MainActivity)
   ├── AudioAlerter (TextToSpeech, Kotlin)
   └── OutputManager (JSON serialization, Logcat, optional broadcast)
+
+MainActivity (UI)
+  ├── Camera preview (ImageView) with overlay bitmaps
+  └── Dashboard panel (risk banner, metrics, detections)
 ```
 
 ### Initialization
@@ -1223,34 +1265,95 @@ Note: `dangerous_posture`, `child_present`, `child_slouching` are NOT distractio
 3. Run PoseAnalyzer (C++/JNI):
    a. YOLOv8n-pose on full frame → persons, keypoints
    b. Identify driver (largest bbox)
-   c. Check posture, children
-   d. YOLOv8n detection on driver ROI → phone
-   e. YOLOv8n detection on driver ROI → food/drink
-   f. YOLOv8n detection on wrist crops → phone fallback
-   g. Return PoseResult
-4. Run FaceAnalyzer (Kotlin/MediaPipe):
+   c. Populate overlay persons (bbox, confidence, is_driver, 17 keypoints)
+   d. Check posture, children
+   e. YOLOv8n detection on driver ROI → phone
+   f. YOLOv8n detection on driver ROI → food/drink
+   g. YOLOv8n detection on wrist crops → phone fallback
+   h. Return PoseResult (with persons array)
+4. BGR→Bitmap conversion for FaceAnalyzer
+5. Run FaceAnalyzer (Kotlin/MediaPipe):
    a. FaceLandmarker.detectForVideo()
    b. Compute EAR, MAR, head pose
-   c. Return FaceResult
-5. Merge results → compute risk
-6. Smooth results → temporal voting
-7. Update distraction duration counter:
+   c. Build FaceOverlayData (eye contours, mouth, nose tip)
+   d. Return FaceResult (with faceOverlay)
+6. Merge results → compute risk
+7. Smooth results → temporal voting
+8. Update distraction duration counter:
    any_distraction = ANY of DISTRACTION_FIELDS is true in smoothed result
    if any_distraction: distraction_duration_s += 1
    else: distraction_duration_s = 0
-8. Inject distraction_duration_s into result
-9. Validate output (type checking)
-10. Speak alerts if state changed (alerter.checkAndAnnounce)
-11. Log JSON to Logcat + optional broadcast
-12. Track frame timing; every 30 frames log performance stats (avg/min/max ms, heap sizes)
+9. Inject distraction_duration_s into result
+10. Render overlay (OverlayRenderer):
+    a. Draw person bboxes (green=driver, blue=others) with labels
+    b. Draw COCO skeleton (16 bones, confidence > 0.5)
+    c. Draw face landmarks (eyes, mouth, nose)
+    d. Draw metric labels (EAR, MAR, Yaw, Pitch)
+    e. Return annotated bitmap
+11. Post overlay bitmap + OutputResult to FrameHolder
+12. Speak alerts if state changed (alerter.checkAndAnnounce)
+13. Log JSON to Logcat
+14. Track frame timing; every 30 frames log performance stats (avg/min/max ms, heap sizes)
 ```
 
 ### Output
 
 For debug builds, output goes to:
 - **Logcat** (`Log.i("InCabin", jsonString)`) — filterable via `adb logcat -s InCabin`
-- **Optional LocalBroadcast** — for a debug UI Activity to display live results
-- **Optional file** — write to `/sdcard/cabin_perception.log`
+- **Visual overlay** — annotated camera preview with bounding boxes, skeleton, face landmarks, and metric labels
+- **Dashboard** — risk banner, metrics, passenger count, distraction timer, active detections
+
+---
+
+## 11b. Detection Overlay & Status Dashboard
+
+### OverlayRenderer
+
+Draws detection visualizations onto the camera preview bitmap. Runs after merge+smooth, before posting to FrameHolder. Returns a new annotated bitmap (source is not modified).
+
+**Drawings:**
+- **Person bounding boxes**: green stroke (driver), blue stroke (others), with "Driver 95%" / "Passenger 87%" labels on dark background
+- **COCO skeleton**: 16 bone connections in yellow between keypoints with confidence > 0.5
+  - Bones: nose-eyes, eyes-ears, shoulder-shoulder, arms (shoulder-elbow-wrist), shoulders-hips, hip-hip, legs (hip-knee-ankle)
+- **Keypoint dots**: 4px red circles at each confident keypoint
+- **Face eye contours**: green=open, red=closed (based on `driverEyesClosed`), drawn as closed polygon from 6 landmarks per eye
+- **Face mouth outline**: green=normal, orange=yawning (based on `driverYawning`), drawn as closed polygon from 6 mouth landmarks
+- **Nose tip**: 5px cyan circle
+- **Metric labels**: "EAR: 0.250  MAR: 0.200" and "Yaw: -5.0  Pitch: 3.0" in top-left corner with semi-transparent dark background
+
+**Performance:** Pre-allocated Paint objects to avoid GC per frame. ~3-5ms overhead on 1280x720 bitmap (negligible at 1fps).
+
+### FrameHolder
+
+Thread-safe singleton holding the latest annotated bitmap + OutputResult for the UI:
+
+```kotlin
+object FrameHolder {
+    data class FrameData(val bitmap: Bitmap, val result: OutputResult)
+
+    fun postFrame(bitmap: Bitmap, result: OutputResult)  // service writes
+    fun getLatest(): FrameData?                           // activity reads
+    fun getLatestFrame(): Bitmap?                         // backward compat
+    fun clear()                                           // recycles bitmap
+}
+```
+
+### Status Dashboard (MainActivity)
+
+Layout: vertical LinearLayout with black background, 8dp padding.
+
+**Top row** (horizontal): status text (weight=1) + start/stop button
+**Camera preview**: ImageView (weight=1, fitCenter, #111 background)
+**Dashboard panel** (visibility=gone when idle, shown when monitoring):
+- **Risk banner**: full-width TextView, bold 20sp, color-coded background:
+  - HIGH: red (#F44336), white text
+  - MEDIUM: orange (#FF9800), black text
+  - LOW: green (#4CAF50), black text
+- **Metrics row** (4 columns): EAR | MAR | Yaw | Pitch — 13sp, gray text, center-aligned
+- **Info row** (2 columns): Passengers count | Distraction timer — 13sp, gray text
+- **Active detections**: red text (#FF5252), center-aligned, pipe-separated labels (Phone | Eyes Closed | Yawning | Distracted | Eating/Drinking | Bad Posture | Child Slouching)
+
+**Polling**: `Handler.postDelayed` every 500ms reads `FrameHolder.getLatest()`, updates ImageView and calls `updateDashboard(result)`.
 
 ---
 
@@ -1324,22 +1427,24 @@ in_cabin_poc-sa8155/
 │   │   │   │   ├── onnxruntime/
 │   │   │   │   │   ├── include/          (headers extracted from AAR)
 │   │   │   │   │   └── lib/arm64-v8a/    (libonnxruntime.so, gitignored)
-│   │   │   │   ├── pose_analyzer.cpp/h   (ONNX Runtime YOLO inference)
+│   │   │   │   ├── pose_analyzer.cpp/h   (ONNX Runtime YOLO inference + overlay person data)
 │   │   │   │   ├── yolo_utils.cpp/h      (letterbox, NMS, postprocess)
 │   │   │   │   ├── image_utils.cpp/h     (BT.601 YUV→BGR conversion)
 │   │   │   │   └── jni_bridge.cpp
 │   │   │   ├── kotlin/com/incabin/
 │   │   │   │   ├── Config.kt
-│   │   │   │   ├── InCabinService.kt     (foreground service, 9-step main loop)
+│   │   │   │   ├── InCabinService.kt     (foreground service, 14-step main loop)
 │   │   │   │   ├── CameraManager.kt      (Camera2 + ImageReader, 1fps throttle)
-│   │   │   │   ├── FaceAnalyzer.kt       (MediaPipe FaceLandmarker + EAR/MAR/solvePnP)
-│   │   │   │   ├── PoseAnalyzerBridge.kt (JNI bridge to C++ PoseAnalyzer)
+│   │   │   │   ├── FaceAnalyzer.kt       (MediaPipe FaceLandmarker + EAR/MAR/solvePnP + face overlay)
+│   │   │   │   ├── PoseAnalyzerBridge.kt (JNI bridge to C++ PoseAnalyzer + overlay person data)
 │   │   │   │   ├── Merger.kt             (merge results + risk scoring)
 │   │   │   │   ├── TemporalSmoother.kt   (5-frame window, face-gating, fast-clear)
 │   │   │   │   ├── AudioAlerter.kt       (TextToSpeech + background queue)
 │   │   │   │   ├── OutputResult.kt       (16-field data class + JSON + validation)
 │   │   │   │   ├── NativeLib.kt          (JNI external fun declarations)
-│   │   │   │   └── MainActivity.kt       (start/stop service, permission handling)
+│   │   │   │   ├── OverlayRenderer.kt    (draws bboxes, skeleton, face, metrics on bitmap)
+│   │   │   │   ├── FrameHolder.kt        (thread-safe bitmap + OutputResult for UI)
+│   │   │   │   └── MainActivity.kt       (start/stop service, dashboard, permission handling)
 │   │   │   └── res/
 │   │   │       ├── layout/activity_main.xml
 │   │   │       ├── values/strings.xml
@@ -1393,6 +1498,16 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 - Diagnostic logging at startup: device model/Android version/SDK/CPU count/RAM, asset file sizes, component init timing (ms), OpenCV version string
 - Periodic performance stats: every 30 frames logs avg/min/max frame time, Java heap, native heap, distraction duration
 - First-frame resolution confirmation: CameraManager logs actual dimensions, format, and plane count on first processed frame
+
+### Phase 7 — Detection Overlay & Status Dashboard (Complete)
+- C++ `OverlayPerson` struct exposes bbox, confidence, is_driver flag, and 17 keypoints through JNI JSON
+- Kotlin `OverlayKeypoint`, `OverlayPerson` data classes (Gson auto-parse, defaults for backward compat)
+- `FaceOverlayData` exposes eye contours, mouth outline, nose tip from existing MediaPipe landmarks
+- `OverlayRenderer` draws bounding boxes (green=driver, blue=others), COCO skeleton (16 bones), face landmarks (eye/mouth contours, nose), and EAR/MAR/Yaw/Pitch metric labels
+- `FrameHolder` expanded to hold `FrameData(bitmap, OutputResult)` for thread-safe UI consumption
+- Pipeline reordered: merge+smooth before overlay, overlay bitmap posted to FrameHolder with result
+- `MainActivity` dashboard: color-coded risk banner, metrics row, passenger count, distraction timer, active detection labels
+- Build verified: `assembleDebug` + all 64 unit tests pass (new fields have defaults, no test changes needed)
 
 ---
 

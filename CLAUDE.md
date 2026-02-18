@@ -1,7 +1,7 @@
 # SA8155 Android Port — In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening. Build verified (`assembleDebug` + all 64 unit tests pass). APK size: 64 MB.
+Implementation complete with pre-deployment hardening and visual debugging overlay. Build verified (`assembleDebug` + all 64 unit tests pass). APK size: 64 MB.
 
 ## Target
 Qualcomm SA8155P (Kryo 485 CPU-only). Android Automotive 14. Debug build. USB webcam.
@@ -22,6 +22,8 @@ USB Webcam
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
   → Merger (Kotlin) → risk scoring
   → Temporal Smoother (Kotlin) → 5-frame sliding window, 60% threshold
+  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks, metrics on bitmap
+  → FrameHolder → bitmap + OutputResult → MainActivity dashboard
   → Audio Alerter (Android TextToSpeech, queued sequential playback)
   → JSON output (Logcat)
 ```
@@ -36,7 +38,7 @@ The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Ca
 ## Tech Stack
 | Layer | Language | Purpose |
 |---|---|---|
-| Android lifecycle, camera, TTS | Kotlin | V4L2 manager, Camera2 fallback, TextToSpeech, foreground service |
+| Android lifecycle, camera, TTS, UI | Kotlin | V4L2 manager, Camera2 fallback, TextToSpeech, foreground service, overlay + dashboard |
 | Inference hot path | C++ (NDK) | ONNX Runtime, YOLO preprocessing/postprocessing, V4L2 camera access |
 | Face analysis | Kotlin | MediaPipe FaceLandmarker, OpenCV solvePnP |
 | Bridge | JNI | Frame data + results between Kotlin ↔ C++ |
@@ -111,6 +113,25 @@ score >= 3 → high, >= 1 → medium, else → low
 - Increment +1 per frame if any active, reset to 0 when all clear
 - Injected into result after smoothing, before output
 
+### Detection Overlay (OverlayRenderer)
+- Renders onto camera preview bitmap after merge+smooth, before posting to FrameHolder
+- **Person bounding boxes**: green=driver, blue=passengers, with "Driver 95%"/"Passenger 87%" labels
+- **COCO skeleton**: 16 bone connections between keypoints (confidence > 0.5)
+- **Keypoint dots**: red circles at each confident keypoint
+- **Face landmarks**: eye contours (green=open, red=closed), mouth outline (green=normal, orange=yawning), cyan nose tip
+- **Metric labels**: EAR, MAR, Yaw, Pitch in top-left corner with dark background
+- Pre-allocated Paint objects; ~3-5ms overhead on 1280x720
+
+### Status Dashboard (MainActivity)
+- Compact top row: status text + start/stop button
+- Camera preview (ImageView) with overlay bitmaps from FrameHolder
+- Dashboard panel (visible when monitoring):
+  - Risk banner: color-coded (red=HIGH, orange=MEDIUM, green=LOW)
+  - Metrics row: EAR | MAR | Yaw | Pitch
+  - Info row: Passengers | Distraction timer
+  - Active detections: pipe-separated labels (Phone | Eyes Closed | Yawning | etc.)
+- Polls FrameHolder every 500ms for bitmap + OutputResult
+
 ## Build System
 - Gradle 8.9 (Kotlin DSL), AGP 8.7.3, Kotlin 2.0.21
 - NDK 26.1.10909125, CMake 3.22.1, C++17
@@ -146,6 +167,7 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager
 │   │   ├── FaceAnalyzer, PoseAnalyzerBridge, Merger, TemporalSmoother
 │   │   ├── AudioAlerter, OutputResult, NativeLib, MainActivity
+│   │   ├── OverlayRenderer, FrameHolder
 │   └── res/             (layout, strings, notification icon)
 ├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
