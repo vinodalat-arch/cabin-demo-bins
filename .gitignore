@@ -20,3 +20,6 @@ app/src/main/assets/*.task
 
 # ONNX Runtime extracted from AAR (can be re-extracted)
 app/src/main/cpp/onnxruntime/lib/
+
+# Device debug logs
+*.txt
