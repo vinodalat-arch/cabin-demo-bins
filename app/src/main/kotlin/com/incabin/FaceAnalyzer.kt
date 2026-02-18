@@ -20,6 +20,17 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
+/** Single face landmark in pixel coordinates. */
+data class OverlayLandmark(val x: Float, val y: Float)
+
+/** Face overlay data for drawing eye contours, mouth outline, and nose. */
+data class FaceOverlayData(
+    val rightEye: List<OverlayLandmark>,
+    val leftEye: List<OverlayLandmark>,
+    val mouth: List<OverlayLandmark>,
+    val noseTip: OverlayLandmark
+)
+
 /**
  * Result of face analysis for a single frame.
  *
@@ -33,7 +44,8 @@ data class FaceResult(
     val marValue: Float? = null,
     val driverDistracted: Boolean = false,
     val headYaw: Float? = null,
-    val headPitch: Float? = null
+    val headPitch: Float? = null,
+    val faceOverlay: FaceOverlayData? = null
 ) {
     companion object {
         /** Default result when no face is detected. */
@@ -44,7 +56,8 @@ data class FaceResult(
             marValue = null,
             driverDistracted = false,
             headYaw = null,
-            headPitch = null
+            headPitch = null,
+            faceOverlay = null
         )
     }
 }
@@ -164,6 +177,29 @@ class FaceAnalyzer(context: Context) {
         val distracted = abs(yawDeg) > Config.HEAD_YAW_THRESHOLD ||
                 abs(pitchDeg) > Config.HEAD_PITCH_THRESHOLD
 
+        // --- Build Face Overlay ---
+        val faceOverlay = try {
+            val rightEyeLandmarks = RIGHT_EYE_INDICES.map { idx ->
+                val lm = landmarks[idx]
+                OverlayLandmark((lm.x() * w).toFloat(), (lm.y() * h).toFloat())
+            }
+            val leftEyeLandmarks = LEFT_EYE_INDICES.map { idx ->
+                val lm = landmarks[idx]
+                OverlayLandmark((lm.x() * w).toFloat(), (lm.y() * h).toFloat())
+            }
+            val mouthIndices = intArrayOf(MAR_TOP, MAR_BOTTOM, MAR_LEFT, MAR_RIGHT, MAR_UPPER_MID, MAR_LOWER_MID)
+            val mouthLandmarks = mouthIndices.map { idx ->
+                val lm = landmarks[idx]
+                OverlayLandmark((lm.x() * w).toFloat(), (lm.y() * h).toFloat())
+            }
+            val noseLm = landmarks[1] // nose tip (PnP index 0 = landmark 1)
+            val noseTip = OverlayLandmark((noseLm.x() * w).toFloat(), (noseLm.y() * h).toFloat())
+            FaceOverlayData(rightEyeLandmarks, leftEyeLandmarks, mouthLandmarks, noseTip)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to build face overlay", e)
+            null
+        }
+
         return FaceResult(
             driverEyesClosed = eyesClosed,
             earValue = roundTo4(avgEar),
@@ -171,7 +207,8 @@ class FaceAnalyzer(context: Context) {
             marValue = roundTo4(mar),
             driverDistracted = distracted,
             headYaw = roundTo1(yawDeg),
-            headPitch = roundTo1(pitchDeg)
+            headPitch = roundTo1(pitchDeg),
+            faceOverlay = faceOverlay
         )
     }
 

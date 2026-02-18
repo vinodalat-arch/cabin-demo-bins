@@ -4,29 +4,35 @@ import android.graphics.Bitmap
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Singleton holding the latest camera frame for UI preview.
+ * Singleton holding the latest camera frame and detection result for UI preview.
  * Thread-safe: service posts frames, activity reads them.
  */
 object FrameHolder {
 
-    private val latestFrame = AtomicReference<Bitmap?>(null)
+    /** Combines a preview bitmap with the corresponding detection result. */
+    data class FrameData(val bitmap: Bitmap, val result: OutputResult)
 
-    /** Store a new frame, recycling the previous one. Caller transfers ownership. */
-    fun postFrame(bitmap: Bitmap) {
-        val old = latestFrame.getAndSet(bitmap)
-        if (old != null && !old.isRecycled) {
-            old.recycle()
+    private val latest = AtomicReference<FrameData?>(null)
+
+    /** Store a new frame + result, recycling the previous bitmap. Caller transfers bitmap ownership. */
+    fun postFrame(bitmap: Bitmap, result: OutputResult) {
+        val old = latest.getAndSet(FrameData(bitmap, result))
+        if (old != null && !old.bitmap.isRecycled) {
+            old.bitmap.recycle()
         }
     }
 
-    /** Get the latest frame. Caller must NOT recycle the returned Bitmap. */
-    fun getLatestFrame(): Bitmap? = latestFrame.get()
+    /** Get the latest frame data (bitmap + result). Caller must NOT recycle the Bitmap. */
+    fun getLatest(): FrameData? = latest.get()
+
+    /** Get the latest frame bitmap only. Caller must NOT recycle the returned Bitmap. */
+    fun getLatestFrame(): Bitmap? = latest.get()?.bitmap
 
     /** Clear and recycle the held frame. */
     fun clear() {
-        val old = latestFrame.getAndSet(null)
-        if (old != null && !old.isRecycled) {
-            old.recycle()
+        val old = latest.getAndSet(null)
+        if (old != null && !old.bitmap.isRecycled) {
+            old.bitmap.recycle()
         }
     }
 }

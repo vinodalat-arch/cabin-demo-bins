@@ -281,6 +281,23 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
     const Detection& driver = persons[driver_idx];
     float driver_height = driver.y2 - driver.y1;
 
+    // 2b. Populate overlay persons
+    result.persons.resize(persons.size());
+    for (int i = 0; i < static_cast<int>(persons.size()); i++) {
+        auto& op = result.persons[i];
+        op.x1 = persons[i].x1;
+        op.y1 = persons[i].y1;
+        op.x2 = persons[i].x2;
+        op.y2 = persons[i].y2;
+        op.confidence = persons[i].confidence;
+        op.is_driver = (i == driver_idx);
+        for (int k = 0; k < NUM_KEYPOINTS; k++) {
+            op.keypoints[k].x = persons[i].keypoints[k].x;
+            op.keypoints[k].y = persons[i].keypoints[k].y;
+            op.keypoints[k].conf = persons[i].keypoints[k].conf;
+        }
+    }
+
     // 3. Check driver posture
     result.dangerous_posture = checkPosture(driver.keypoints, POSTURE_LEAN_THRESHOLD);
 
@@ -353,8 +370,27 @@ std::string PoseResult::toJson() const {
        << "\"dangerous_posture\":" << (dangerous_posture ? "true" : "false") << ","
        << "\"child_present\":" << (child_present ? "true" : "false") << ","
        << "\"child_slouching\":" << (child_slouching ? "true" : "false") << ","
-       << "\"driver_eating_drinking\":" << (driver_eating_drinking ? "true" : "false")
-       << "}";
+       << "\"driver_eating_drinking\":" << (driver_eating_drinking ? "true" : "false") << ","
+       << "\"persons\":[";
+    for (size_t i = 0; i < persons.size(); i++) {
+        if (i > 0) ss << ",";
+        const auto& p = persons[i];
+        ss << "{\"x1\":" << p.x1
+           << ",\"y1\":" << p.y1
+           << ",\"x2\":" << p.x2
+           << ",\"y2\":" << p.y2
+           << ",\"confidence\":" << p.confidence
+           << ",\"is_driver\":" << (p.is_driver ? "true" : "false")
+           << ",\"keypoints\":[";
+        for (int k = 0; k < NUM_KEYPOINTS; k++) {
+            if (k > 0) ss << ",";
+            ss << "{\"x\":" << p.keypoints[k].x
+               << ",\"y\":" << p.keypoints[k].y
+               << ",\"c\":" << p.keypoints[k].conf << "}";
+        }
+        ss << "]}";
+    }
+    ss << "]}";
     return ss.str();
 }
 

@@ -6,6 +6,26 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import java.io.Closeable
 
+/** Single keypoint from COCO pose model. */
+data class OverlayKeypoint(
+    val x: Float = 0f,
+    val y: Float = 0f,
+    @SerializedName("c")
+    val conf: Float = 0f
+)
+
+/** Person detection with bounding box and skeleton keypoints for overlay drawing. */
+data class OverlayPerson(
+    val x1: Float = 0f,
+    val y1: Float = 0f,
+    val x2: Float = 0f,
+    val y2: Float = 0f,
+    val confidence: Float = 0f,
+    @SerializedName("is_driver")
+    val isDriver: Boolean = false,
+    val keypoints: List<OverlayKeypoint> = emptyList()
+)
+
 /**
  * Pose analysis result from YOLOv8n-pose and YOLOv8n detection (C++ layer).
  * All fields have safe defaults for when analysis fails or no person detected.
@@ -27,7 +47,9 @@ data class PoseResult(
     val childSlouching: Boolean = false,
 
     @SerializedName("driver_eating_drinking")
-    val driverEatingDrinking: Boolean = false
+    val driverEatingDrinking: Boolean = false,
+
+    val persons: List<OverlayPerson> = emptyList()
 )
 
 /**

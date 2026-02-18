@@ -46,6 +46,7 @@ class InCabinService : Service() {
     private var poseAnalyzer: PoseAnalyzerBridge? = null
     private var smoother: TemporalSmoother? = null
     private var audioAlerter: AudioAlerter? = null
+    private val overlayRenderer = OverlayRenderer()
 
     // --- Distraction duration counter ---
     @Volatile
@@ -237,7 +238,6 @@ class InCabinService : Service() {
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
             val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
-            FrameHolder.postFrame(bitmap)
             val faceElapsed = System.currentTimeMillis() - faceStartMs
 
             // Step 3: Merge results
@@ -256,10 +256,15 @@ class InCabinService : Service() {
             // Step 6: Inject distraction_duration_s into result
             val finalResult = smoothed.copy(distractionDurationS = distractionDurationS)
 
-            // Step 7: Audio alerter
+            // Step 7: Render overlay and post to FrameHolder
+            val overlayBitmap = overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
+            FrameHolder.postFrame(overlayBitmap, finalResult)
+            bitmap.recycle()
+
+            // Step 8: Audio alerter
             audioAlerter?.checkAndAnnounce(finalResult)
 
-            // Step 8: Log JSON output
+            // Step 9: Log JSON output
             Log.i(TAG, finalResult.toJson())
 
             // Timing summary

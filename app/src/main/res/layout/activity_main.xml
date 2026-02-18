@@ -3,31 +3,155 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="24dp"
-    android:gravity="center_horizontal">
+    android:padding="8dp"
+    android:background="#FF000000">
 
-    <TextView
-        android:id="@+id/statusText"
+    <!-- Top row: status + button -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Status: Idle"
-        android:textSize="18sp"
-        android:layout_marginBottom="24dp" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
 
-    <Button
-        android:id="@+id/toggleButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/start_service"
-        android:layout_marginBottom="16dp" />
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Status: Idle"
+            android:textSize="14sp"
+            android:textColor="#FFFFFFFF" />
 
+        <Button
+            android:id="@+id/toggleButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="@string/start_service"
+            android:textSize="12sp"
+            android:minWidth="100dp" />
+    </LinearLayout>
+
+    <!-- Camera preview -->
     <ImageView
         android:id="@+id/previewImage"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:scaleType="fitCenter"
-        android:background="#FF000000"
+        android:background="#FF111111"
         android:contentDescription="Camera preview" />
+
+    <!-- Dashboard panel (hidden when idle) -->
+    <LinearLayout
+        android:id="@+id/dashboardPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:padding="8dp"
+        android:layout_marginTop="4dp">
+
+        <!-- Risk level banner -->
+        <TextView
+            android:id="@+id/riskBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="RISK: LOW"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#FF000000"
+            android:background="#FF4CAF50"
+            android:gravity="center"
+            android:padding="6dp" />
+
+        <!-- Metrics row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp">
+
+            <TextView
+                android:id="@+id/earText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="EAR: --"
+                android:textSize="13sp"
+                android:textColor="#FFCCCCCC"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/marText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="MAR: --"
+                android:textSize="13sp"
+                android:textColor="#FFCCCCCC"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/yawText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Yaw: --"
+                android:textSize="13sp"
+                android:textColor="#FFCCCCCC"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/pitchText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Pitch: --"
+                android:textSize="13sp"
+                android:textColor="#FFCCCCCC"
+                android:gravity="center" />
+        </LinearLayout>
+
+        <!-- Info row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:id="@+id/passengerText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Passengers: 0"
+                android:textSize="13sp"
+                android:textColor="#FFCCCCCC"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/distractionText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Distraction: 0s"
+                android:textSize="13sp"
+                android:textColor="#FFCCCCCC"
+                android:gravity="center" />
+        </LinearLayout>
+
+        <!-- Active detections -->
+        <TextView
+            android:id="@+id/detectionsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="13sp"
+            android:textColor="#FFFF5252"
+            android:gravity="center"
+            android:layout_marginTop="4dp" />
+
+    </LinearLayout>
 
 </LinearLayout>

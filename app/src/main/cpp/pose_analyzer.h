@@ -10,6 +10,22 @@
 
 namespace incabin {
 
+struct OverlayKeypoint {
+    float x = 0.0f;
+    float y = 0.0f;
+    float conf = 0.0f;
+};
+
+struct OverlayPerson {
+    float x1 = 0.0f;
+    float y1 = 0.0f;
+    float x2 = 0.0f;
+    float y2 = 0.0f;
+    float confidence = 0.0f;
+    bool is_driver = false;
+    OverlayKeypoint keypoints[NUM_KEYPOINTS];
+};
+
 struct PoseResult {
     int passenger_count = 0;
     bool driver_using_phone = false;
@@ -17,6 +33,7 @@ struct PoseResult {
     bool child_present = false;
     bool child_slouching = false;
     bool driver_eating_drinking = false;
+    std::vector<OverlayPerson> persons;
 
     /**
      * Serialize to JSON string.
