@@ -1,7 +1,7 @@
 # SA8155 Android Port — In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, and visual debugging overlay. Build verified (`assembleDebug` + all 64 unit tests pass). APK size: 64 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, and UI polish. Build verified (`assembleDebug` + all 64 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 64 MB.
 
 ## Target
 Qualcomm SA8155P (Kryo 485 CPU-only). Android Automotive 14. Debug build. USB webcam.
@@ -21,11 +21,12 @@ USB Webcam
   → YOLOv8n detection (ONNX Runtime C++, CPU EP) → phone, food/drink in driver ROI
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
   → Merger (Kotlin) → risk scoring
-  → Temporal Smoother (Kotlin) → 5-frame sliding window, 60% threshold
-  → Audio Alerter (Android TextToSpeech, queued sequential playback)   ← core path
+  → Temporal Smoother (Kotlin) → 3-frame sliding window, 60% threshold
+  → Audio Alerter (Android TextToSpeech + AudioTrack beep at 20s)     ← core path
   → JSON output (Logcat)                                               ← core path
-  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← UI path (isolated)
-  → FrameHolder → bitmap + OutputResult → MainActivity dashboard      ← UI path (isolated)
+  → FrameHolder.postResult() → OutputResult → Dashboard               ← fast UI path
+  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← optional UI path
+  → FrameHolder.postFrame() → bitmap → ImageView preview              ← optional UI path
 ```
 
 ### Core Pipeline Isolation (Safety-Critical Requirement)
@@ -42,7 +43,7 @@ The inference → merge → smooth → audio alert → JSON log path is **safety
 The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Camera HAL, so Camera2 API cannot see USB webcams. The app uses **V4L2 direct ioctl access** as the primary camera path, with Camera2 as a fallback.
 - `V4l2CameraManager` (Kotlin) → `V4l2Camera` (C++/JNI) → `/dev/videoN`
 - Scans `/dev/video0-63`, skips Qualcomm internal devices (`cam-req-mgr`, `cam_sync`)
-- Configures YUYV capture, 4 mmap buffers, converts YUYV→BGR in native code
+- Configures YUYV capture, 2 mmap buffers (reduced from 4 for lower latency), converts YUYV→BGR in native code
 - If no V4L2 device found, falls back to `CameraManager` (Camera2 API)
 
 ## Tech Stack
@@ -71,7 +72,7 @@ The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Ca
 ## Key Thresholds
 - EAR < 0.21 → eyes closed
 - MAR > 0.5 → yawning
-- |yaw| > 30° or |pitch| > 25° → distracted
+- |yaw| > 30° or |pitch| > 35° → distracted
 - YOLO confidence > 0.35, NMS IoU 0.45
 - Phone: COCO class 67, Food/drink: classes 39-48
 - Posture lean > 30°, Child slouch > 20°
@@ -79,7 +80,7 @@ The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Ca
 - Child: bbox height < 75% of driver
 - Keypoint confidence threshold: 0.5
 - Wrist crop: 200x200px
-- Smoother: 5-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
+- Smoother: 3-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 
 ## Risk Scoring
@@ -116,6 +117,7 @@ score >= 3 → high, >= 1 → medium, else → low
 - Priority: new dangers → risk change → all-clear (overrides) → distraction duration (only if no other)
 - Danger names: phone detected, eyes closed, yawning detected, driver distracted, eating or drinking, dangerous posture, child slouching
 - Duration thresholds: [5, 10, 20] seconds, one per cycle, reset when duration=0
+- **Loud beep at 20s**: 1kHz sine wave, 2 seconds, via AudioTrack on USAGE_ASSISTANCE_SONIFICATION (same audio path as TTS). Separate `beepPlayed` flag, resets when distraction clears
 - First frame: store state only, no announcement
 - TTS retry: if init fails, schedules one retry after 3s via stored Handler; `ttsRetried` flag prevents loops; Handler callbacks cancelled in `close()` to prevent leak if service destroyed within 3s
 
@@ -125,7 +127,8 @@ score >= 3 → high, >= 1 → medium, else → low
 - Injected into result after smoothing, before output
 
 ### Detection Overlay (OverlayRenderer)
-- Renders onto camera preview bitmap after merge+smooth, before posting to FrameHolder
+- Renders in-place onto source bitmap (no 3.6MB copy per frame)
+- Controlled by `Config.ENABLE_PREVIEW` flag (currently disabled for performance)
 - **Person bounding boxes**: green=driver, blue=passengers, with "Driver 95%"/"Passenger 87%" labels
 - **COCO skeleton**: 16 bone connections between keypoints (confidence > 0.5)
 - **Keypoint dots**: red circles at each confident keypoint
@@ -134,14 +137,20 @@ score >= 3 → high, >= 1 → medium, else → low
 - Pre-allocated Paint objects; ~3-5ms overhead on 1280x720
 
 ### Status Dashboard (MainActivity)
+- **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
 - Compact top row: status text + start/stop button
-- Camera preview (ImageView) with overlay bitmaps from FrameHolder
+- AI status message bar with varied contextual messages
+- Score arc + distraction-free streak + session timer
+- Camera preview (ImageView, optional via ENABLE_PREVIEW)
 - Dashboard panel (visible when monitoring):
-  - Risk banner: color-coded (red=HIGH, orange=MEDIUM, green=LOW)
-  - Metrics row: EAR | MAR | Yaw | Pitch
-  - Info row: Passengers | Distraction timer
+  - Risk banner: color-coded (red=HIGH 32sp, orange=MEDIUM, green=LOW)
+  - Info row: Passengers | Distraction timer (26sp bold)
   - Active detections: pipe-separated labels (Phone | Eyes Closed | Yawning | etc.)
-- Polls FrameHolder every 500ms for bitmap + OutputResult
+  - EAR/MAR/Yaw/Pitch metrics: hidden (engineering data, still in layout as `gone`)
+- Detection history ticker (marquee)
+- Session summary dialog on stop
+- Polls FrameHolder every 500ms
+- Custom app icon: dark blue background (#1A237E) with white eye/monitoring symbol
 
 ## Build System
 - Gradle 8.9 (Kotlin DSL), AGP 8.7.3, Kotlin 2.0.21
@@ -178,8 +187,8 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager
 │   │   ├── FaceAnalyzer, PoseAnalyzerBridge, Merger, TemporalSmoother
 │   │   ├── AudioAlerter, OutputResult, NativeLib, MainActivity
-│   │   ├── OverlayRenderer, FrameHolder
-│   └── res/             (layout, strings, notification icon)
+│   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
+│   └── res/             (layout, strings, notification icon, app icon)
 ├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
@@ -192,7 +201,16 @@ in_cabin_poc-sa8155/
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
-~500-800ms/frame estimated on Kryo 485 (FP32). Within 1000ms (1fps) budget. INT8 quantization available as optimization if needed.
+On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~80ms. Frame cadence ~0.85s. Detection latency ~2-3s (smoother window=3 + webcam framerate). Memory stable at heap=19MB, native=208MB.
+
+### On-Device Performance Tuning
+- **INFERENCE_INTERVAL_MS**: Reduced from 1000ms to 100ms (webcam at ~1fps is the actual bottleneck, not sleep)
+- **SMOOTHER_WINDOW**: Reduced from 5 to 3 frames for faster detection response (need 2/3 majority instead of 3/5)
+- **HEAD_PITCH_THRESHOLD**: Increased from 25° to 35° to eliminate false `driver_distracted` from camera mounting angle
+- **V4L2 mmap buffers**: Reduced from 4 to 2 to minimize frame latency
+- **ENABLE_PREVIEW**: Flag to disable overlay rendering + bitmap posting. Preview rendering was causing ~10s perceived delay due to bitmap GC pressure on SA8155P. With preview disabled, audio alerts fire in ~2-3s
+- **Decoupled result delivery**: `FrameHolder.postResult()` delivers OutputResult to dashboard immediately, independent of bitmap rendering. Dashboard and audio alerts update at pipeline speed regardless of preview state
+- **In-place overlay rendering**: OverlayRenderer draws directly on source bitmap instead of creating 3.6MB ARGB_8888 copy per frame
 
 ### Performance Optimizations
 - **BGR→Bitmap in C++/JNI**: Pixel conversion (BGR→ARGB, 921K pixels) moved from Kotlin loop to native C++ via `nativeBgrToArgbPixels()`. Pre-allocated `IntArray` buffer eliminates 3.5 MB allocation per frame. Saves ~15-25ms/frame.
@@ -204,7 +222,7 @@ in_cabin_poc-sa8155/
 - **Native lib safety**: `System.loadLibrary("incabin")` wrapped in try-catch in NativeLib and PoseAnalyzerBridge; `loaded`/`nativeLoaded` flags prevent JNI calls if lib missing
 - **Thread safety — pipeline lock**: `ReentrantLock` in `InCabinService` guards `processFrame()` (camera thread, `tryLock`) vs `onDestroy()` (main thread, `lock`), preventing JNI use-after-free on native PoseAnalyzer and V4L2Camera pointers
 - **Thread safety — atomic counter**: `distractionDurationS` uses `AtomicInteger` (`incrementAndGet`/`set`) instead of `@Volatile` read-modify-write
-- **Bitmap lifecycle safety**: `processFrame()` wraps bitmap in `try-finally { bitmap.recycle() }`; `OverlayRenderer.render()` wraps draw calls in `try-catch` returning partial overlay on error — prevents ~3.7 MB leak per failed frame
+- **Bitmap lifecycle safety**: When `ENABLE_PREVIEW=false`, bitmap is recycled immediately after face analysis. When preview enabled, bitmap ownership transfers to FrameHolder. `OverlayRenderer.render()` draws in-place with try-catch returning partial overlay on error
 - **C++ buffer pre-allocation**: Detect model path uses pre-allocated `detect_letterbox_buf_` + `detect_tensor_buf_` (~6.1 MB once) instead of allocating per call (was ~24 MB alloc/dealloc per frame); crop extraction uses reusable `crop_buf_` member
 - **ONNX output size validation**: `runInference()` validates output tensor size matches expected dimensions (pose: 56×8400, detect: 84×8400) before accessing data; returns empty on mismatch to prevent out-of-bounds reads from corrupted/mismatched models
 - **JNI OOM safety**: `NewByteArray` null returns logged with `LOGE` and early-return `nullptr` in both YUV→BGR and V4L2 frame JNI functions

@@ -124,19 +124,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="RISK: LOW"
-            android:textSize="20sp"
+            android:textSize="32sp"
             android:textStyle="bold"
             android:textColor="#FF000000"
             android:background="#FF4CAF50"
             android:gravity="center"
             android:padding="6dp" />
 
-        <!-- Metrics row -->
+        <!-- Metrics row (hidden - engineering data) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="6dp">
+            android:layout_marginTop="6dp"
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/earText"
@@ -192,7 +193,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Passengers: 0"
-                android:textSize="13sp"
+                android:textSize="26sp"
+                android:textStyle="bold"
                 android:textColor="#FFCCCCCC"
                 android:gravity="center" />
 
@@ -202,7 +204,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Distraction: 0s"
-                android:textSize="13sp"
+                android:textSize="26sp"
+                android:textStyle="bold"
                 android:textColor="#FFCCCCCC"
                 android:gravity="center" />
         </LinearLayout>
@@ -247,7 +250,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Demo by KPIT Technologies, India"
-        android:textSize="11sp"
+        android:textSize="20sp"
         android:textColor="#FF888888"
         android:gravity="center"
         android:paddingTop="4dp"

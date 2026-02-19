@@ -33,6 +33,7 @@ object Config {
 
     // Audio
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
+    const val DISTRACTION_BEEP_THRESHOLD_S = 20
 
     // Preview (set false to test pipeline without rendering overhead)
     const val ENABLE_PREVIEW = false

@@ -1185,6 +1185,12 @@ class AudioAlerter:
         // Reset announced durations when distraction clears
         if duration == 0:
             _announced_durations.clear()
+            _beep_played = false
+
+        // Loud beep at 20s distraction (separate from TTS)
+        if duration >= DISTRACTION_BEEP_THRESHOLD_S AND NOT _beep_played:
+            _beep_played = true
+            play_beep()  // 1kHz sine, 2s, AudioTrack on USAGE_ASSISTANCE_SONIFICATION
 
         if parts is not empty:
             message = parts.join(". ")
@@ -1197,6 +1203,11 @@ class AudioAlerter:
         tts.stop()
         tts.shutdown()
 ```
+
+### Loud Beep at 20s Distraction
+When distraction duration reaches `DISTRACTION_BEEP_THRESHOLD_S` (20 seconds), a loud 1kHz sine wave plays for 2 seconds via `AudioTrack` on `USAGE_ASSISTANCE_SONIFICATION` (same audio path as TTS — important for Honda BSP where `STREAM_ALARM` may be muted/unrouted). The beep plays on a separate thread to avoid blocking the pipeline. A `beepPlayed` flag (separate from `announcedDurations`) ensures one beep per distraction episode; resets when distraction clears.
+
+The PCM buffer (44100Hz, 16-bit mono, 2 seconds = 88200 samples) is pre-generated at init time to avoid allocation during the alert.
 
 ### TTS Retry on Init Failure
 If TTS initialization fails (status != SUCCESS), schedule a single retry after 3 seconds using `Handler(Looper.getMainLooper()).postDelayed()`. A `ttsRetried` flag prevents infinite loops. If the retry also fails, TTS remains unavailable and messages are dropped with a warning log.
@@ -1384,7 +1395,7 @@ object Config {
     // Camera
     const val CAMERA_WIDTH = 1280
     const val CAMERA_HEIGHT = 720
-    const val INFERENCE_INTERVAL_MS = 1000L
+    const val INFERENCE_INTERVAL_MS = 100L   // tuned: webcam ~1fps is the real bottleneck
 
     // YOLO
     const val YOLO_CONFIDENCE = 0.35f
@@ -1396,7 +1407,7 @@ object Config {
     const val EAR_THRESHOLD = 0.21f
     const val MAR_THRESHOLD = 0.5f
     const val HEAD_YAW_THRESHOLD = 30.0f   // degrees
-    const val HEAD_PITCH_THRESHOLD = 25.0f // degrees
+    const val HEAD_PITCH_THRESHOLD = 35.0f // degrees (tuned: camera mount angle causes ~5-10° baseline)
 
     // Pose analysis
     const val POSTURE_LEAN_THRESHOLD = 30.0f   // degrees from vertical
@@ -1407,12 +1418,16 @@ object Config {
     const val WRIST_CROP_SIZE = 200            // pixels
 
     // Smoother
-    const val SMOOTHER_WINDOW = 5
+    const val SMOOTHER_WINDOW = 3              // tuned: 3-frame window for ~2s detection latency
     const val SMOOTHER_THRESHOLD = 0.6f
     const val FAST_CLEAR_FRAMES = 2
 
     // Audio
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
+    const val DISTRACTION_BEEP_THRESHOLD_S = 20  // loud beep at this duration
+
+    // Preview
+    const val ENABLE_PREVIEW = false  // disable camera preview rendering for performance
 }
 ```
 

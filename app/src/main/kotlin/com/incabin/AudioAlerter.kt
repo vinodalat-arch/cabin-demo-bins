@@ -7,6 +7,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -56,6 +59,7 @@ class AudioAlerter(context: Context) {
 
     private var prevState: AlertState? = null
     private val announcedDurations = mutableSetOf<Int>()
+    private var beepPlayed = false
     // H3: Store Handler so pending TTS retry can be cancelled in close()
     private val retryHandler = Handler(Looper.getMainLooper())
 
@@ -68,6 +72,17 @@ class AudioAlerter(context: Context) {
     private val appContext: Context = context.applicationContext
     private val notificationManager: NotificationManager =
         appContext.getSystemService(NotificationManager::class.java)
+
+    /** Pre-built PCM beep buffer (1kHz sine wave, 2 seconds, 16-bit mono 44100Hz). */
+    private val beepBuffer: ShortArray = run {
+        val sampleRate = 44100
+        val durationMs = 2000
+        val numSamples = sampleRate * durationMs / 1000
+        val freq = 1000.0
+        ShortArray(numSamples) { i ->
+            (Short.MAX_VALUE * kotlin.math.sin(2.0 * Math.PI * freq * i / sampleRate)).toInt().toShort()
+        }
+    }
 
     private val workerThread: Thread
 
@@ -203,6 +218,41 @@ class AudioAlerter(context: Context) {
         // Reset announced durations when distraction clears
         if (duration == 0) {
             announcedDurations.clear()
+            beepPlayed = false
+        }
+
+        // Loud beep at 20s distraction threshold
+        if (duration >= Config.DISTRACTION_BEEP_THRESHOLD_S && !beepPlayed) {
+            beepPlayed = true
+            Log.i(TAG, "Playing loud beep at ${Config.DISTRACTION_BEEP_THRESHOLD_S}s distraction")
+            Thread({
+                try {
+                    val attrs = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                    val track = AudioTrack.Builder()
+                        .setAudioAttributes(attrs)
+                        .setAudioFormat(
+                            AudioFormat.Builder()
+                                .setSampleRate(44100)
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                .build()
+                        )
+                        .setBufferSizeInBytes(beepBuffer.size * 2)
+                        .setTransferMode(AudioTrack.MODE_STATIC)
+                        .build()
+                    track.write(beepBuffer, 0, beepBuffer.size)
+                    track.play()
+                    Thread.sleep(2000)
+                    track.stop()
+                    track.release()
+                    Log.i(TAG, "Beep playback completed")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Beep playback failed", e)
+                }
+            }, "Beep-Player").start()
         }
 
         // Enqueue message if we have anything to say
