@@ -154,4 +154,15 @@
 
     </LinearLayout>
 
+    <!-- Footer -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Demo by KPIT Technologies, India"
+        android:textSize="11sp"
+        android:textColor="#FF888888"
+        android:gravity="center"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp" />
+
 </LinearLayout>
