@@ -209,12 +209,20 @@ class AudioAlerter(context: Context) {
         if (parts.isNotEmpty()) {
             val message = parts.joinToString(". ")
             messageQueue.put(message)
-            postAlertNotification(message, currentRisk)
+            try {
+                postAlertNotification(message, currentRisk)
+            } catch (e: Exception) {
+                Log.w(TAG, "Notification posting failed, TTS unaffected", e)
+            }
         }
 
         // Dismiss alert notification when all dangers clear
         if (!anyCurrDanger) {
-            notificationManager.cancel(ALERT_NOTIFICATION_ID)
+            try {
+                notificationManager.cancel(ALERT_NOTIFICATION_ID)
+            } catch (e: Exception) {
+                Log.w(TAG, "Notification cancel failed", e)
+            }
         }
 
         // Update previous state

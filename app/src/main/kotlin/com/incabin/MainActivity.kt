@@ -40,10 +40,14 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val previewPoller = object : Runnable {
         override fun run() {
-            val frameData = FrameHolder.getLatest()
-            if (frameData != null && !frameData.bitmap.isRecycled) {
-                previewImage.setImageBitmap(frameData.bitmap)
-                updateDashboard(frameData.result)
+            try {
+                val frameData = FrameHolder.getLatest()
+                if (frameData != null && !frameData.bitmap.isRecycled) {
+                    previewImage.setImageBitmap(frameData.bitmap)
+                    updateDashboard(frameData.result)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Preview update failed", e)
             }
             handler.postDelayed(this, PREVIEW_POLL_MS)
         }

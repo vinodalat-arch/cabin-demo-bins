@@ -6,6 +6,12 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Singleton holding the latest camera frame and detection result for UI preview.
  * Thread-safe: service posts frames, activity reads them.
+ *
+ * Bitmap lifecycle: old bitmaps are NOT recycled here to avoid TOCTOU races
+ * where the Activity reads a bitmap that gets recycled mid-use. Instead, old
+ * bitmaps are left for GC finalizer. This trades ~3.7 MB of transient memory
+ * for crash safety (a recycled-bitmap exception on the UI thread would kill
+ * the entire process including the safety-critical InCabinService).
  */
 object FrameHolder {
 
@@ -14,12 +20,9 @@ object FrameHolder {
 
     private val latest = AtomicReference<FrameData?>(null)
 
-    /** Store a new frame + result, recycling the previous bitmap. Caller transfers bitmap ownership. */
+    /** Store a new frame + result. Caller transfers bitmap ownership. */
     fun postFrame(bitmap: Bitmap, result: OutputResult) {
-        val old = latest.getAndSet(FrameData(bitmap, result))
-        if (old != null && !old.bitmap.isRecycled) {
-            old.bitmap.recycle()
-        }
+        latest.set(FrameData(bitmap, result))
     }
 
     /** Get the latest frame data (bitmap + result). Caller must NOT recycle the Bitmap. */
@@ -28,11 +31,8 @@ object FrameHolder {
     /** Get the latest frame bitmap only. Caller must NOT recycle the returned Bitmap. */
     fun getLatestFrame(): Bitmap? = latest.get()?.bitmap
 
-    /** Clear and recycle the held frame. */
+    /** Clear the held frame. */
     fun clear() {
-        val old = latest.getAndSet(null)
-        if (old != null && !old.bitmap.isRecycled) {
-            old.bitmap.recycle()
-        }
+        latest.set(null)
     }
 }

@@ -28,6 +28,16 @@ USB Webcam
   → FrameHolder → bitmap + OutputResult → MainActivity dashboard      ← UI path (isolated)
 ```
 
+### Core Pipeline Isolation (Safety-Critical Requirement)
+The inference → merge → smooth → audio alert → JSON log path is **safety-critical**. It must never be interrupted by UI features (overlay, preview, dashboard, notifications). All code changes must preserve these invariants:
+
+1. **Execution order**: Core path completes before any UI rendering. Audio alerts and JSON logging must never depend on overlay success.
+2. **Failure isolation**: UI operations (overlay rendering, FrameHolder, notification posting) must be wrapped in try-catch. A UI failure must never propagate into the core path.
+3. **No shared serialization**: UI-only data (overlay persons/keypoints) must not cause core detection data loss if malformed. Currently mitigated by Gson's robustness, but noted as architectural debt — a future refactor should separate overlay data from the PoseResult JSON.
+4. **No shared bitmap lifecycle**: FrameHolder must not recycle bitmaps that the Activity may be reading. TOCTOU on a recycled bitmap crashes the main thread, which kills the Service process.
+5. **Activity crash safety**: MainActivity wraps all FrameHolder access in try-catch. An unhandled Activity exception would kill the shared process and the Service with it.
+6. **Notification isolation**: Notification posting/cancellation in AudioAlerter is wrapped in try-catch. TTS queue and alert state updates must complete regardless of notification API failures.
+
 ### Camera Strategy
 The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Camera HAL, so Camera2 API cannot see USB webcams. The app uses **V4L2 direct ioctl access** as the primary camera path, with Camera2 as a fallback.
 - `V4l2CameraManager` (Kotlin) → `V4l2Camera` (C++/JNI) → `/dev/videoN`
@@ -201,6 +211,9 @@ in_cabin_poc-sa8155/
 - **First-frame confirmation**: CameraManager logs actual frame dimensions, format, and plane count
 - **V4L2 permission diagnostics**: `findCaptureDevice()` logs `permission denied` with fix hint when device nodes have restrictive permissions
 - **Pipeline decoupling**: Core path (inference → merge → smooth → audio alerts → JSON log) runs before and independently of UI path (overlay rendering → FrameHolder). Overlay is wrapped in its own try-catch; a failure in rendering never disrupts detection or alerts
+- **Notification isolation**: `postAlertNotification()` and `notificationManager.cancel()` in AudioAlerter wrapped in try-catch; TTS message queue and `prevState` update always complete regardless of notification API failures
+- **FrameHolder crash safety**: Old bitmaps are not recycled in `postFrame()` — left for GC finalizer to avoid TOCTOU race where Activity reads a bitmap recycled by the service thread (recycled-bitmap exception on UI thread would kill the entire process including InCabinService)
+- **Activity preview safety**: `previewPoller` in MainActivity wraps all FrameHolder access and bitmap operations in try-catch to prevent UI exceptions from crashing the shared process
 
 ## Deployment
 

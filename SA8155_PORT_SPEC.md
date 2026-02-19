@@ -1259,7 +1259,10 @@ Note: `dangerous_posture`, `child_present`, `child_slouching` are NOT distractio
 
 ### Per-Frame Flow
 
+Steps 1-12 are divided into **core** (safety-critical) and **UI** (optional) paths. The core path must complete in full before the UI path runs, and a UI failure must never interrupt core execution. See **Core Pipeline Isolation** below.
+
 ```
+--- CORE PATH (safety-critical, must always complete) ---
 1. ImageReader callback fires (1fps throttled)
 2. Convert YUV→BGR via JNI + libyuv
 3. Run PoseAnalyzer (C++/JNI):
@@ -1284,17 +1287,32 @@ Note: `dangerous_posture`, `child_present`, `child_slouching` are NOT distractio
    if any_distraction: distraction_duration_s += 1
    else: distraction_duration_s = 0
 9. Inject distraction_duration_s into result
-10. Render overlay (OverlayRenderer):
+10. Speak alerts if state changed (alerter.checkAndAnnounce)
+11. Log JSON to Logcat
+
+--- UI PATH (optional, isolated in try-catch) ---
+12. Render overlay (OverlayRenderer) — wrapped in try-catch:
     a. Draw person bboxes (green=driver, blue=others) with labels
     b. Draw COCO skeleton (16 bones, confidence > 0.5)
     c. Draw face landmarks (eyes, mouth, nose)
     d. Draw metric labels (EAR, MAR, Yaw, Pitch)
     e. Return annotated bitmap
-11. Post overlay bitmap + OutputResult to FrameHolder
-12. Speak alerts if state changed (alerter.checkAndAnnounce)
-13. Log JSON to Logcat
-14. Track frame timing; every 30 frames log performance stats (avg/min/max ms, heap sizes)
+    f. Post overlay bitmap + OutputResult to FrameHolder
+    On failure: log warning, skip preview update, core path unaffected.
+
+13. Track frame timing; every 30 frames log performance stats (avg/min/max ms, heap sizes)
 ```
+
+### Core Pipeline Isolation (Safety-Critical Requirement)
+
+The inference → merge → smooth → audio alert → JSON log path is **safety-critical**. It must never be interrupted by UI features. All code changes must preserve these invariants:
+
+1. **Execution order**: Core path (steps 1-11) completes before UI path (step 12). Audio alerts and JSON logging must never depend on overlay success.
+2. **Failure isolation**: UI operations (overlay rendering, FrameHolder, notification posting) must be wrapped in try-catch. A UI failure must never propagate into the core path.
+3. **No shared serialization risk**: UI-only data (overlay persons/keypoints) is serialized in the same PoseResult JSON as core detection fields. Currently mitigated by Gson robustness, but noted as architectural debt — a future refactor should separate overlay data from the PoseResult JSON to eliminate coupling.
+4. **No shared bitmap lifecycle**: FrameHolder does not recycle old bitmaps to avoid TOCTOU races where the Activity reads a bitmap that gets recycled mid-use. A recycled-bitmap exception on the UI thread would crash the entire process including InCabinService.
+5. **Activity crash safety**: MainActivity wraps all FrameHolder/bitmap access in try-catch. An unhandled Activity exception would kill the shared process and the Service with it.
+6. **Notification isolation**: Notification posting/cancellation in AudioAlerter is wrapped in try-catch. TTS queue and alert state updates always complete regardless of notification API failures.
 
 ### Output
 
@@ -1325,16 +1343,16 @@ Draws detection visualizations onto the camera preview bitmap. Runs after merge+
 
 ### FrameHolder
 
-Thread-safe singleton holding the latest annotated bitmap + OutputResult for the UI:
+Thread-safe singleton holding the latest annotated bitmap + OutputResult for the UI. Old bitmaps are **not** recycled in `postFrame()` — they are left for GC finalizer to avoid a TOCTOU race where the Activity reads a bitmap that gets recycled by the service thread (a recycled-bitmap exception on the UI thread would crash the entire process including InCabinService):
 
 ```kotlin
 object FrameHolder {
     data class FrameData(val bitmap: Bitmap, val result: OutputResult)
 
-    fun postFrame(bitmap: Bitmap, result: OutputResult)  // service writes
+    fun postFrame(bitmap: Bitmap, result: OutputResult)  // service writes (no recycle)
     fun getLatest(): FrameData?                           // activity reads
     fun getLatestFrame(): Bitmap?                         // backward compat
-    fun clear()                                           // recycles bitmap
+    fun clear()                                           // clears reference
 }
 ```
 
