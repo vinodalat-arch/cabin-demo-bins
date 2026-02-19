@@ -310,6 +310,71 @@ Key Honda-specific services running on the device:
 | Data Dir | `/data/user/0/com.incabin` |
 | Native Libs | Extracted (`extractNativeLibs=true`) |
 
+## App Runtime Monitoring (com.incabin)
+
+Captured 2026-02-19 15:26–15:28 via `dumpsys meminfo` at 2s intervals + app internal stats logs.
+
+### Memory Startup Profile
+
+| Time | Phase | Java Heap | Native Heap | Notes |
+|---|---|---|---|---|
+| +0s | Process launch | 0.1 MB | 0.2 MB | Cold start |
+| +2s | Early init | 3.2 MB | 1.1 MB | Android components |
+| +4s | Loading models | 3.9 MB | 4.5 MB | MediaPipe init |
+| +6s | Loading models | 4.0 MB | 4.6 MB | |
+| +9s | ONNX loading | 5.5 MB | 79.0 MB | First ONNX model loaded |
+| +11s | ONNX + MediaPipe | 11.6 MB | 168.2 MB | Both models loaded |
+| +14s | **Steady state** | **19.9 MB** | **170.2 MB** | First inference complete |
+
+### Memory Steady State (30+ seconds)
+
+| Metric | Value |
+|---|---|
+| Java Heap | 17.2 – 20.1 MB (minor GC dips to ~17MB) |
+| Native Heap | 168.5 – 171.2 MB |
+| Total App Footprint | ~227 MB (~3% of 7.5 GB RAM) |
+| Memory Leak | **None detected** — stable across 180+ frames in longest session |
+
+### CPU / Frame Performance (from app internal stats, all sessions 2026-02-19)
+
+| Session | Frames | Avg | Min | Max | Heap | Native | Notes |
+|---|---|---|---|---|---|---|---|
+| 13:26 | 30 | 555ms | 188ms | 670ms | 19MB | 229MB | |
+| 13:43 | 90 | 397–612ms | 180ms | 692ms | 19MB | 207–208MB | |
+| 13:55 | 90 | 585–636ms | 185ms | 708ms | 19MB | 207–208MB | |
+| 14:00 | 60 | 587–621ms | 194ms | 697ms | 19MB | 208MB | |
+| 14:01 | 90 | 596–666ms | 192ms | 832ms | 19MB | 207–208MB | distraction=21s peak |
+| 14:09 | 30 | 643ms | 184ms | 847ms | 19MB | 207MB | |
+| 14:45 | 180 | 627–675ms | 191ms | 975ms | 19MB | 208–209MB | longest session |
+| 14:49 | 30 | 662ms | 188ms | 839ms | 19MB | 207MB | |
+| 14:55 | 60 | 592–624ms | 183ms | 734ms | 19MB | 207–208MB | |
+| 14:57 | 30 | 588ms | 199ms | 723ms | 19MB | 207MB | |
+| 15:10 | 30 | 597ms | 196ms | 966ms | 19MB | 207MB | |
+| 15:27 | 30 | 593ms | 188ms | 700ms | 19MB | 208MB | |
+
+### Performance Summary
+
+| Metric | Value |
+|---|---|
+| Avg frame time (typical) | **~620 ms** |
+| Min frame time | ~180–199 ms (first frames, warm cache) |
+| Max frame time | ~700–975 ms (occasional spikes) |
+| Frame cadence | ~0.85s (webcam ~1fps + inference) |
+| Detection latency | ~2–3s (smoother window=3) |
+| Model load time | ~10–14s from cold start to first inference |
+| Java Heap (steady) | **19 MB** (rock solid) |
+| Native Heap (steady) | **207–209 MB** (stable, no leak) |
+
+### Native Heap Breakdown (estimated)
+
+| Component | Size | Notes |
+|---|---|---|
+| ONNX Runtime (pose model) | ~80 MB | YOLOv8n-pose FP32 + runtime buffers |
+| ONNX Runtime (detect model) | ~80 MB | YOLOv8n FP32 + runtime buffers |
+| Pre-allocated buffers | ~6 MB | letterbox_buf, tensor_buf, crop_buf |
+| V4L2 mmap buffers | ~3.5 MB | 2 buffers × 1280×720×2 (YUYV) |
+| Other (JNI, libs) | ~38 MB | OpenCV, MediaPipe native, misc |
+
 ## System Uptime
 
 At time of query: **7528.71 seconds (~2 hours 5 minutes)** since boot.
