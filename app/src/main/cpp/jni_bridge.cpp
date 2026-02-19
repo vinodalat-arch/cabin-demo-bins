@@ -52,10 +52,12 @@ Java_com_incabin_NativeLib_nativeYuvToBgr(
     env->ReleaseByteArrayElements(v_array, v_data, JNI_ABORT);
 
     jbyteArray result = env->NewByteArray(static_cast<jsize>(bgr.size()));
-    if (result) {
-        env->SetByteArrayRegion(result, 0, static_cast<jsize>(bgr.size()),
-                                reinterpret_cast<const jbyte*>(bgr.data()));
+    if (!result) {
+        LOGE("NewByteArray returned null (OOM) for YUV->BGR, size=%zu", bgr.size());
+        return nullptr;
     }
+    env->SetByteArrayRegion(result, 0, static_cast<jsize>(bgr.size()),
+                            reinterpret_cast<const jbyte*>(bgr.data()));
 
     LOGI("YUV->BGR conversion: %dx%d -> %zu bytes", width, height, bgr.size());
     return result;
@@ -205,10 +207,12 @@ Java_com_incabin_NativeLib_nativeGrabBgrFrame(
     }
 
     jbyteArray result = env->NewByteArray(static_cast<jsize>(bgr.size()));
-    if (result) {
-        env->SetByteArrayRegion(result, 0, static_cast<jsize>(bgr.size()),
-                                reinterpret_cast<const jbyte*>(bgr.data()));
+    if (!result) {
+        LOGE("NewByteArray returned null (OOM) for V4L2 frame, size=%zu", bgr.size());
+        return nullptr;
     }
+    env->SetByteArrayRegion(result, 0, static_cast<jsize>(bgr.size()),
+                            reinterpret_cast<const jbyte*>(bgr.data()));
     return result;
 }
 

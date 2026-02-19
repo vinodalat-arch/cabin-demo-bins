@@ -56,6 +56,8 @@ class AudioAlerter(context: Context) {
 
     private var prevState: AlertState? = null
     private val announcedDurations = mutableSetOf<Int>()
+    // H3: Store Handler so pending TTS retry can be cancelled in close()
+    private val retryHandler = Handler(Looper.getMainLooper())
 
     private val messageQueue = LinkedBlockingQueue<String?>()
 
@@ -121,7 +123,7 @@ class AudioAlerter(context: Context) {
             if (!ttsRetried) {
                 ttsRetried = true
                 Log.i(TAG, "Scheduling TTS retry in 3 seconds")
-                Handler(Looper.getMainLooper()).postDelayed({
+                retryHandler.postDelayed({
                     Log.i(TAG, "Retrying TTS initialization")
                     tts.shutdown()
                     tts = TextToSpeech(appContext) { retryStatus ->
@@ -265,6 +267,8 @@ class AudioAlerter(context: Context) {
      * Call this from service onDestroy or when the alerter is no longer needed.
      */
     fun close() {
+        // H3: Cancel pending TTS retry callback to prevent leak after service destroyed
+        retryHandler.removeCallbacksAndMessages(null)
         messageQueue.put(null) // stop signal to worker
         tts.stop()
         tts.shutdown()

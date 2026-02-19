@@ -58,7 +58,7 @@ private:
     bool streaming_ = false;
 
     static constexpr int NUM_BUFFERS = 4;
-    static constexpr int SELECT_TIMEOUT_S = 5;
+    static constexpr int SELECT_TIMEOUT_S = 2;
 
     void cleanup();
 };

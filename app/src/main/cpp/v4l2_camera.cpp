@@ -18,12 +18,13 @@
 
 namespace incabin {
 
-// Helper for ioctl with retry on EINTR
+// L1: Helper for ioctl with retry on EINTR (max 100 retries to prevent infinite loop)
 static int xioctl(int fd, unsigned long request, void* arg) {
     int r;
+    int retries = 0;
     do {
         r = ioctl(fd, request, arg);
-    } while (r == -1 && errno == EINTR);
+    } while (r == -1 && errno == EINTR && ++retries < 100);
     return r;
 }
 
@@ -209,15 +210,18 @@ std::vector<uint8_t> V4l2Camera::grabBgrFrame() {
     if (!isOpen()) return {};
 
     // Wait for a frame with select()
+    // L2: Retry on EINTR instead of treating signal interrupts as errors
     fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fd_, &fds);
-
     struct timeval tv;
-    tv.tv_sec = SELECT_TIMEOUT_S;
-    tv.tv_usec = 0;
+    int r;
+    do {
+        FD_ZERO(&fds);
+        FD_SET(fd_, &fds);
+        tv.tv_sec = SELECT_TIMEOUT_S;
+        tv.tv_usec = 0;
+        r = select(fd_ + 1, &fds, nullptr, nullptr, &tv);
+    } while (r == -1 && errno == EINTR);
 
-    int r = select(fd_ + 1, &fds, nullptr, nullptr, &tv);
     if (r <= 0) {
         if (r == 0) {
             LOGE("V4L2: select() timeout (%ds)", SELECT_TIMEOUT_S);

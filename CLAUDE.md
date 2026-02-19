@@ -1,7 +1,7 @@
 # SA8155 Android Port — In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening and visual debugging overlay. Build verified (`assembleDebug` + all 64 unit tests pass). APK size: 64 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, and visual debugging overlay. Build verified (`assembleDebug` + all 64 unit tests pass). APK size: 64 MB.
 
 ## Target
 Qualcomm SA8155P (Kryo 485 CPU-only). Android Automotive 14. Debug build. USB webcam.
@@ -106,7 +106,7 @@ score >= 3 → high, >= 1 → medium, else → low
 - Danger names: phone detected, eyes closed, yawning detected, driver distracted, eating or drinking, dangerous posture, child slouching
 - Duration thresholds: [5, 10, 20] seconds, one per cycle, reset when duration=0
 - First frame: store state only, no announcement
-- TTS retry: if init fails, schedules one retry after 3s via Handler; `ttsRetried` flag prevents loops
+- TTS retry: if init fails, schedules one retry after 3s via stored Handler; `ttsRetried` flag prevents loops; Handler callbacks cancelled in `close()` to prevent leak if service destroyed within 3s
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
@@ -184,9 +184,15 @@ in_cabin_poc-sa8155/
 ~500-800ms/frame estimated on Kryo 485 (FP32). Within 1000ms (1fps) budget. INT8 quantization available as optimization if needed.
 
 ## Pre-Deployment Hardening
-- **TTS retry**: One-time retry after 3s if TextToSpeech init fails (AudioAlerter)
+- **TTS retry**: One-time retry after 3s if TextToSpeech init fails (AudioAlerter); stored Handler cancelled in `close()` to prevent TTS leak if service destroyed within 3s
 - **Native lib safety**: `System.loadLibrary("incabin")` wrapped in try-catch in NativeLib and PoseAnalyzerBridge; `loaded`/`nativeLoaded` flags prevent JNI calls if lib missing
-- **Thread safety**: `@Volatile` on `distractionDurationS` (accessed from camera thread and main thread)
+- **Thread safety — pipeline lock**: `ReentrantLock` in `InCabinService` guards `processFrame()` (camera thread, `tryLock`) vs `onDestroy()` (main thread, `lock`), preventing JNI use-after-free on native PoseAnalyzer and V4L2Camera pointers
+- **Thread safety — atomic counter**: `distractionDurationS` uses `AtomicInteger` (`incrementAndGet`/`set`) instead of `@Volatile` read-modify-write
+- **Bitmap lifecycle safety**: `processFrame()` wraps bitmap in `try-finally { bitmap.recycle() }`; `OverlayRenderer.render()` wraps draw calls in `try-catch` returning partial overlay on error — prevents ~3.7 MB leak per failed frame
+- **C++ buffer pre-allocation**: Detect model path uses pre-allocated `detect_letterbox_buf_` + `detect_tensor_buf_` (~6.1 MB once) instead of allocating per call (was ~24 MB alloc/dealloc per frame); crop extraction uses reusable `crop_buf_` member
+- **ONNX output size validation**: `runInference()` validates output tensor size matches expected dimensions (pose: 56×8400, detect: 84×8400) before accessing data; returns empty on mismatch to prevent out-of-bounds reads from corrupted/mismatched models
+- **JNI OOM safety**: `NewByteArray` null returns logged with `LOGE` and early-return `nullptr` in both YUV→BGR and V4L2 frame JNI functions
+- **V4L2 robustness**: `select()` retries on `EINTR` instead of dropping frames; `xioctl()` EINTR retry capped at 100 iterations; `select()` timeout reduced from 5s to 2s for faster disconnect detection
 - **Build-time asset check**: Gradle `verifyAssets` task fails build if model files missing
 - **Diagnostic logging at startup**: device info (model, Android version, CPU count, RAM), asset verification (file sizes), component init timing, OpenCV version
 - **Periodic stats (every 30 frames)**: avg/min/max frame time, Java heap, native heap, distraction duration

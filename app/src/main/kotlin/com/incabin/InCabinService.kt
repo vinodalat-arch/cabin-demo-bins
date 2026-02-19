@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Debug
 import android.os.IBinder
 import android.util.Log
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
 import org.opencv.android.OpenCVLoader
 
 class InCabinService : Service() {
@@ -48,9 +50,11 @@ class InCabinService : Service() {
     private var audioAlerter: AudioAlerter? = null
     private val overlayRenderer = OverlayRenderer()
 
-    // --- Distraction duration counter ---
-    @Volatile
-    private var distractionDurationS: Int = 0
+    // --- Thread safety: guards processFrame() vs onDestroy() (C1, H6) ---
+    private val pipelineLock = ReentrantLock()
+
+    // --- Distraction duration counter (C2: AtomicInteger for thread-safe increment) ---
+    private val distractionDurationS = AtomicInteger(0)
 
     // --- Performance stats ---
     private var frameCount: Int = 0
@@ -78,25 +82,30 @@ class InCabinService : Service() {
     }
 
     override fun onDestroy() {
-        FrameHolder.clear()
+        pipelineLock.lock()
+        try {
+            FrameHolder.clear()
 
-        v4l2Camera?.stop()
-        v4l2Camera = null
+            v4l2Camera?.stop()
+            v4l2Camera = null
 
-        cameraManager?.stop()
-        cameraManager = null
+            cameraManager?.stop()
+            cameraManager = null
 
-        faceAnalyzer?.close()
-        faceAnalyzer = null
+            faceAnalyzer?.close()
+            faceAnalyzer = null
 
-        poseAnalyzer?.close()
-        poseAnalyzer = null
+            poseAnalyzer?.close()
+            poseAnalyzer = null
 
-        audioAlerter?.close()
-        audioAlerter = null
+            audioAlerter?.close()
+            audioAlerter = null
 
-        smoother = null
-        distractionDurationS = 0
+            smoother = null
+            distractionDurationS.set(0)
+        } finally {
+            pipelineLock.unlock()
+        }
 
         Log.i(TAG, "Service destroyed")
         super.onDestroy()
@@ -171,7 +180,7 @@ class InCabinService : Service() {
         }
 
         // Reset counters
-        distractionDurationS = 0
+        distractionDurationS.set(0)
         frameCount = 0
         recentFrameTimes.clear()
 
@@ -228,6 +237,8 @@ class InCabinService : Service() {
     private fun processFrame(bgrData: ByteArray, width: Int, height: Int) {
         val frameStartMs = System.currentTimeMillis()
 
+        // C1/H6: Acquire pipeline lock; skip frame if service is shutting down
+        if (!pipelineLock.tryLock()) return
         try {
             // Step 1: Run PoseAnalyzer (C++/JNI)
             val poseStartMs = System.currentTimeMillis()
@@ -237,63 +248,70 @@ class InCabinService : Service() {
             // Step 2: BGR -> Bitmap conversion for FaceAnalyzer
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
-            val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
-            val faceElapsed = System.currentTimeMillis() - faceStartMs
+            // C4: try-finally ensures bitmap is recycled even if pipeline throws
+            try {
+                val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
+                val faceElapsed = System.currentTimeMillis() - faceStartMs
 
-            // Step 3: Merge results
-            val merged = mergeResults(faceResult, poseResult)
+                // Step 3: Merge results
+                val merged = mergeResults(faceResult, poseResult)
 
-            // Step 4: Temporal smoothing
-            val smoothed = smoother?.smooth(merged) ?: merged
+                // Step 4: Temporal smoothing
+                val smoothed = smoother?.smooth(merged) ?: merged
 
-            // Step 5: Update distraction duration counter
-            if (DISTRACTION_FIELDS_CHECK(smoothed)) {
-                distractionDurationS += 1
-            } else {
-                distractionDurationS = 0
-            }
+                // Step 5: Update distraction duration counter (C2: atomic read-modify-write)
+                val durationVal = if (DISTRACTION_FIELDS_CHECK(smoothed)) {
+                    distractionDurationS.incrementAndGet()
+                } else {
+                    distractionDurationS.set(0)
+                    0
+                }
 
-            // Step 6: Inject distraction_duration_s into result
-            val finalResult = smoothed.copy(distractionDurationS = distractionDurationS)
+                // Step 6: Inject distraction_duration_s into result
+                val finalResult = smoothed.copy(distractionDurationS = durationVal)
 
-            // Step 7: Render overlay and post to FrameHolder
-            val overlayBitmap = overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
-            FrameHolder.postFrame(overlayBitmap, finalResult)
-            bitmap.recycle()
+                // Step 7: Render overlay and post to FrameHolder
+                val overlayBitmap = overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
+                FrameHolder.postFrame(overlayBitmap, finalResult)
 
-            // Step 8: Audio alerter
-            audioAlerter?.checkAndAnnounce(finalResult)
+                // Step 8: Audio alerter
+                audioAlerter?.checkAndAnnounce(finalResult)
 
-            // Step 9: Log JSON output
-            Log.i(TAG, finalResult.toJson())
+                // Step 9: Log JSON output
+                Log.i(TAG, finalResult.toJson())
 
-            // Timing summary
-            val totalElapsed = System.currentTimeMillis() - frameStartMs
-            Log.d(
-                TAG,
-                "Frame timing: Pose=${poseElapsed}ms, " +
-                    "Face=${faceElapsed}ms, Total=${totalElapsed}ms"
-            )
-
-            // Periodic performance stats
-            frameCount++
-            recentFrameTimes.add(totalElapsed)
-            if (frameCount % STATS_INTERVAL == 0) {
-                val avg = recentFrameTimes.average().toLong()
-                val min = recentFrameTimes.min()
-                val max = recentFrameTimes.max()
-                val javaHeapMb = Runtime.getRuntime().totalMemory() / (1024 * 1024)
-                val nativeHeapMb = Debug.getNativeHeapSize() / (1024 * 1024)
-                Log.i(
+                // Timing summary
+                val totalElapsed = System.currentTimeMillis() - frameStartMs
+                Log.d(
                     TAG,
-                    "[Stats @$frameCount] frames=$frameCount, avg=${avg}ms, min=${min}ms, " +
-                        "max=${max}ms, heap=${javaHeapMb}MB, native=${nativeHeapMb}MB, " +
-                        "distraction=${finalResult.distractionDurationS}s"
+                    "Frame timing: Pose=${poseElapsed}ms, " +
+                        "Face=${faceElapsed}ms, Total=${totalElapsed}ms"
                 )
-                recentFrameTimes.clear()
+
+                // Periodic performance stats
+                frameCount++
+                recentFrameTimes.add(totalElapsed)
+                if (frameCount % STATS_INTERVAL == 0) {
+                    val avg = recentFrameTimes.average().toLong()
+                    val min = recentFrameTimes.min()
+                    val max = recentFrameTimes.max()
+                    val javaHeapMb = Runtime.getRuntime().totalMemory() / (1024 * 1024)
+                    val nativeHeapMb = Debug.getNativeHeapSize() / (1024 * 1024)
+                    Log.i(
+                        TAG,
+                        "[Stats @$frameCount] frames=$frameCount, avg=${avg}ms, min=${min}ms, " +
+                            "max=${max}ms, heap=${javaHeapMb}MB, native=${nativeHeapMb}MB, " +
+                            "distraction=${finalResult.distractionDurationS}s"
+                    )
+                    recentFrameTimes.clear()
+                }
+            } finally {
+                bitmap.recycle()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Inference pipeline error", e)
+        } finally {
+            pipelineLock.unlock()
         }
     }
 

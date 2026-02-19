@@ -35,7 +35,7 @@ object Config {
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
 
     // V4L2
-    const val V4L2_SELECT_TIMEOUT_S = 5
+    const val V4L2_SELECT_TIMEOUT_S = 2
 
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3

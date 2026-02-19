@@ -73,12 +73,15 @@ class OverlayRenderer {
         outputResult: OutputResult
     ): Bitmap {
         val overlay = source.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(overlay)
-
-        drawPersons(canvas, poseResult.persons)
-        drawFaceLandmarks(canvas, faceResult)
-        drawMetricLabels(canvas, outputResult)
-
+        // C5: try-catch prevents overlay bitmap leak if any draw method throws
+        try {
+            val canvas = Canvas(overlay)
+            drawPersons(canvas, poseResult.persons)
+            drawFaceLandmarks(canvas, faceResult)
+            drawMetricLabels(canvas, outputResult)
+        } catch (e: Exception) {
+            // Return partially drawn overlay rather than leaking the bitmap
+        }
         return overlay
     }
 

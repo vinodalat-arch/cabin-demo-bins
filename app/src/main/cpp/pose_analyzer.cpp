@@ -45,7 +45,10 @@ std::vector<uint8_t> PoseAnalyzer::loadModelFromAssets(AAssetManager* mgr, const
 PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager)
     : env_(ORT_LOGGING_LEVEL_WARNING, "InCabinPose"),
       letterbox_buf_(YOLO_INPUT_SIZE * YOLO_INPUT_SIZE * 3),
-      input_tensor_buf_(3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE) {
+      input_tensor_buf_(3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE),
+      detect_letterbox_buf_(YOLO_INPUT_SIZE * YOLO_INPUT_SIZE * 3),
+      detect_tensor_buf_(3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE),
+      crop_buf_(1280 * 720 * 3) {
 
     // Configure session options
     session_options_.SetIntraOpNumThreads(4);
@@ -76,7 +79,8 @@ PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager)
 
 std::vector<float> PoseAnalyzer::runInference(Ort::Session* session,
                                               const float* input_data,
-                                              const std::vector<int64_t>& input_shape) {
+                                              const std::vector<int64_t>& input_shape,
+                                              size_t expected_output_size) {
     Ort::AllocatorWithDefaultOptions allocator;
 
     // Get input/output names
@@ -107,6 +111,12 @@ std::vector<float> PoseAnalyzer::runInference(Ort::Session* session,
     size_t output_size = 1;
     for (auto dim : output_shape) output_size *= dim;
 
+    // C7: Validate output size to catch model version mismatch / corruption
+    if (expected_output_size > 0 && output_size != expected_output_size) {
+        LOGE("ONNX output size mismatch: expected %zu, got %zu", expected_output_size, output_size);
+        return {};
+    }
+
     const float* output_ptr = output_tensor.GetTensorData<float>();
     std::vector<float> result(output_ptr, output_ptr + output_size);
     return result;
@@ -123,7 +133,9 @@ std::vector<Detection> PoseAnalyzer::runPoseModel(const uint8_t* bgr_data,
     preprocess(letterbox_buf_.data(), input_tensor_buf_.data());
 
     std::vector<int64_t> input_shape = {1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE};
-    auto output = runInference(pose_session_.get(), input_tensor_buf_.data(), input_shape);
+    constexpr size_t pose_output_size = POSE_OUTPUT_COLS * NUM_ANCHORS;  // 56*8400
+    auto output = runInference(pose_session_.get(), input_tensor_buf_.data(), input_shape, pose_output_size);
+    if (output.empty()) return {};
 
     return parsePoseOutput(output.data(), info);
 }
@@ -134,16 +146,15 @@ std::vector<Detection> PoseAnalyzer::runDetectModel(const uint8_t* crop_bgr,
                                                     int crop_w, int crop_h) {
     if (!detect_session_) return {};
 
-    // Use temporary buffers for crop (don't disturb the main buffers)
-    std::vector<uint8_t> crop_letterbox(YOLO_INPUT_SIZE * YOLO_INPUT_SIZE * 3);
-    std::vector<float> crop_tensor(3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE);
-
+    // C6: Use pre-allocated detect buffers instead of allocating per call
     LetterboxInfo info;
-    letterbox(crop_bgr, crop_w, crop_h, crop_letterbox.data(), info);
-    preprocess(crop_letterbox.data(), crop_tensor.data());
+    letterbox(crop_bgr, crop_w, crop_h, detect_letterbox_buf_.data(), info);
+    preprocess(detect_letterbox_buf_.data(), detect_tensor_buf_.data());
 
     std::vector<int64_t> input_shape = {1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE};
-    auto output = runInference(detect_session_.get(), crop_tensor.data(), input_shape);
+    constexpr size_t detect_output_size = DETECT_OUTPUT_COLS * NUM_ANCHORS;  // 84*8400
+    auto output = runInference(detect_session_.get(), detect_tensor_buf_.data(), input_shape, detect_output_size);
+    if (output.empty()) return {};
 
     return parseDetectOutput(output.data(), info);
 }
@@ -225,22 +236,25 @@ bool PoseAnalyzer::detectObjectsInRegion(const uint8_t* frame_bgr, int frame_w, 
     int crop_h = cy2 - cy1;
     if (crop_w <= 0 || crop_h <= 0) return false;
 
-    // Extract crop from frame
-    std::vector<uint8_t> crop(crop_w * crop_h * 3);
+    // M1: Use pre-allocated crop buffer, resize only if needed
+    size_t crop_size = static_cast<size_t>(crop_w) * crop_h * 3;
+    if (crop_buf_.size() < crop_size) {
+        crop_buf_.resize(crop_size);
+    }
     for (int y = 0; y < crop_h; y++) {
         int src_row = (cy1 + y) * frame_w * 3;
         int dst_row = y * crop_w * 3;
         for (int x = 0; x < crop_w; x++) {
             int src_idx = src_row + (cx1 + x) * 3;
             int dst_idx = dst_row + x * 3;
-            crop[dst_idx]     = frame_bgr[src_idx];
-            crop[dst_idx + 1] = frame_bgr[src_idx + 1];
-            crop[dst_idx + 2] = frame_bgr[src_idx + 2];
+            crop_buf_[dst_idx]     = frame_bgr[src_idx];
+            crop_buf_[dst_idx + 1] = frame_bgr[src_idx + 1];
+            crop_buf_[dst_idx + 2] = frame_bgr[src_idx + 2];
         }
     }
 
     // Run detection on crop
-    auto detections = runDetectModel(crop.data(), crop_w, crop_h);
+    auto detections = runDetectModel(crop_buf_.data(), crop_w, crop_h);
 
     // Check if any detection matches target classes
     for (const auto& det : detections) {

@@ -78,8 +78,15 @@ private:
     std::unique_ptr<Ort::Session> detect_session_;
 
     // Pre-allocated buffers to avoid per-frame allocation
-    std::vector<uint8_t> letterbox_buf_;    // 640*640*3
-    std::vector<float> input_tensor_buf_;   // 3*640*640
+    std::vector<uint8_t> letterbox_buf_;    // 640*640*3 (pose path)
+    std::vector<float> input_tensor_buf_;   // 3*640*640 (pose path)
+
+    // C6: Pre-allocated buffers for detect model path (avoids ~6MB alloc per call)
+    std::vector<uint8_t> detect_letterbox_buf_;  // 640*640*3
+    std::vector<float> detect_tensor_buf_;       // 3*640*640
+
+    // M1: Pre-allocated buffer for crop extraction (avoids per-crop allocation)
+    std::vector<uint8_t> crop_buf_;
 
     /**
      * Load an ONNX model from Android assets into memory.
@@ -141,9 +148,11 @@ private:
     /**
      * Run inference on input tensor and return raw output.
      */
+    // C7: expected_output_size validates ONNX output dimensions (0 = skip check)
     std::vector<float> runInference(Ort::Session* session,
                                     const float* input_data,
-                                    const std::vector<int64_t>& input_shape);
+                                    const std::vector<int64_t>& input_shape,
+                                    size_t expected_output_size = 0);
 };
 
 } // namespace incabin
