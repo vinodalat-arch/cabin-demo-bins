@@ -22,10 +22,10 @@ USB Webcam
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
   → Merger (Kotlin) → risk scoring
   → Temporal Smoother (Kotlin) → 5-frame sliding window, 60% threshold
-  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks, metrics on bitmap
-  → FrameHolder → bitmap + OutputResult → MainActivity dashboard
-  → Audio Alerter (Android TextToSpeech, queued sequential playback)
-  → JSON output (Logcat)
+  → Audio Alerter (Android TextToSpeech, queued sequential playback)   ← core path
+  → JSON output (Logcat)                                               ← core path
+  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← UI path (isolated)
+  → FrameHolder → bitmap + OutputResult → MainActivity dashboard      ← UI path (isolated)
 ```
 
 ### Camera Strategy
@@ -200,6 +200,7 @@ in_cabin_poc-sa8155/
 - **Periodic stats (every 30 frames)**: avg/min/max frame time, Java heap, native heap, distraction duration
 - **First-frame confirmation**: CameraManager logs actual frame dimensions, format, and plane count
 - **V4L2 permission diagnostics**: `findCaptureDevice()` logs `permission denied` with fix hint when device nodes have restrictive permissions
+- **Pipeline decoupling**: Core path (inference → merge → smooth → audio alerts → JSON log) runs before and independently of UI path (overlay rendering → FrameHolder). Overlay is wrapped in its own try-catch; a failure in rendering never disrupts detection or alerts
 
 ## Deployment
 
