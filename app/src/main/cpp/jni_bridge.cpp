@@ -63,6 +63,39 @@ Java_com_incabin_NativeLib_nativeYuvToBgr(
     return result;
 }
 
+// ---- BGR to ARGB pixel conversion ----
+
+JNIEXPORT void JNICALL
+Java_com_incabin_NativeLib_nativeBgrToArgbPixels(
+    JNIEnv* env,
+    jobject /* this */,
+    jbyteArray bgr_array,
+    jintArray pixel_array,
+    jint width,
+    jint height
+) {
+    jbyte* bgr = env->GetByteArrayElements(bgr_array, nullptr);
+    jint* pixels = env->GetIntArrayElements(pixel_array, nullptr);
+    if (!bgr || !pixels) {
+        LOGE("nativeBgrToArgbPixels: failed to get array elements");
+        if (bgr) env->ReleaseByteArrayElements(bgr_array, bgr, JNI_ABORT);
+        if (pixels) env->ReleaseIntArrayElements(pixel_array, pixels, JNI_ABORT);
+        return;
+    }
+
+    const int count = width * height;
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(bgr);
+    for (int i = 0; i < count; i++) {
+        uint8_t b = src[i * 3];
+        uint8_t g = src[i * 3 + 1];
+        uint8_t r = src[i * 3 + 2];
+        pixels[i] = static_cast<jint>((0xFF << 24) | (r << 16) | (g << 8) | b);
+    }
+
+    env->ReleaseIntArrayElements(pixel_array, pixels, 0);
+    env->ReleaseByteArrayElements(bgr_array, bgr, JNI_ABORT);
+}
+
 // ---- PoseAnalyzer JNI: Create ----
 
 JNIEXPORT jlong JNICALL

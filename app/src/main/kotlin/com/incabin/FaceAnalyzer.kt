@@ -113,6 +113,16 @@ class FaceAnalyzer(context: Context) {
     private val landmarker: FaceLandmarker
     private var frameTsMs: Long = 0L
 
+    // Pre-allocated OpenCV Mats for solvePnP (avoids 7 Mat alloc+release per frame)
+    private val modelPoints3d = MatOfPoint3f().apply { fromList(MODEL_3D_POINTS.toList()) }
+    private val cameraMat = Mat(3, 3, CvType.CV_64F)
+    private val distCoeffs = MatOfDouble(0.0, 0.0, 0.0, 0.0)
+    private val rvec = Mat()
+    private val tvec = Mat()
+    private val rotationMatrix = Mat(3, 3, CvType.CV_64F)
+    private val imagePoints2d = MatOfPoint2f()
+    private var cameraMatInitialized = false
+
     init {
         val baseOptions = BaseOptions.builder()
             .setModelAssetPath(MODEL_ASSET)
@@ -213,11 +223,18 @@ class FaceAnalyzer(context: Context) {
     }
 
     /**
-     * Release the FaceLandmarker resources.
+     * Release the FaceLandmarker and pre-allocated OpenCV Mat resources.
      */
     fun close() {
         try {
             landmarker.close()
+            modelPoints3d.release()
+            cameraMat.release()
+            distCoeffs.release()
+            rvec.release()
+            tvec.release()
+            rotationMatrix.release()
+            imagePoints2d.release()
             Log.i(TAG, "FaceLandmarker closed")
         } catch (e: Exception) {
             Log.e(TAG, "Error closing FaceLandmarker", e)
@@ -300,6 +317,7 @@ class FaceAnalyzer(context: Context) {
      *
      * Uses 6 facial landmarks mapped to a generic 3D face model.
      * Camera intrinsics are approximated from the frame dimensions.
+     * All Mats are pre-allocated as class members to avoid per-frame allocation.
      *
      * @return Pair(yawDegrees, pitchDegrees). Returns (0.0, 0.0) if solvePnP fails.
      */
@@ -308,36 +326,25 @@ class FaceAnalyzer(context: Context) {
         frameWidth: Double,
         frameHeight: Double
     ): Pair<Double, Double> {
-        // Build 2D image points from landmarks
-        val imagePoints = MatOfPoint2f()
+        // Initialize camera matrix once (frame dimensions are constant)
+        if (!cameraMatInitialized) {
+            val focalLength = frameWidth
+            val cx = frameWidth / 2.0
+            val cy = frameHeight / 2.0
+            cameraMat.put(0, 0, focalLength, 0.0, cx, 0.0, focalLength, cy, 0.0, 0.0, 1.0)
+            cameraMatInitialized = true
+        }
+
+        // Build 2D image points from landmarks (reuse pre-allocated Mat)
         val pointsList = PNP_LANDMARK_INDICES.map { idx ->
             val lm = landmarks[idx]
             Point(lm.x().toDouble() * frameWidth, lm.y().toDouble() * frameHeight)
         }
-        imagePoints.fromList(pointsList)
-
-        // Build 3D model points
-        val modelPoints = MatOfPoint3f()
-        modelPoints.fromList(MODEL_3D_POINTS.toList())
-
-        // Camera matrix (approximate)
-        val focalLength = frameWidth
-        val cx = frameWidth / 2.0
-        val cy = frameHeight / 2.0
-
-        val cameraMat = Mat(3, 3, CvType.CV_64F)
-        cameraMat.put(0, 0, focalLength, 0.0, cx, 0.0, focalLength, cy, 0.0, 0.0, 1.0)
-
-        // Distortion coefficients (none)
-        val distCoeffs = MatOfDouble(0.0, 0.0, 0.0, 0.0)
-
-        // Solve PnP
-        val rvec = Mat()
-        val tvec = Mat()
+        imagePoints2d.fromList(pointsList)
 
         val success = Calib3d.solvePnP(
-            modelPoints,
-            imagePoints,
+            modelPoints3d,
+            imagePoints2d,
             cameraMat,
             distCoeffs,
             rvec,
@@ -350,11 +357,8 @@ class FaceAnalyzer(context: Context) {
         var pitchDeg = 0.0
 
         if (success) {
-            // Convert rotation vector to rotation matrix via Rodrigues
-            val rotationMatrix = Mat(3, 3, CvType.CV_64F)
             Calib3d.Rodrigues(rvec, rotationMatrix)
 
-            // Extract Euler angles
             val r00 = rotationMatrix.get(0, 0)[0]
             val r10 = rotationMatrix.get(1, 0)[0]
             val r20 = rotationMatrix.get(2, 0)[0]
@@ -374,18 +378,7 @@ class FaceAnalyzer(context: Context) {
 
             yawDeg = Math.toDegrees(yaw)
             pitchDeg = Math.toDegrees(pitch)
-
-            // Release intermediate Mats
-            rotationMatrix.release()
         }
-
-        // Release Mats
-        imagePoints.release()
-        modelPoints.release()
-        cameraMat.release()
-        distCoeffs.release()
-        rvec.release()
-        tvec.release()
 
         return Pair(yawDeg, pitchDeg)
     }

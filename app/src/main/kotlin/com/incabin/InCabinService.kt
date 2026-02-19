@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Debug
 import android.os.IBinder
 import android.util.Log
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import org.opencv.android.OpenCVLoader
@@ -55,6 +56,9 @@ class InCabinService : Service() {
 
     // --- Distraction duration counter (C2: AtomicInteger for thread-safe increment) ---
     private val distractionDurationS = AtomicInteger(0)
+
+    // --- Pre-allocated pixel buffer for BGR→Bitmap conversion ---
+    private val pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
 
     // --- Performance stats ---
     private var frameCount: Int = 0
@@ -139,17 +143,33 @@ class InCabinService : Service() {
             }
         }
 
-        // --- Component Init ---
+        // --- Component Init (parallel where possible) ---
         Log.i(TAG, "=== Component Init ===")
+        val initStartMs = System.currentTimeMillis()
 
-        // Initialize OpenCV (required for FaceAnalyzer solvePnP)
+        // OpenCV must init before FaceAnalyzer (solvePnP dependency)
         if (!OpenCVLoader.initLocal()) {
             Log.e(TAG, "OpenCV initialization failed")
         } else {
             Log.i(TAG, "OpenCV ${org.opencv.core.Core.VERSION} initialized")
         }
 
-        // FaceAnalyzer (MediaPipe FaceLandmarker)
+        // PoseAnalyzerBridge and FaceAnalyzer are independent — init in parallel
+        val latch = CountDownLatch(1)
+
+        Thread({
+            try {
+                val t0 = System.currentTimeMillis()
+                poseAnalyzer = PoseAnalyzerBridge(assets)
+                Log.i(TAG, "PoseAnalyzerBridge initialized (${System.currentTimeMillis() - t0}ms)")
+            } catch (e: Exception) {
+                Log.e(TAG, "PoseAnalyzerBridge initialization failed", e)
+            } finally {
+                latch.countDown()
+            }
+        }, "PoseAnalyzer-Init").start()
+
+        // FaceAnalyzer on current thread (needs Context, already on service thread)
         try {
             val t0 = System.currentTimeMillis()
             faceAnalyzer = FaceAnalyzer(this)
@@ -158,14 +178,8 @@ class InCabinService : Service() {
             Log.e(TAG, "FaceAnalyzer initialization failed", e)
         }
 
-        // PoseAnalyzerBridge (ONNX Runtime via JNI)
-        try {
-            val t0 = System.currentTimeMillis()
-            poseAnalyzer = PoseAnalyzerBridge(assets)
-            Log.i(TAG, "PoseAnalyzerBridge initialized (${System.currentTimeMillis() - t0}ms)")
-        } catch (e: Exception) {
-            Log.e(TAG, "PoseAnalyzerBridge initialization failed", e)
-        }
+        // Wait for PoseAnalyzerBridge to finish
+        latch.await()
 
         // TemporalSmoother (uses Config defaults: window=5, threshold=0.6)
         smoother = TemporalSmoother()
@@ -178,6 +192,8 @@ class InCabinService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "AudioAlerter initialization failed", e)
         }
+
+        Log.i(TAG, "Parallel init completed in ${System.currentTimeMillis() - initStartMs}ms")
 
         // Reset counters
         distractionDurationS.set(0)
@@ -325,18 +341,12 @@ class InCabinService : Service() {
 
     /**
      * Convert BGR byte array to an ARGB_8888 Bitmap for MediaPipe FaceAnalyzer.
-     * Swaps B and R channels during the conversion so the Bitmap contains RGB data.
+     * Uses native C++ for pixel conversion with pre-allocated IntArray buffer.
      */
     private fun bgrToBitmap(bgrData: ByteArray, width: Int, height: Int): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val pixels = IntArray(width * height)
-        for (i in 0 until width * height) {
-            val b = bgrData[i * 3].toInt() and 0xFF
-            val g = bgrData[i * 3 + 1].toInt() and 0xFF
-            val r = bgrData[i * 3 + 2].toInt() and 0xFF
-            pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-        }
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        nativeLib.nativeBgrToArgbPixels(bgrData, pixelBuffer, width, height)
+        bitmap.setPixels(pixelBuffer, 0, width, 0, 0, width, height)
         return bitmap
     }
 

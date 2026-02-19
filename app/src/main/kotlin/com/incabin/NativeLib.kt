@@ -44,6 +44,9 @@ class NativeLib {
         height: Int
     ): ByteArray?
 
+    /** Convert BGR byte array to ARGB pixel array in native code. Fills pre-allocated IntArray. */
+    external fun nativeBgrToArgbPixels(bgr: ByteArray, pixels: IntArray, width: Int, height: Int)
+
     // --- V4L2 direct camera access ---
 
     /** Scan /dev/video0-63, return first V4L2 capture device path or null. */
