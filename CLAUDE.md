@@ -221,6 +221,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # 5. Grant permissions (app runs as user 10 on this BSP)
 adb shell pm grant --user 10 com.incabin android.permission.CAMERA
+adb shell pm grant --user 10 com.incabin android.permission.POST_NOTIFICATIONS
 
 # 6. Start service and monitor
 adb shell am start-foreground-service -a com.incabin.START com.incabin/.InCabinService
@@ -231,6 +232,7 @@ adb logcat -s 'InCabin:*' 'InCabin-V4L2:*' 'InCabin-JNI:*' 'InCabin-Camera:*' 'A
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell pm grant com.incabin android.permission.CAMERA
+adb shell pm grant com.incabin android.permission.POST_NOTIFICATIONS
 adb shell am start-foreground-service -a com.incabin.START com.incabin/.InCabinService
 adb logcat -s 'InCabin:*' 'InCabin-Camera:*' 'AudioAlerter:*'
 ```
