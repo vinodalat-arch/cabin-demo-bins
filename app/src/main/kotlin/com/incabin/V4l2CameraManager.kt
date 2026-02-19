@@ -56,7 +56,7 @@ class V4l2CameraManager(
             while (running) {
                 if (cameraPtr == 0L) {
                     if (!attemptReconnect()) {
-                        Log.d(TAG, "Reconnect failed, backing off ${reconnectDelayMs}ms")
+                        Log.i(TAG, "Reconnect failed, backing off ${reconnectDelayMs}ms")
                         Thread.sleep(reconnectDelayMs)
                         reconnectDelayMs = (reconnectDelayMs * 2)
                             .coerceAtMost(Config.V4L2_RECONNECT_MAX_DELAY_MS)

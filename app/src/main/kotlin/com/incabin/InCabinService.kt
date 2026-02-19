@@ -302,7 +302,7 @@ class InCabinService : Service() {
 
                 // Timing summary
                 val totalElapsed = System.currentTimeMillis() - frameStartMs
-                Log.d(
+                Log.i(
                     TAG,
                     "Frame timing: Pose=${poseElapsed}ms, " +
                         "Face=${faceElapsed}ms, Total=${totalElapsed}ms"

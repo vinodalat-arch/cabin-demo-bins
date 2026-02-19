@@ -87,17 +87,17 @@ class AudioAlerter(context: Context) {
         }
 
         workerThread = Thread({
-            Log.d(TAG, "Worker thread started")
+            Log.i(TAG, "Worker thread started")
             while (true) {
                 val message = messageQueue.take() // blocks until available
                 if (message == null) {
-                    Log.d(TAG, "Worker received stop signal")
+                    Log.i(TAG, "Worker received stop signal")
                     break
                 }
                 if (ttsReady) {
                     val utteranceId = UUID.randomUUID().toString()
                     tts.speak(message, TextToSpeech.QUEUE_ADD, null, utteranceId)
-                    Log.d(TAG, "Speaking: $message")
+                    Log.i(TAG, "Speaking: $message")
                 } else {
                     Log.i(TAG, "[ALERT] $message")
                 }
@@ -251,7 +251,7 @@ class AudioAlerter(context: Context) {
             .build()
 
         notificationManager.notify(ALERT_NOTIFICATION_ID, notification)
-        Log.d(TAG, "Posted notification: $message")
+        Log.i(TAG, "Posted notification: $message")
     }
 
     /**
