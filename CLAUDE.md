@@ -194,6 +194,11 @@ in_cabin_poc-sa8155/
 ## Performance Budget
 ~500-800ms/frame estimated on Kryo 485 (FP32). Within 1000ms (1fps) budget. INT8 quantization available as optimization if needed.
 
+### Performance Optimizations
+- **BGR→Bitmap in C++/JNI**: Pixel conversion (BGR→ARGB, 921K pixels) moved from Kotlin loop to native C++ via `nativeBgrToArgbPixels()`. Pre-allocated `IntArray` buffer eliminates 3.5 MB allocation per frame. Saves ~15-25ms/frame.
+- **solvePnP Mat pre-allocation**: 7 OpenCV Mat objects (`cameraMat`, `distCoeffs`, `modelPoints3d`, `imagePoints2d`, `rvec`, `tvec`, `rotationMatrix`) are class members in FaceAnalyzer, initialized once and reused. Camera matrix set on first frame. Eliminates 14 JNI crossings and 7 native mallocs per frame. Saves ~1-2ms/frame.
+- **Parallel service init**: FaceAnalyzer (MediaPipe) and PoseAnalyzerBridge (ONNX Runtime) model loading run concurrently via `CountDownLatch`. Startup is `max(face, pose)` instead of `face + pose`. Saves ~2s on startup.
+
 ## Pre-Deployment Hardening
 - **TTS retry**: One-time retry after 3s if TextToSpeech init fails (AudioAlerter); stored Handler cancelled in `close()` to prevent TTS leak if service destroyed within 3s
 - **Native lib safety**: `System.loadLibrary("incabin")` wrapped in try-catch in NativeLib and PoseAnalyzerBridge; `loaded`/`nativeLoaded` flags prevent JNI calls if lib missing
