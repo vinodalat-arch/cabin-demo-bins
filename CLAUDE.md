@@ -70,6 +70,7 @@ The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Ca
 - Keypoint confidence threshold: 0.5
 - Wrist crop: 200x200px
 - Smoother: 5-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
+- V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 
 ## Risk Scoring
 ```
@@ -193,6 +194,7 @@ in_cabin_poc-sa8155/
 - **ONNX output size validation**: `runInference()` validates output tensor size matches expected dimensions (pose: 56×8400, detect: 84×8400) before accessing data; returns empty on mismatch to prevent out-of-bounds reads from corrupted/mismatched models
 - **JNI OOM safety**: `NewByteArray` null returns logged with `LOGE` and early-return `nullptr` in both YUV→BGR and V4L2 frame JNI functions
 - **V4L2 robustness**: `select()` retries on `EINTR` instead of dropping frames; `xioctl()` EINTR retry capped at 100 iterations; `select()` timeout reduced from 5s to 2s for faster disconnect detection
+- **V4L2 disconnect/reconnect**: After 3 consecutive null frames, destroys native camera and enters reconnect mode; scans for device with exponential backoff (2s → 4s → 8s → ... → 30s max); on reconnect, resets all state and resumes capture; handles device path changes (`/dev/videoN` may differ after replug)
 - **Build-time asset check**: Gradle `verifyAssets` task fails build if model files missing
 - **Diagnostic logging at startup**: device info (model, Android version, CPU count, RAM), asset verification (file sizes), component init timing, OpenCV version
 - **Periodic stats (every 30 frames)**: avg/min/max frame time, Java heap, native heap, distraction duration

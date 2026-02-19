@@ -36,6 +36,9 @@ object Config {
 
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2
+    const val V4L2_MAX_CONSECUTIVE_FAILURES = 3
+    const val V4L2_RECONNECT_INITIAL_DELAY_MS = 2000L
+    const val V4L2_RECONNECT_MAX_DELAY_MS = 30000L
 
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3
