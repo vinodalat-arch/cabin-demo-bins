@@ -118,6 +118,10 @@ std::vector<float> PoseAnalyzer::runInference(Ort::Session* session,
     }
 
     const float* output_ptr = output_tensor.GetTensorData<float>();
+    if (!output_ptr) {
+        LOGE("ONNX output tensor data is null");
+        return {};
+    }
     std::vector<float> result(output_ptr, output_ptr + output_size);
     return result;
 }

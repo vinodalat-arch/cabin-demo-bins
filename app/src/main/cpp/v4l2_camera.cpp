@@ -242,6 +242,12 @@ std::vector<uint8_t> V4l2Camera::grabBgrFrame() {
         return {};
     }
 
+    // Validate buffer index before accessing
+    if (buf.index >= buffers_.size()) {
+        LOGE("V4L2: Invalid buffer index %u (max %zu)", buf.index, buffers_.size());
+        return {};
+    }
+
     // Convert YUYV to BGR
     const auto* yuyv_data = static_cast<const uint8_t*>(buffers_[buf.index].start);
     auto bgr = yuyvToBgr(yuyv_data, width_, height_);

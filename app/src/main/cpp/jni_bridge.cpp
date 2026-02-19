@@ -83,6 +83,13 @@ Java_com_incabin_NativeLib_nativeBgrToArgbPixels(
         return;
     }
 
+    if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+        LOGE("nativeBgrToArgbPixels: invalid dimensions %dx%d", width, height);
+        env->ReleaseIntArrayElements(pixel_array, pixels, JNI_ABORT);
+        env->ReleaseByteArrayElements(bgr_array, bgr, JNI_ABORT);
+        return;
+    }
+
     const int count = width * height;
     const uint8_t* src = reinterpret_cast<const uint8_t*>(bgr);
     for (int i = 0; i < count; i++) {
