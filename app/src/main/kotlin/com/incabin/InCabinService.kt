@@ -270,15 +270,19 @@ class InCabinService : Service() {
                 // Step 6: Inject distraction_duration_s into result
                 val finalResult = smoothed.copy(distractionDurationS = durationVal)
 
-                // Step 7: Render overlay and post to FrameHolder
-                val overlayBitmap = overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
-                FrameHolder.postFrame(overlayBitmap, finalResult)
-
-                // Step 8: Audio alerter
+                // Step 7: Audio alerter (core — must run even if overlay fails)
                 audioAlerter?.checkAndAnnounce(finalResult)
 
-                // Step 9: Log JSON output
+                // Step 8: Log JSON output (core — must run even if overlay fails)
                 Log.i(TAG, finalResult.toJson())
+
+                // Step 9: Render overlay and post to FrameHolder (UI — optional)
+                try {
+                    val overlayBitmap = overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
+                    FrameHolder.postFrame(overlayBitmap, finalResult)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Overlay rendering failed, skipping preview", e)
+                }
 
                 // Timing summary
                 val totalElapsed = System.currentTimeMillis() - frameStartMs
