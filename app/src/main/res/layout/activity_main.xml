@@ -32,6 +32,21 @@
             android:minWidth="100dp" />
     </LinearLayout>
 
+    <!-- AI status message bar -->
+    <TextView
+        android:id="@+id/aiStatusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Tap Start to begin monitoring"
+        android:textSize="16sp"
+        android:textStyle="italic"
+        android:textColor="#FF4CAF50"
+        android:gravity="center"
+        android:background="#FF1A1A1A"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:layout_marginBottom="4dp" />
+
     <!-- Camera preview -->
     <ImageView
         android:id="@+id/previewImage"

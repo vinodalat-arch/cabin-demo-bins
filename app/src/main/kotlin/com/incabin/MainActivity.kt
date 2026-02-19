@@ -21,6 +21,14 @@ class MainActivity : Activity() {
         private const val TAG = "InCabin-Activity"
         private const val PERMISSION_REQUEST_CODE = 100
         private const val PREVIEW_POLL_MS = 500L
+
+        private val ALL_CLEAR_MESSAGES = listOf(
+            "Smooth sailing! Drive safe.",
+            "All clear. You're doing great!",
+            "Cruising along. Stay sharp!",
+            "Road warrior mode: ON",
+            "Eyes on the road. Looking good!"
+        )
     }
 
     private lateinit var toggleButton: Button
@@ -35,7 +43,10 @@ class MainActivity : Activity() {
     private lateinit var passengerText: TextView
     private lateinit var distractionText: TextView
     private lateinit var detectionsText: TextView
+    private lateinit var aiStatusText: TextView
     private var isRunning = false
+    private var framesSinceStart = 0
+    private var allClearIndex = 0
 
     private val handler = Handler(Looper.getMainLooper())
     private val previewPoller = object : Runnable {
@@ -45,6 +56,7 @@ class MainActivity : Activity() {
                 if (frameData != null && !frameData.bitmap.isRecycled) {
                     previewImage.setImageBitmap(frameData.bitmap)
                     updateDashboard(frameData.result)
+                    updateAiStatus(frameData.result)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Preview update failed", e)
@@ -69,6 +81,7 @@ class MainActivity : Activity() {
         passengerText = findViewById(R.id.passengerText)
         distractionText = findViewById(R.id.distractionText)
         detectionsText = findViewById(R.id.detectionsText)
+        aiStatusText = findViewById(R.id.aiStatusText)
 
         toggleButton.setOnClickListener {
             if (isRunning) {
@@ -134,6 +147,9 @@ class MainActivity : Activity() {
         isRunning = true
         toggleButton.text = getString(R.string.stop_service)
         statusText.text = "Status: Monitoring active"
+        framesSinceStart = 0
+        aiStatusText.text = "Warming up the AI brain..."
+        aiStatusText.setTextColor(Color.rgb(0x64, 0xB5, 0xF6)) // light blue
         dashboardPanel.visibility = LinearLayout.VISIBLE
         handler.post(previewPoller)
         Log.i(TAG, "Monitoring started")
@@ -147,6 +163,8 @@ class MainActivity : Activity() {
         isRunning = false
         toggleButton.text = getString(R.string.start_service)
         statusText.text = "Status: Idle"
+        aiStatusText.text = "Tap Start to begin monitoring"
+        aiStatusText.setTextColor(Color.rgb(0x4C, 0xAF, 0x50)) // green
         dashboardPanel.visibility = LinearLayout.GONE
         handler.removeCallbacks(previewPoller)
         previewImage.setImageBitmap(null)
@@ -193,5 +211,94 @@ class MainActivity : Activity() {
         if (result.dangerousPosture) active.add("Bad Posture")
         if (result.childSlouching) active.add("Child Slouching")
         detectionsText.text = active.joinToString(" | ")
+    }
+
+    // ---------------------------------------------------------------------
+    // AI Status Messages
+    // ---------------------------------------------------------------------
+
+    private fun updateAiStatus(result: OutputResult) {
+        framesSinceStart++
+
+        // First few frames: initialization feedback
+        if (framesSinceStart == 1) {
+            aiStatusText.text = "Smart eyes are ready!"
+            aiStatusText.setTextColor(Color.rgb(0x64, 0xB5, 0xF6))
+            return
+        }
+        if (framesSinceStart == 2) {
+            aiStatusText.text = "Got you! Let's roll."
+            aiStatusText.setTextColor(Color.rgb(0x4C, 0xAF, 0x50))
+            return
+        }
+
+        // Priority 1: Detection-specific messages (highest threat first)
+        val message: String
+        val color: Int
+
+        when {
+            result.driverUsingPhone -> {
+                message = "Phone spotted! That text can wait."
+                color = Color.rgb(0xF4, 0x43, 0x36) // red
+            }
+            result.driverEyesClosed -> {
+                message = "Hey sleepyhead, wake up!"
+                color = Color.rgb(0xF4, 0x43, 0x36)
+            }
+            result.driverDistracted -> {
+                message = "The road is this way!"
+                color = Color.rgb(0xFF, 0x98, 0x00) // orange
+            }
+            result.driverYawning -> {
+                message = "Big yawn! Time for a coffee break?"
+                color = Color.rgb(0xFF, 0x98, 0x00)
+            }
+            result.driverEatingDrinking -> {
+                message = "Snack break? Not behind the wheel!"
+                color = Color.rgb(0xFF, 0x98, 0x00)
+            }
+            result.dangerousPosture -> {
+                message = "Sit up straight, captain!"
+                color = Color.rgb(0xFF, 0x98, 0x00)
+            }
+            result.childSlouching -> {
+                message = "Little one slouching back there!"
+                color = Color.rgb(0xFF, 0x98, 0x00)
+            }
+
+            // Priority 2: Distraction duration warnings
+            result.distractionDurationS >= 20 -> {
+                message = "20 seconds! Please pull over."
+                color = Color.rgb(0xF4, 0x43, 0x36)
+            }
+            result.distractionDurationS >= 10 -> {
+                message = "10 seconds! Seriously, eyes on road."
+                color = Color.rgb(0xF4, 0x43, 0x36)
+            }
+            result.distractionDurationS >= 5 -> {
+                message = "5 seconds distracted... focus up!"
+                color = Color.rgb(0xFF, 0x98, 0x00)
+            }
+
+            // Priority 3: Risk level (when no specific detection but risk elevated)
+            result.riskLevel == "high" -> {
+                message = "Danger zone! Focus NOW."
+                color = Color.rgb(0xF4, 0x43, 0x36)
+            }
+            result.riskLevel == "medium" -> {
+                message = "Heads up! Stay alert."
+                color = Color.rgb(0xFF, 0x98, 0x00)
+            }
+
+            // All clear: rotate messages
+            else -> {
+                message = ALL_CLEAR_MESSAGES[allClearIndex % ALL_CLEAR_MESSAGES.size]
+                allClearIndex++
+                color = Color.rgb(0x4C, 0xAF, 0x50) // green
+            }
+        }
+
+        aiStatusText.text = message
+        aiStatusText.setTextColor(color)
     }
 }
