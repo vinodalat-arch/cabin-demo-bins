@@ -4,7 +4,7 @@ object Config {
     // Camera
     const val CAMERA_WIDTH = 1280
     const val CAMERA_HEIGHT = 720
-    const val INFERENCE_INTERVAL_MS = 1000L
+    const val INFERENCE_INTERVAL_MS = 100L
 
     // YOLO
     const val YOLO_CONFIDENCE = 0.35f
@@ -16,7 +16,7 @@ object Config {
     const val EAR_THRESHOLD = 0.21f
     const val MAR_THRESHOLD = 0.5f
     const val HEAD_YAW_THRESHOLD = 30.0f
-    const val HEAD_PITCH_THRESHOLD = 25.0f
+    const val HEAD_PITCH_THRESHOLD = 35.0f
 
     // Pose analysis
     const val POSTURE_LEAN_THRESHOLD = 30.0f
@@ -27,12 +27,15 @@ object Config {
     const val WRIST_CROP_SIZE = 200
 
     // Smoother
-    const val SMOOTHER_WINDOW = 5
+    const val SMOOTHER_WINDOW = 3
     const val SMOOTHER_THRESHOLD = 0.6f
     const val FAST_CLEAR_FRAMES = 2
 
     // Audio
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
+
+    // Preview (set false to test pipeline without rendering overhead)
+    const val ENABLE_PREVIEW = false
 
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2

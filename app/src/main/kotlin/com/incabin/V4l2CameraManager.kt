@@ -64,12 +64,14 @@ class V4l2CameraManager(
                     }
                 }
 
+                val grabStartMs = System.currentTimeMillis()
                 val bgrData = nativeLib.nativeGrabBgrFrame(cameraPtr)
+                val grabElapsed = System.currentTimeMillis() - grabStartMs
                 if (bgrData != null) {
                     consecutiveFailures = 0
                     if (!firstFrameLogged) {
                         firstFrameLogged = true
-                        Log.i(TAG, "First V4L2 frame: ${Config.CAMERA_WIDTH}x${Config.CAMERA_HEIGHT}, ${bgrData.size} bytes BGR")
+                        Log.i(TAG, "First V4L2 frame: ${Config.CAMERA_WIDTH}x${Config.CAMERA_HEIGHT}, ${bgrData.size} bytes BGR, grab=${grabElapsed}ms")
                     }
                     onBgrFrame(bgrData, Config.CAMERA_WIDTH, Config.CAMERA_HEIGHT)
                 } else {

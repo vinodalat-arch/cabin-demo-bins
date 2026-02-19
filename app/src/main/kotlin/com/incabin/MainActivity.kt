@@ -140,21 +140,34 @@ class MainActivity : Activity() {
     private val tickerEvents = mutableListOf<String>()
     private var lastTickerDetections = ""
 
+    // --- Dedup: skip re-processing the same frame ---
+    private var lastFrameTimestamp = ""
+
     private val handler = Handler(Looper.getMainLooper())
     private val previewPoller = object : Runnable {
         override fun run() {
             try {
+                // 1. Dashboard updates from result-only channel (fast, independent of bitmap)
+                val result = FrameHolder.getLatestResult()
+                if (result != null) {
+                    val ts = result.timestamp
+                    if (ts != lastFrameTimestamp) {
+                        lastFrameTimestamp = ts
+                        updateDashboard(result)
+                        updateScore(result)
+                        updateStreak(result)
+                        updateAiStatus(result)
+                        updateTicker(result)
+                        totalFrames++
+                        scoreSum += drivingScore
+                    }
+                    updateSessionTime()
+                }
+
+                // 2. Camera preview from bitmap channel (only when preview enabled)
                 val frameData = FrameHolder.getLatest()
                 if (frameData != null && !frameData.bitmap.isRecycled) {
                     previewImage.setImageBitmap(frameData.bitmap)
-                    updateDashboard(frameData.result)
-                    updateScore(frameData.result)
-                    updateStreak(frameData.result)
-                    updateAiStatus(frameData.result)
-                    updateTicker(frameData.result)
-                    updateSessionTime()
-                    totalFrames++
-                    scoreSum += drivingScore
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Preview update failed", e)
@@ -265,6 +278,7 @@ class MainActivity : Activity() {
         scoreSum = 0.0
         tickerEvents.clear()
         lastTickerDetections = ""
+        lastFrameTimestamp = ""
 
         aiStatusText.text = "Warming up the AI brain..."
         aiStatusText.setTextColor(COLOR_BLUE)

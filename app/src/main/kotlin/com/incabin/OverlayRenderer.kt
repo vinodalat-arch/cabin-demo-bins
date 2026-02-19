@@ -66,23 +66,25 @@ class OverlayRenderer {
      * Render detection overlays onto the source bitmap.
      * Returns a new annotated bitmap (source is not modified).
      */
+    /**
+     * Render detection overlays directly onto the source bitmap (in-place).
+     * Avoids 3.6 MB bitmap copy per frame. Source must be mutable.
+     */
     fun render(
         source: Bitmap,
         poseResult: PoseResult,
         faceResult: FaceResult,
         outputResult: OutputResult
     ): Bitmap {
-        val overlay = source.copy(Bitmap.Config.ARGB_8888, true)
-        // C5: try-catch prevents overlay bitmap leak if any draw method throws
         try {
-            val canvas = Canvas(overlay)
+            val canvas = Canvas(source)
             drawPersons(canvas, poseResult.persons)
             drawFaceLandmarks(canvas, faceResult)
             drawMetricLabels(canvas, outputResult)
         } catch (e: Exception) {
-            // Return partially drawn overlay rather than leaking the bitmap
+            // Return partially drawn bitmap on error
         }
-        return overlay
+        return source
     }
 
     private fun drawPersons(canvas: Canvas, persons: List<OverlayPerson>) {

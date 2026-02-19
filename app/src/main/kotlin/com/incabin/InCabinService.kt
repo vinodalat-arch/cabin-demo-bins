@@ -264,69 +264,71 @@ class InCabinService : Service() {
             // Step 2: BGR -> Bitmap conversion for FaceAnalyzer
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
-            // C4: try-finally ensures bitmap is recycled even if pipeline throws
-            try {
-                val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
-                val faceElapsed = System.currentTimeMillis() - faceStartMs
+            val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
+            val faceElapsed = System.currentTimeMillis() - faceStartMs
 
-                // Step 3: Merge results
-                val merged = mergeResults(faceResult, poseResult)
+            // Step 3: Merge results
+            val merged = mergeResults(faceResult, poseResult)
 
-                // Step 4: Temporal smoothing
-                val smoothed = smoother?.smooth(merged) ?: merged
+            // Step 4: Temporal smoothing
+            val smoothed = smoother?.smooth(merged) ?: merged
 
-                // Step 5: Update distraction duration counter (C2: atomic read-modify-write)
-                val durationVal = if (DISTRACTION_FIELDS_CHECK(smoothed)) {
-                    distractionDurationS.incrementAndGet()
-                } else {
-                    distractionDurationS.set(0)
-                    0
-                }
+            // Step 5: Update distraction duration counter (C2: atomic read-modify-write)
+            val durationVal = if (DISTRACTION_FIELDS_CHECK(smoothed)) {
+                distractionDurationS.incrementAndGet()
+            } else {
+                distractionDurationS.set(0)
+                0
+            }
 
-                // Step 6: Inject distraction_duration_s into result
-                val finalResult = smoothed.copy(distractionDurationS = durationVal)
+            // Step 6: Inject distraction_duration_s into result
+            val finalResult = smoothed.copy(distractionDurationS = durationVal)
 
-                // Step 7: Audio alerter (core — must run even if overlay fails)
-                audioAlerter?.checkAndAnnounce(finalResult)
+            // Step 7: Audio alerter (core — must run even if overlay fails)
+            audioAlerter?.checkAndAnnounce(finalResult)
 
-                // Step 8: Log JSON output (core — must run even if overlay fails)
-                Log.i(TAG, finalResult.toJson())
+            // Step 8: Log JSON output (core — must run even if overlay fails)
+            Log.i(TAG, finalResult.toJson())
 
-                // Step 9: Render overlay and post to FrameHolder (UI — optional)
+            // Step 8.5: Post result immediately for fast dashboard updates
+            FrameHolder.postResult(finalResult)
+
+            // Step 9: Render overlay and post bitmap to FrameHolder (skipped when preview disabled)
+            if (Config.ENABLE_PREVIEW) {
                 try {
-                    val overlayBitmap = overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
-                    FrameHolder.postFrame(overlayBitmap, finalResult)
+                    overlayRenderer.render(bitmap, poseResult, faceResult, finalResult)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Overlay rendering failed, skipping preview", e)
+                    Log.w(TAG, "Overlay rendering failed", e)
                 }
+                FrameHolder.postFrame(bitmap, finalResult)
+            } else {
+                bitmap.recycle()
+            }
 
-                // Timing summary
-                val totalElapsed = System.currentTimeMillis() - frameStartMs
+            // Timing summary
+            val totalElapsed = System.currentTimeMillis() - frameStartMs
+            Log.i(
+                TAG,
+                "Frame timing: Pose=${poseElapsed}ms, " +
+                    "Face=${faceElapsed}ms, Total=${totalElapsed}ms"
+            )
+
+            // Periodic performance stats
+            frameCount++
+            recentFrameTimes.add(totalElapsed)
+            if (frameCount % STATS_INTERVAL == 0) {
+                val avg = recentFrameTimes.average().toLong()
+                val min = recentFrameTimes.min()
+                val max = recentFrameTimes.max()
+                val javaHeapMb = Runtime.getRuntime().totalMemory() / (1024 * 1024)
+                val nativeHeapMb = Debug.getNativeHeapSize() / (1024 * 1024)
                 Log.i(
                     TAG,
-                    "Frame timing: Pose=${poseElapsed}ms, " +
-                        "Face=${faceElapsed}ms, Total=${totalElapsed}ms"
+                    "[Stats @$frameCount] frames=$frameCount, avg=${avg}ms, min=${min}ms, " +
+                        "max=${max}ms, heap=${javaHeapMb}MB, native=${nativeHeapMb}MB, " +
+                        "distraction=${finalResult.distractionDurationS}s"
                 )
-
-                // Periodic performance stats
-                frameCount++
-                recentFrameTimes.add(totalElapsed)
-                if (frameCount % STATS_INTERVAL == 0) {
-                    val avg = recentFrameTimes.average().toLong()
-                    val min = recentFrameTimes.min()
-                    val max = recentFrameTimes.max()
-                    val javaHeapMb = Runtime.getRuntime().totalMemory() / (1024 * 1024)
-                    val nativeHeapMb = Debug.getNativeHeapSize() / (1024 * 1024)
-                    Log.i(
-                        TAG,
-                        "[Stats @$frameCount] frames=$frameCount, avg=${avg}ms, min=${min}ms, " +
-                            "max=${max}ms, heap=${javaHeapMb}MB, native=${nativeHeapMb}MB, " +
-                            "distraction=${finalResult.distractionDurationS}s"
-                    )
-                    recentFrameTimes.clear()
-                }
-            } finally {
-                bitmap.recycle()
+                recentFrameTimes.clear()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Inference pipeline error", e)

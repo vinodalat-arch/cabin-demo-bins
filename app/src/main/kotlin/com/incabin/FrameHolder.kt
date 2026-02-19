@@ -20,13 +20,24 @@ object FrameHolder {
 
     private val latest = AtomicReference<FrameData?>(null)
 
+    /** Result-only channel: delivers OutputResult to UI without waiting for bitmap. */
+    private val latestResult = AtomicReference<OutputResult?>(null)
+
     /** Store a new frame + result. Caller transfers bitmap ownership. */
     fun postFrame(bitmap: Bitmap, result: OutputResult) {
         latest.set(FrameData(bitmap, result))
     }
 
+    /** Post result only (no bitmap). Dashboard reads this for fast updates. */
+    fun postResult(result: OutputResult) {
+        latestResult.set(result)
+    }
+
     /** Get the latest frame data (bitmap + result). Caller must NOT recycle the Bitmap. */
     fun getLatest(): FrameData? = latest.get()
+
+    /** Get the latest result (independent of bitmap). */
+    fun getLatestResult(): OutputResult? = latestResult.get()
 
     /** Get the latest frame bitmap only. Caller must NOT recycle the returned Bitmap. */
     fun getLatestFrame(): Bitmap? = latest.get()?.bitmap
@@ -34,5 +45,6 @@ object FrameHolder {
     /** Clear the held frame. */
     fun clear() {
         latest.set(null)
+        latestResult.set(null)
     }
 }
