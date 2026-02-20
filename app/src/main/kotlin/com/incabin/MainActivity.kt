@@ -485,7 +485,11 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------------
 
     private fun updateDashboard(result: OutputResult) {
-        when (result.riskLevel) {
+        if (result.passengerCount == 0) {
+            riskBanner.text = "NO PASSENGERS"
+            riskBanner.setBackgroundColor(Color.DKGRAY)
+            riskBanner.setTextColor(Color.WHITE)
+        } else when (result.riskLevel) {
             "high" -> {
                 riskBanner.text = "RISK: HIGH"
                 riskBanner.setBackgroundColor(COLOR_RED)
