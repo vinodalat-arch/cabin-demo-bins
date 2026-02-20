@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, and runtime preview toggle. Build verified (`assembleDebug` + all 99 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, and premium audio alerter redesign. Build verified (`assembleDebug` + all 140 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
@@ -10,7 +10,7 @@ Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug
 Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 17 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
 ## Full Specification
-**See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and all 99 unit test specifications. That document is the single source of truth for this project.
+**See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and unit test specifications. That document is the single source of truth for this project.
 
 ## Architecture
 ```
@@ -24,7 +24,7 @@ USB Webcam
   → FaceStore (Kotlin) → cosine similarity matching → driver name        ← cached between runs
   → Merger (Kotlin) → risk scoring
   → Temporal Smoother (Kotlin) → 3-frame sliding window, 60% threshold
-  → Audio Alerter (Android TextToSpeech + AudioTrack beep at 20s)     ← core path
+  → Audio Alerter (priority queue + staleness + cooldown + escalation) ← core path
   → JSON output (Logcat)                                               ← core path
   → FrameHolder.postResult() → OutputResult → Dashboard               ← fast UI path
   → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← optional UI path
@@ -147,14 +147,23 @@ score >= 3 → high, >= 1 → medium, else → low
 - Passenger count: mode of buffer
 - Risk: recomputed from smoothed booleans
 
-### Audio Alerter
-- Priority: new dangers → risk change → all-clear (overrides) → distraction duration (only if no other)
-- Danger names: phone detected, eyes closed, yawning detected, driver distracted, eating or drinking, dangerous posture, child slouching
-- Duration thresholds: [5, 10, 20] seconds, one per cycle, reset when duration=0
-- **Loud beep at 20s**: 1kHz sine wave, 2 seconds, via AudioTrack on platform-specific audio usage (same audio path as TTS). Separate `beepPlayed` flag, resets when distraction clears
+### Audio Alerter (Premium Redesign)
+- **Priority tiers**: CRITICAL (phone, eyes_closed) > WARNING (yawning, distracted, eating, posture, slouching) > INFO (all-clear, duration milestones)
+- **Bounded priority queue**: `ArrayBlockingQueue(3)` — when full, drain → sort by priority → keep top messages, drop lower priority
+- **Staleness check** (worker thread): drops messages older than 4s (`ALERT_STALENESS_MS`) or whose danger already resolved (reads `FrameHolder.getLatestResult()`)
+- **Per-danger cooldown**: 10s (`ALERT_COOLDOWN_MS`) per danger type. Re-announcement suppressed within cooldown. All cooldowns clear on all-clear transition
+- **All-clear flush**: Drains queue, stops TTS mid-sentence (`tts.stop()`), speaks "All clear" immediately, clears cooldown + escalation maps
+- **Escalation ladder** (replaces fixed [5,10,20] thresholds):
+  - 10s: "Still distracted, 10 seconds" (WARNING)
+  - 20s: [1kHz beep 1s] → "Warning. Distracted 20 seconds" (CRITICAL)
+  - 30s+: beep repeats every 10s with duration update
+- **Beep-TTS coordination**: Single worker thread — beep plays inline (1s, blocking) → 200ms gap → TTS speak. No overlap, no separate Beep-Player thread
+- **Shorter messages**: "Phone", "Eyes closed", "Yawning", "Distracted", "Eating", "Posture", "Child slouching" (Japanese equivalents follow same brevity)
+- **Multiple simultaneous dangers**: Joined as single message sorted by priority — "Phone. Eyes closed" (CRITICAL parts first, then WARNING)
 - **Audio routing**: Platform-specific — `USAGE_ASSISTANCE_SONIFICATION` on SA8155 (Honda BSP quirk), `USAGE_ALARM` on SA8295 and generic Android. Parameterized via `audioUsage` constructor parameter
 - First frame: store state only, no announcement
 - TTS retry: if init fails, schedules one retry after 3s via stored Handler; `ttsRetried` flag prevents loops; Handler callbacks cancelled in `close()` to prevent leak if service destroyed within 3s
+- **Testability**: `buildAlerts()` and `buildEscalationAlert()` are companion functions with no Android dependencies — fully unit-testable
 
 ### Face Recognition (C++ ONNX Runtime + Kotlin)
 - **Model**: MobileFaceNet (w600k_mbf) FP16, 112x112 input, 512-dim embedding output, ~6.5 MB
@@ -245,17 +254,18 @@ in_cabin_poc-sa8155/
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 99 unit tests (all passing):
-  - MergerTest: 19 tests (risk scoring + merge logic)
-  - TemporalSmootherTest: 21 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
+- 140 unit tests (all passing):
+  - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
+  - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
+  - TemporalSmootherTest: 21 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
+  - MergerTest: 19 tests (risk scoring + merge logic)
   - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
-  - PlatformProfileTest: 22 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
