@@ -41,7 +41,8 @@ Every inference cycle produces:
   "mar_value": 0.20,
   "head_yaw": -5.0,
   "head_pitch": 3.0,
-  "distraction_duration_s": 0
+  "distraction_duration_s": 0,
+  "driver_name": null
 }
 ```
 
@@ -52,8 +53,7 @@ Every inference cycle produces:
 - `risk_level`: enum "low" | "medium" | "high" (required)
 - `distraction_duration_s`: integer >= 0 (required)
 - `ear_value`, `mar_value`, `head_yaw`, `head_pitch`: float or null (optional — null when no face detected)
-
-No additional properties allowed.
+- `driver_name`: string or null (optional — null when no face recognized or no faces registered)
 
 ### JSON Schema Definition (for validation)
 
@@ -78,6 +78,7 @@ val OUTPUT_SCHEMA = mapOf(
         "head_yaw" to mapOf("type" to listOf("number", "null")),
         "head_pitch" to mapOf("type" to listOf("number", "null")),
         "distraction_duration_s" to mapOf("type" to "integer", "minimum" to 0),
+        "driver_name" to mapOf("type" to listOf("string", "null")),
     ),
     "required" to listOf(
         "timestamp", "passenger_count",
@@ -85,7 +86,6 @@ val OUTPUT_SCHEMA = mapOf(
         "driver_distracted", "driver_eating_drinking", "dangerous_posture",
         "child_present", "child_slouching", "risk_level", "distraction_duration_s",
     ),
-    "additionalProperties" to false,
 )
 ```
 
@@ -134,8 +134,9 @@ fun validateOutput(data: Map<String, Any?>): List<String> {
 
 | Layer | Language | Purpose |
 |---|---|---|
-| Android lifecycle, camera, TTS, UI | **Kotlin** | Camera2 API, TextToSpeech, foreground service, overlay renderer, dashboard |
-| Inference hot path | **C++ (NDK)** | ONNX Runtime C API, image preprocessing |
+| Android lifecycle, camera, TTS, UI | **Kotlin** | V4L2 manager, Camera2 fallback, TextToSpeech, foreground service, overlay renderer, dashboard |
+| Inference hot path | **C++ (NDK)** | ONNX Runtime C API, V4L2 camera access, image preprocessing |
+| Face analysis | **Kotlin** | MediaPipe FaceLandmarker, OpenCV solvePnP |
 | Bridge | **JNI** | Pass camera frames Kotlin→C++, return JSON result C++→Kotlin |
 
 ### Dependencies
@@ -154,6 +155,7 @@ fun validateOutput(data: Map<String, Any?>): List<String> {
 | `yolov8n-pose-fp16.onnx` | FP32 export → `scripts/convert_fp16.py` | ONNX FP16 | ~6.5 MB |
 | `yolov8n-fp16.onnx` | FP32 export → `scripts/convert_fp16.py` | ONNX FP16 | ~6.5 MB |
 | `face_landmarker.task` | Google AI Edge MediaPipe models (float16) | TFLite bundle | 3.6 MB |
+| `mobilefacenet-fp16.onnx` | InsightFace FP32 → `scripts/convert_fp16.py` | ONNX FP16 | ~4 MB |
 
 **Note:** Model files are gitignored (large binaries). Export FP32 models first, then run `python scripts/convert_fp16.py` to generate FP16 variants. The Gradle `verifyAssets` task will fail the build if any model file is missing from `app/src/main/assets/`.
 
@@ -178,36 +180,57 @@ Android Studio / Gradle 8.9 (Kotlin DSL)
 │   ├── pose_analyzer.cpp/h    (ONNX Runtime inference + postprocessing)
 │   ├── yolo_utils.cpp/h       (letterbox, NMS, tensor parsing)
 │   ├── image_utils.cpp/h      (BT.601 YUV→BGR conversion)
-│   └── jni_bridge.cpp         (JNI entry points)
+│   ├── jni_bridge.cpp         (JNI entry points for all native bridges)
+│   ├── face_recognizer.cpp/h  (MobileFaceNet ONNX inference)
+│   └── v4l2_camera.cpp/h     (V4L2 ioctl, mmap, YUYV→BGR)
 ├── app/src/main/kotlin/com/incabin/
-│   ├── Config.kt              (all thresholds from §12)
-│   ├── InCabinService.kt      (foreground service, 10-step main loop)
-│   ├── CameraManager.kt       (Camera2 + ImageReader, 1fps throttle)
-│   ├── FaceAnalyzer.kt        (MediaPipe FaceLandmarker + EAR/MAR/solvePnP + face overlay data)
-│   ├── PoseAnalyzerBridge.kt  (JNI bridge to C++ PoseAnalyzer + overlay person data)
-│   ├── Merger.kt              (merge face+pose results, risk scoring)
-│   ├── TemporalSmoother.kt    (5-frame sliding window, face-gating, fast-clear)
-│   ├── AudioAlerter.kt        (TextToSpeech + background queue)
-│   ├── OutputResult.kt        (16-field data class + JSON + validation)
-│   ├── NativeLib.kt           (JNI external fun declarations)
-│   ├── OverlayRenderer.kt     (draws bboxes, skeleton, face landmarks, metrics on bitmap)
-│   ├── FrameHolder.kt         (thread-safe bitmap + OutputResult holder for UI)
-│   └── MainActivity.kt        (start/stop service, dashboard, permission handling)
+│   ├── Config.kt, InCabinService.kt, V4l2CameraManager.kt, CameraManager.kt
+│   ├── FaceAnalyzer.kt, PoseAnalyzerBridge.kt, FaceRecognizerBridge.kt
+│   ├── FaceStore.kt, FaceRegistrationActivity.kt
+│   ├── Merger.kt, TemporalSmoother.kt, AudioAlerter.kt
+│   ├── OutputResult.kt (17-field), NativeLib.kt, OverlayRenderer.kt
+│   ├── FrameHolder.kt, PlatformProfile.kt, DeviceSetup.kt
+│   ├── ScoreArcView.kt
+│   └── MainActivity.kt
 ├── app/src/test/kotlin/com/incabin/
-│   ├── MergerTest.kt          (19 tests)
-│   ├── TemporalSmootherTest.kt (20 tests)
-│   └── OutputResultTest.kt    (25 tests)
+│   ├── MergerTest.kt (19), TemporalSmootherTest.kt (20), OutputResultTest.kt (29)
+│   ├── PlatformProfileTest.kt (22), FaceStoreTest.kt (8)
 └── app/src/main/assets/
     ├── yolov8n-pose-fp16.onnx (~6.5 MB, gitignored)
     ├── yolov8n-fp16.onnx     (~6.5 MB, gitignored)
-    └── face_landmarker.task   (3.6 MB, gitignored)
+    ├── face_landmarker.task   (3.6 MB, gitignored)
+    └── mobilefacenet-fp16.onnx (~4 MB, gitignored)
 ```
 
 ---
 
-## 4. Camera — USB Webcam via Camera2
+## 4. Camera — USB Webcam via V4L2 / Camera2
 
-### Frame Pipeline
+### Camera Strategy (Platform-Dependent)
+
+The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Camera HAL, so Camera2 API cannot see USB webcams. The app uses **V4L2 direct ioctl access** as the primary camera path on automotive BSPs, with Camera2 as a fallback.
+
+Camera strategy is selected by `PlatformProfile.cameraStrategy`:
+- **V4L2_FIRST** (SA8155, SA8295): Try V4L2 first, fall back to Camera2
+- **CAMERA2_FIRST** (generic Android): Go straight to Camera2 API
+
+### V4L2 Frame Pipeline (Primary — Automotive)
+
+```
+USB Webcam (UVC)
+  → V4L2 ioctl (/dev/videoN, YUYV 1280x720, 2 mmap buffers)
+  → YUYV→BGR conversion (C++ via JNI)
+  → BGR byte array (1280x720x3)
+  → inference pipeline
+```
+
+- `V4l2CameraManager` (Kotlin) → `V4l2Camera` (C++/JNI) → `/dev/videoN`
+- Scans `/dev/video0-63`, skips Qualcomm internal devices (`cam-req-mgr`, `cam_sync`)
+- Configures YUYV capture, 2 mmap buffers (reduced from 4 for lower latency)
+- Converts YUYV→BGR in native code
+- Disconnect/reconnect: after 3 consecutive null frames, destroys native camera and enters reconnect mode with exponential backoff (2s → 30s max)
+
+### Camera2 Frame Pipeline (Fallback / Generic Android)
 
 ```
 USB Webcam (UVC)
@@ -218,8 +241,6 @@ USB Webcam (UVC)
   → inference pipeline
 ```
 
-### Implementation Details
-
 1. **Enumerate cameras** via `CameraManager.getCameraIdList()`. USB webcams appear as external cameras (`CameraCharacteristics.LENS_FACING_EXTERNAL`). Filter for external facing.
 
 2. **Open camera session** with `CameraDevice.createCaptureSession()`. Use a single `ImageReader` surface at 1280x720, format `ImageFormat.YUV_420_888`.
@@ -228,15 +249,22 @@ USB Webcam (UVC)
 
 4. **YUV→BGR conversion**: Pass Y, U, V plane byte arrays + row strides to C++ via JNI. Uses manual BT.601 integer-approximation conversion in `image_utils.cpp` (handles stride/padding differences across devices, no libyuv dependency needed).
 
-5. **Permissions** (debug build):
+### Permissions (debug build)
 ```xml
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-feature android:name="android.hardware.usb.host" />
 ```
 On userdebug builds, camera permission can be auto-granted via `adb shell pm grant`.
 
-### Fallback
-If Camera2 doesn't enumerate the USB camera, use `android.hardware.usb.UsbManager` with a UVC library (e.g., `UVCCamera` by saki4510t). This is unlikely needed on AAOS 14 which has good USB camera support.
+### Automated Device Setup (Automotive BSPs)
+
+On automotive BSPs, the Start button triggers `DeviceSetup` — a multi-stage automated setup:
+1. ODK module unload (`su -c rmmod odk_hook_module`)
+2. Camera polling (every 2s, up to 2 minutes)
+3. Permission setup (`chmod 666 /dev/video*`, `pm grant`)
+4. Ready → transitions to monitoring
+
+Runs on background thread with cancellation support. Skips if camera already available (app restart case). Falls back to manual start on failure.
 
 ---
 
@@ -386,7 +414,7 @@ pitch_deg = degrees(pitch)
 
 **Thresholds:**
 ```
-driver_distracted = |yaw_deg| > 30 OR |pitch_deg| > 25
+driver_distracted = |yaw_deg| > 30 OR |pitch_deg| > 35  // tuned: camera mount angle causes ~5-10° baseline
 ```
 
 **Output:** `head_yaw = round(yaw_deg, 1)`, `head_pitch = round(pitch_deg, 1)`, or `null` if no face.
@@ -461,7 +489,7 @@ class FaceAnalyzer:
 
         // Head pose
         yaw, pitch = estimateHeadPose(landmarks, w, h)
-        distracted = |yaw| > 30 OR |pitch| > 25
+        distracted = |yaw| > 30 OR |pitch| > 35
 
         return {
             driver_eyes_closed: eyes_closed,
@@ -903,7 +931,7 @@ fun computeRisk(
 Sliding window majority voting to suppress single-frame noise.
 
 ### Configuration
-- **Window size**: 5 frames (at 1fps = 5 second reaction time)
+- **Window size**: 3 frames (tuned: at ~1fps webcam cadence = ~2-3 second detection latency)
 - **Threshold**: 0.6 (60% of frames must agree to flip a boolean to true)
 
 ### Boolean Fields Smoothed
@@ -1060,14 +1088,22 @@ val tts = TextToSpeech(context) { status ->
 - Messages are spoken sequentially — each `tts.speak()` with `QUEUE_ADD` mode
 - One message per inference cycle maximum
 
-### Audio Focus (AAOS)
+### Audio Focus (Platform-Specific)
+
+Audio usage is parameterized by `PlatformProfile.audioUsage`:
+- **SA8155 (Honda BSP)**: `USAGE_ASSISTANCE_SONIFICATION` — `STREAM_ALARM` is inaudible on this BSP
+- **SA8295 / Generic**: `USAGE_ALARM` — standard Android audio
+
 ```kotlin
 val audioAttrs = AudioAttributes.Builder()
-    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+    .setUsage(platformProfile.audioUsage)  // platform-specific
     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
     .build()
 tts.setAudioAttributes(audioAttrs)
 ```
+
+### Notification Posting
+Active alerts post a persistent notification (for foreground-service compliance and visibility). Notification creation/cancellation is wrapped in try-catch — failures never block TTS or alert state updates.
 
 ### Danger Fields and Friendly Names
 
@@ -1229,15 +1265,18 @@ The inference loop runs as a **foreground service** (`InCabinService`) to mainta
 
 ```
 InCabinService (foreground service)
-  ├── CameraManager (Camera2 ImageReader, 1fps frame callback)
+  ├── V4l2CameraManager / CameraManager (V4L2 primary, Camera2 fallback)
   ├── FaceAnalyzer (MediaPipe, Kotlin)
   ├── PoseAnalyzer (ONNX Runtime via JNI, C++)
   ├── Merger (Kotlin)
   ├── TemporalSmoother (Kotlin)
-  ├── OverlayRenderer (Kotlin) → annotated bitmap
+  ├── OverlayRenderer (Kotlin) → in-place annotated bitmap (runtime toggle via Config.ENABLE_PREVIEW)
   ├── FrameHolder (bitmap + OutputResult → MainActivity)
-  ├── AudioAlerter (TextToSpeech, Kotlin)
-  └── OutputManager (JSON serialization, Logcat, optional broadcast)
+  ├── AudioAlerter (TextToSpeech + AudioTrack beep, platform-specific audio routing)
+  ├── FaceRecognizerBridge (MobileFaceNet via ONNX Runtime C++, every 5th frame)
+  ├── FaceStore (face embedding persistence, cosine similarity matching)
+  ├── PlatformProfile (auto-detect SA8155/SA8295/generic, configure threads/audio/camera)
+  └── DeviceSetup (automated ODK rmmod, chmod, pm grant on automotive BSPs)
 
 MainActivity (UI)
   ├── Camera preview (ImageView) with overlay bitmaps
@@ -1247,13 +1286,16 @@ MainActivity (UI)
 ### Initialization
 
 ```
-Log device info (manufacturer, model, Android version, SDK, CPUs, RAM)
-Verify all 3 asset files exist (log sizes or MISSING error)
+Detect platform: PlatformProfile.detect() → SA8155 / SA8295 / GENERIC
+Log device info (manufacturer, model, Android version, SDK, CPUs, RAM, detected platform)
+Verify all asset files exist (log sizes or MISSING error)
 Initialize OpenCV (log version string)
-Initialize FaceAnalyzer (log timing in ms)
-Initialize PoseAnalyzerBridge (log timing in ms)
-smoother = TemporalSmoother(window_size=5, threshold=0.6)
-distraction_duration_s = 0  // @Volatile for thread safety
+Initialize FaceAnalyzer + PoseAnalyzerBridge in parallel (CountDownLatch)
+  - PoseAnalyzerBridge: threads/affinity from PlatformProfile
+  - FaceRecognizerBridge: threads/affinity from PlatformProfile (if model available)
+Initialize FaceStore (load faces.json from internal storage)
+smoother = TemporalSmoother(window_size=3, threshold=0.6)  // tuned from 5 to 3 for ~2-3s latency
+distraction_duration_s = AtomicInteger(0)  // thread-safe counter
 frame_count = 0
 recent_frame_times = []
 ```
@@ -1279,7 +1321,7 @@ Steps 1-12 are divided into **core** (safety-critical) and **UI** (optional) pat
 ```
 --- CORE PATH (safety-critical, must always complete) ---
 1. ImageReader callback fires (1fps throttled)
-2. Convert YUV→BGR via JNI + libyuv
+2. Convert frame to BGR (V4L2: YUYV→BGR in C++; Camera2: YUV→BGR via JNI)
 3. Run PoseAnalyzer (C++/JNI):
    a. YOLOv8n-pose on full frame → persons, keypoints
    b. Identify driver (largest bbox)
@@ -1295,13 +1337,18 @@ Steps 1-12 are divided into **core** (safety-critical) and **UI** (optional) pat
    b. Compute EAR, MAR, head pose
    c. Build FaceOverlayData (eye contours, mouth, nose tip)
    d. Return FaceResult (with faceOverlay)
+5b. Face recognition (every 5th frame, try-catch isolated):
+   a. If no face: clear cached name, skip
+   b. If face but not 5th frame and cache exists: use cached name
+   c. If 5th frame: extract face crop from BGR → compute embedding → match against FaceStore
+   d. Cache recognized name (or null)
 6. Merge results → compute risk
 7. Smooth results → temporal voting
-8. Update distraction duration counter:
+8. Update distraction duration counter (AtomicInteger):
    any_distraction = ANY of DISTRACTION_FIELDS is true in smoothed result
-   if any_distraction: distraction_duration_s += 1
-   else: distraction_duration_s = 0
-9. Inject distraction_duration_s into result
+   if any_distraction: distraction_duration_s.incrementAndGet()
+   else: distraction_duration_s.set(0)
+9. Inject distraction_duration_s and driver_name into result
 10. Speak alerts if state changed (alerter.checkAndAnnounce)
 11. Log JSON to Logcat
 
@@ -1311,8 +1358,8 @@ Steps 1-12 are divided into **core** (safety-critical) and **UI** (optional) pat
     b. Draw COCO skeleton (16 bones, confidence > 0.5)
     c. Draw face landmarks (eyes, mouth, nose)
     d. Draw metric labels (EAR, MAR, Yaw, Pitch)
-    e. Return annotated bitmap
-    f. Post overlay bitmap + OutputResult to FrameHolder
+    e. Bitmap is annotated in-place (no copy)
+    f. Post annotated bitmap + OutputResult to FrameHolder
     On failure: log warning, skip preview update, core path unaffected.
 
 13. Track frame timing; every 30 frames log performance stats (avg/min/max ms, heap sizes)
@@ -1342,7 +1389,7 @@ For debug builds, output goes to:
 
 ### OverlayRenderer
 
-Draws detection visualizations onto the camera preview bitmap. Runs after merge+smooth, before posting to FrameHolder. Returns a new annotated bitmap (source is not modified).
+Draws detection visualizations in-place onto the camera preview bitmap. Runs after merge+smooth, before posting to FrameHolder. Source bitmap is modified directly (no copy — saves ~3.6MB allocation per frame). Controlled at runtime by `Config.ENABLE_PREVIEW` (`@Volatile var`, persisted via SharedPreferences, toggled from the top-row Preview button).
 
 **Drawings:**
 - **Person bounding boxes**: green stroke (driver), blue stroke (others), with "Driver 95%" / "Passenger 87%" labels on dark background
@@ -1363,11 +1410,19 @@ Thread-safe singleton holding the latest annotated bitmap + OutputResult for the
 ```kotlin
 object FrameHolder {
     data class FrameData(val bitmap: Bitmap, val result: OutputResult)
+    data class CaptureData(val bgrCrop: ByteArray, val cropWidth: Int, val cropHeight: Int)
+    enum class CameraStatus { NOT_CONNECTED, CONNECTING, READY, ACTIVE, LOST }
 
     fun postFrame(bitmap: Bitmap, result: OutputResult)  // service writes (no recycle)
-    fun getLatest(): FrameData?                           // activity reads
+    fun postResult(result: OutputResult)                  // result-only channel (decoupled from preview)
+    fun getLatest(): FrameData?                           // activity reads (bitmap + result)
+    fun getLatestResult(): OutputResult?                  // dashboard reads (result only, no bitmap dependency)
     fun getLatestFrame(): Bitmap?                         // backward compat
-    fun clear()                                           // clears reference
+    fun postCaptureData(data: CaptureData)                // face recognition crop for registration UI
+    fun getCaptureData(): CaptureData?
+    fun postCameraStatus(status: CameraStatus)
+    fun getCameraStatus(): CameraStatus
+    fun clear()                                           // clears all references
 }
 ```
 
@@ -1375,18 +1430,25 @@ object FrameHolder {
 
 Layout: vertical LinearLayout with black background, 8dp padding.
 
-**Top row** (horizontal): status text (weight=1) + start/stop button
-**Camera preview**: ImageView (weight=1, fitCenter, #111 background)
+**Top row** (horizontal): status text (weight=1) + camera status text + Preview toggle + Faces button + Start/Stop button
+**AI status message bar**: contextual messages (italic, green #4CAF50), varied based on detection state
+**Score panel** (hidden when idle): score arc (ScoreArcView, 70dp) + streak timer + best streak + session timer
+**Camera preview**: ImageView (weight=1, fitCenter, #111 background) — controlled by ENABLE_PREVIEW toggle
 **Dashboard panel** (visibility=gone when idle, shown when monitoring):
-- **Risk banner**: full-width TextView, bold 20sp, color-coded background:
+- **Risk banner**: full-width TextView, bold 32sp, color-coded background:
   - HIGH: red (#F44336), white text
   - MEDIUM: orange (#FF9800), black text
   - LOW: green (#4CAF50), black text
-- **Metrics row** (4 columns): EAR | MAR | Yaw | Pitch — 13sp, gray text, center-aligned
-- **Info row** (2 columns): Passengers count | Distraction timer — 13sp, gray text
-- **Active detections**: red text (#FF5252), center-aligned, pipe-separated labels (Phone | Eyes Closed | Yawning | Distracted | Eating/Drinking | Bad Posture | Child Slouching)
+- **Driver name**: blue text (#64B5F6), 22sp bold, center — shown when face recognized
+- **Info row** (2 columns): Passengers (26sp bold) | Distraction timer (26sp bold)
+- **Active detections**: red text (#FF5252), center-aligned, pipe-separated labels
+- **Metrics row** (4 columns): EAR | MAR | Yaw | Pitch — 13sp (visibility=gone, engineering data)
+**Detection history ticker**: marquee scrolling, 11sp, gray text
+**Footer**: "Demo by KPIT Technologies, India"
 
-**Polling**: `Handler.postDelayed` every 500ms reads `FrameHolder.getLatest()`, updates ImageView and calls `updateDashboard(result)`.
+**Polling**: `Handler.postDelayed` every 500ms reads `FrameHolder.getLatestResult()` (decoupled from bitmap), updates dashboard. Bitmap preview reads from `FrameHolder.getLatest()` only when ENABLE_PREVIEW is on.
+
+**Session summary**: dialog shown on stop with session duration, detection counts, best streak.
 
 ---
 
@@ -1431,7 +1493,12 @@ object Config {
     const val DISTRACTION_BEEP_THRESHOLD_S = 20  // loud beep at this duration
 
     // Preview
-    const val ENABLE_PREVIEW = false  // disable camera preview rendering for performance
+    @Volatile var ENABLE_PREVIEW = false  // runtime toggle, persisted via SharedPreferences
+
+    // Face recognition
+    const val FACE_RECOGNITION_THRESHOLD = 0.5f
+    const val FACE_RECOGNITION_INTERVAL = 5  // recognize every Nth inference frame
+    const val FACE_EMBEDDING_DIM = 512
 }
 ```
 
@@ -1458,39 +1525,54 @@ in_cabin_poc-sa8155/
 │   │   │   ├── assets/
 │   │   │   │   ├── yolov8n-pose-fp16.onnx (~6.5 MB, gitignored)
 │   │   │   │   ├── yolov8n-fp16.onnx    (~6.5 MB, gitignored)
-│   │   │   │   └── face_landmarker.task  (3.6 MB, gitignored)
+│   │   │   │   ├── face_landmarker.task  (3.6 MB, gitignored)
+│   │   │   │   └── mobilefacenet-fp16.onnx (~4 MB, gitignored)
 │   │   │   ├── cpp/
 │   │   │   │   ├── CMakeLists.txt
 │   │   │   │   ├── onnxruntime/
 │   │   │   │   │   ├── include/          (headers extracted from AAR)
 │   │   │   │   │   └── lib/arm64-v8a/    (libonnxruntime.so, gitignored)
 │   │   │   │   ├── pose_analyzer.cpp/h   (ONNX Runtime YOLO inference + overlay person data)
+│   │   │   │   ├── face_recognizer.cpp/h (MobileFaceNet ONNX inference, 512-dim embeddings)
+│   │   │   │   ├── v4l2_camera.cpp/h     (V4L2 ioctl, mmap, YUYV→BGR conversion)
 │   │   │   │   ├── yolo_utils.cpp/h      (letterbox, NMS, postprocess)
-│   │   │   │   ├── image_utils.cpp/h     (BT.601 YUV→BGR conversion)
-│   │   │   │   └── jni_bridge.cpp
+│   │   │   │   ├── image_utils.cpp/h     (BT.601 YUV→BGR, BGR→ARGB conversion)
+│   │   │   │   └── jni_bridge.cpp        (JNI entry points for all native bridges)
 │   │   │   ├── kotlin/com/incabin/
-│   │   │   │   ├── Config.kt
-│   │   │   │   ├── InCabinService.kt     (foreground service, 14-step main loop)
+│   │   │   │   ├── Config.kt             (all thresholds from §12)
+│   │   │   │   ├── InCabinService.kt     (foreground service, main loop)
+│   │   │   │   ├── V4l2CameraManager.kt  (V4L2 camera lifecycle, device scanning, reconnect)
 │   │   │   │   ├── CameraManager.kt      (Camera2 + ImageReader, 1fps throttle)
 │   │   │   │   ├── FaceAnalyzer.kt       (MediaPipe FaceLandmarker + EAR/MAR/solvePnP + face overlay)
-│   │   │   │   ├── PoseAnalyzerBridge.kt (JNI bridge to C++ PoseAnalyzer + overlay person data)
+│   │   │   │   ├── PoseAnalyzerBridge.kt (JNI bridge to C++ PoseAnalyzer, parameterized threads/affinity)
+│   │   │   │   ├── FaceRecognizerBridge.kt (JNI bridge to C++ FaceRecognizer, 512-dim embeddings)
+│   │   │   │   ├── FaceStore.kt          (face embedding persistence, cosine similarity matching)
+│   │   │   │   ├── FaceRegistrationActivity.kt (face registration UI, capture/save/delete)
 │   │   │   │   ├── Merger.kt             (merge results + risk scoring)
-│   │   │   │   ├── TemporalSmoother.kt   (5-frame window, face-gating, fast-clear)
-│   │   │   │   ├── AudioAlerter.kt       (TextToSpeech + background queue)
-│   │   │   │   ├── OutputResult.kt       (16-field data class + JSON + validation)
+│   │   │   │   ├── TemporalSmoother.kt   (3-frame window, face-gating, fast-clear)
+│   │   │   │   ├── AudioAlerter.kt       (TextToSpeech + AudioTrack beep + notifications)
+│   │   │   │   ├── OutputResult.kt       (17-field data class + JSON + validation)
 │   │   │   │   ├── NativeLib.kt          (JNI external fun declarations)
-│   │   │   │   ├── OverlayRenderer.kt    (draws bboxes, skeleton, face, metrics on bitmap)
-│   │   │   │   ├── FrameHolder.kt        (thread-safe bitmap + OutputResult for UI)
-│   │   │   │   └── MainActivity.kt       (start/stop service, dashboard, permission handling)
+│   │   │   │   ├── OverlayRenderer.kt    (draws bboxes, skeleton, face, metrics in-place on bitmap)
+│   │   │   │   ├── FrameHolder.kt        (thread-safe bitmap + OutputResult + CameraStatus for UI)
+│   │   │   │   ├── PlatformProfile.kt    (auto-detect SA8155/SA8295/generic, tuning profiles)
+│   │   │   │   ├── DeviceSetup.kt        (automated ODK rmmod, chmod, pm grant on automotive BSPs)
+│   │   │   │   ├── ScoreArcView.kt       (custom View: animated score arc for dashboard)
+│   │   │   │   └── MainActivity.kt       (setup flow, dashboard, preview toggle, registration)
 │   │   │   └── res/
 │   │   │       ├── layout/activity_main.xml
 │   │   │       ├── values/strings.xml
-│   │   │       └── drawable/ic_notification.xml
+│   │   │       ├── drawable/ic_notification.xml
+│   │   │       └── mipmap-*/ic_launcher.webp (custom app icon)
 │   │   └── test/
 │   │       └── kotlin/com/incabin/
 │   │           ├── MergerTest.kt          (19 tests)
 │   │           ├── TemporalSmootherTest.kt (20 tests)
-│   │           └── OutputResultTest.kt    (25 tests)
+│   │           ├── OutputResultTest.kt    (29 tests)
+│   │           ├── PlatformProfileTest.kt (22 tests)
+│   │           └── FaceStoreTest.kt       (8 tests)
+├── scripts/
+│   └── convert_fp16.py                    (ONNX FP32→FP16 converter)
 └── local.properties               (gitignored, sdk.dir)
 ```
 
@@ -1498,12 +1580,13 @@ in_cabin_poc-sa8155/
 
 ## 14. Implementation Status
 
-All phases are complete. The project builds successfully (`assembleDebug` produces a 64 MB APK) and all 64 unit tests pass.
+All phases are complete. The project builds successfully (`assembleDebug` produces an 84 MB APK) and all 98 unit tests pass.
 
 ### Phase 1 — Skeleton + Camera (Complete)
 - Android project with Gradle 8.9, NDK r26, CMake 3.22.1
-- Camera2 USB webcam with 1fps throttle
+- V4L2 direct ioctl USB webcam (primary), Camera2 fallback
 - BT.601 YUV→BGR conversion via JNI (manual implementation, no libyuv)
+- YUYV→BGR conversion in native C++ for V4L2 path
 
 ### Phase 2 — Face Analysis (Complete)
 - MediaPipe FaceLandmarker (tasks-vision 0.10.14)
@@ -1519,32 +1602,53 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 ### Phase 4 — Pipeline Integration (Complete)
 - Merger with 7-weight risk scoring
 - TemporalSmoother with face-gating, fast-clear, passenger mode
-- AudioAlerter with 4-step priority, background TTS queue
-- InCabinService 9-step main loop with distraction duration tracking
-- All 64 unit tests (MergerTest, TemporalSmootherTest, OutputResultTest)
+- AudioAlerter with 4-step priority, background TTS queue, loud beep at 20s
+- InCabinService main loop with distraction duration tracking
 
-### Phase 5 — Polish & Validate
+### Phase 5 — On-Device Validation (Complete)
 - Build verified: `assembleDebug` and `test` both succeed
-- On-device validation pending (requires SA8155P hardware)
+- On-device validated on Honda SA8155P: ~630ms/frame, ~2-3s detection latency
+- Performance tuning: INFERENCE_INTERVAL_MS=100, SMOOTHER_WINDOW=3, HEAD_PITCH_THRESHOLD=35°
 
 ### Phase 6 — Pre-Deployment Hardening (Complete)
 - TTS retry: one-time retry after 3s if TextToSpeech init fails (AudioAlerter)
-- Native library safety: `System.loadLibrary` wrapped in try-catch in NativeLib and PoseAnalyzerBridge; `loaded`/`nativeLoaded` flags guard against JNI calls when lib is missing
-- Thread safety: `@Volatile` on `distractionDurationS` (written from camera thread, reset from main thread in onDestroy)
-- Build-time asset verification: Gradle `verifyAssets` task fails build if model files are missing from `assets/`
-- Diagnostic logging at startup: device model/Android version/SDK/CPU count/RAM, asset file sizes, component init timing (ms), OpenCV version string
-- Periodic performance stats: every 30 frames logs avg/min/max frame time, Java heap, native heap, distraction duration
-- First-frame resolution confirmation: CameraManager logs actual dimensions, format, and plane count on first processed frame
+- Native library safety: `System.loadLibrary` wrapped in try-catch; `loaded`/`nativeLoaded` flags guard JNI calls
+- Thread safety: `AtomicInteger` for `distractionDurationS`, `ReentrantLock` pipeline guard, `@Volatile` for preview flag
+- Build-time asset verification: Gradle `verifyAssets` task fails build if model files missing
+- Diagnostic logging: device info, asset sizes, component init timing, OpenCV version
+- Periodic stats: every 30 frames logs avg/min/max frame time, heap sizes
+- V4L2 disconnect/reconnect with exponential backoff (2s → 30s max)
 
 ### Phase 7 — Detection Overlay & Status Dashboard (Complete)
-- C++ `OverlayPerson` struct exposes bbox, confidence, is_driver flag, and 17 keypoints through JNI JSON
-- Kotlin `OverlayKeypoint`, `OverlayPerson` data classes (Gson auto-parse, defaults for backward compat)
-- `FaceOverlayData` exposes eye contours, mouth outline, nose tip from existing MediaPipe landmarks
-- `OverlayRenderer` draws bounding boxes (green=driver, blue=others), COCO skeleton (16 bones), face landmarks (eye/mouth contours, nose), and EAR/MAR/Yaw/Pitch metric labels
-- `FrameHolder` expanded to hold `FrameData(bitmap, OutputResult)` for thread-safe UI consumption
-- Pipeline reordered: merge+smooth before overlay, overlay bitmap posted to FrameHolder with result
-- `MainActivity` dashboard: color-coded risk banner, metrics row, passenger count, distraction timer, active detection labels
-- Build verified: `assembleDebug` + all 64 unit tests pass (new fields have defaults, no test changes needed)
+- In-place overlay rendering (no bitmap copy — saves ~3.6MB/frame)
+- OverlayRenderer: bboxes, COCO skeleton, face landmarks, metric labels
+- FrameHolder: decoupled result+bitmap channels, CameraStatus enum
+- Dashboard: risk banner, score arc, streak, session timer, detection ticker
+- Gamified UX: score arc, streak tracking, varied AI messages, session summary
+
+### Phase 8 — Face Recognition (Complete)
+- MobileFaceNet via ONNX Runtime C++ (512-dim embeddings, ~30-50ms)
+- FaceStore: JSON persistence, cosine similarity matching
+- Recognition every 5th frame with caching
+- FaceRegistrationActivity: capture, name input, save/delete faces
+- 8 FaceStoreTest unit tests
+
+### Phase 9 — Multi-Platform Support (Complete)
+- PlatformProfile: auto-detect SA8155/SA8295/generic at startup
+- Parameterized: thread count/affinity, audio routing, camera strategy
+- Single APK — no build variants
+- 22 PlatformProfileTest unit tests
+
+### Phase 10 — Automated Camera Setup (Complete)
+- DeviceSetup: ODK rmmod, camera polling, chmod, pm grant
+- Multi-stage setup flow with cancellation support
+- Camera status indicator (NOT_CONNECTED → CONNECTING → READY → ACTIVE → LOST)
+- Graceful fallback to manual start on failure
+
+### Phase 11 — Webcam Preview Toggle (Complete)
+- Runtime toggle via top-row Preview button
+- Persisted across restarts via SharedPreferences
+- Zero overhead when disabled; same GC pressure behavior when enabled
 
 ---
 
@@ -1553,7 +1657,9 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 ### Unit Tests (JVM, no device needed)
 - **MergerTest**: Risk scoring all weight combinations (19 tests)
 - **TemporalSmootherTest**: Voting, face-gated filtering, fast-clear, passenger mode (20 tests)
-- **OutputResultTest**: JSON serialization, field validation (25 tests)
+- **OutputResultTest**: JSON serialization, field validation, driver_name field (29 tests)
+- **PlatformProfileTest**: Platform detection, tuning profiles, edge cases (22 tests)
+- **FaceStoreTest**: Cosine similarity, matching, edge cases (8 tests)
 
 ### Instrumented Tests (on SA8155 device)
 - Camera opens and captures frames
@@ -1576,7 +1682,7 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 
 ## 16. Complete Unit Test Specifications
 
-All 64 tests are specified below with exact inputs, logic, and expected outputs. These are the tests to implement in the Android project.
+All 98 tests are specified below with exact inputs, logic, and expected outputs. These are the tests to implement in the Android project.
 
 ### 16a. MergerTest (19 tests)
 
@@ -1910,7 +2016,7 @@ s = TemporalSmoother(window=3, threshold=0.6)
 
 ---
 
-### 16c. OutputResultTest / Schema Validation Test (25 tests)
+### 16c. OutputResultTest / Schema Validation Test (29 tests)
 
 **Test helper — `validResult`:**
 ```
@@ -1932,6 +2038,7 @@ function validResult(**overrides):
         head_yaw: 5.0,
         head_pitch: 3.0,
         distraction_duration_s: 0,
+        driver_name: null,
     }
     base.update(overrides)
     return base
@@ -1971,6 +2078,92 @@ function validResult(**overrides):
 | 23 | `test_distraction_duration_as_float` | `distraction_duration_s=5.5` | 1+ errors |
 | 24 | `test_yawning_as_string` | `driver_yawning="true"` | 1+ errors |
 | 25 | `test_mar_value_as_string` | `mar_value="0.5"` | 1+ errors |
+
+#### Driver Name Field (4 tests)
+
+| # | Test Name | Input Override | Expected |
+|---|---|---|---|
+| 26 | `test_valid_with_driver_name` | `driver_name="John"` | valid |
+| 27 | `test_valid_with_driver_name_null` | `driver_name=null` | valid |
+| 28 | `test_driver_name_as_number_rejected` | `driver_name=123` | 1+ errors |
+| 29 | `test_valid_without_driver_name` | delete driver_name | valid (optional field) |
+
+---
+
+### 16d. PlatformProfileTest (22 tests)
+
+Tests for `PlatformProfile.detect()` and tuning profile values.
+
+#### Platform Detection (8 tests)
+
+| # | Test Name | Input (manufacturer, hardware, socModel) | Expected Platform |
+|---|---|---|---|
+| 1 | `test_sa8155_alpsalpine` | "ALPSALPINE", "SA8155", "SA8155P" | SA8155 |
+| 2 | `test_sa8155_qualcomm` | "Qualcomm", "SA8155", "SA8155P" | SA8155 |
+| 3 | `test_sa8155_hardware_only` | "Unknown", "SA8155", "" | SA8155 |
+| 4 | `test_sa8295_qualcomm` | "Qualcomm", "SA8295", "SA8295P" | SA8295 |
+| 5 | `test_sa8295_hardware_only` | "Unknown", "SA8295", "" | SA8295 |
+| 6 | `test_generic_pixel` | "Google", "oriole", "" | GENERIC |
+| 7 | `test_generic_samsung` | "Samsung", "exynos", "" | GENERIC |
+| 8 | `test_generic_empty` | "", "", "" | GENERIC |
+
+#### SA8155 Tuning Profile (5 tests)
+
+| # | Test Name | Property | Expected Value |
+|---|---|---|---|
+| 9 | `test_sa8155_thread_count` | poseThreadCount | 4 |
+| 10 | `test_sa8155_thread_affinity` | poseThreadAffinity | "4,5,6,7" |
+| 11 | `test_sa8155_audio_usage` | audioUsage | USAGE_ASSISTANCE_SONIFICATION |
+| 12 | `test_sa8155_camera_strategy` | cameraStrategy | V4L2_FIRST |
+| 13 | `test_sa8155_face_thread_affinity` | faceRecogThreadAffinity | "5" |
+
+#### SA8295 Tuning Profile (4 tests)
+
+| # | Test Name | Property | Expected Value |
+|---|---|---|---|
+| 14 | `test_sa8295_thread_count` | poseThreadCount | 4 |
+| 15 | `test_sa8295_camera_strategy` | cameraStrategy | V4L2_FIRST |
+| 16 | `test_sa8295_audio_usage` | audioUsage | USAGE_ALARM |
+| 17 | `test_sa8295_thread_affinity` | poseThreadAffinity | non-empty |
+
+#### Generic Tuning Profile (3 tests)
+
+| # | Test Name | Property | Expected Value |
+|---|---|---|---|
+| 18 | `test_generic_thread_count` | poseThreadCount | 4 |
+| 19 | `test_generic_camera_strategy` | cameraStrategy | CAMERA2_FIRST |
+| 20 | `test_generic_thread_affinity` | poseThreadAffinity | "" (no pinning) |
+
+#### Edge Cases (2 tests)
+
+| # | Test Name | Input | Expected |
+|---|---|---|---|
+| 21 | `test_case_insensitive_detection` | "alpsalpine", "sa8155", "" | SA8155 |
+| 22 | `test_partial_match_sa8155` | "Honda", "sa8155p-variant", "" | SA8155 |
+
+---
+
+### 16e. FaceStoreTest (8 tests)
+
+Tests for cosine similarity and face matching logic.
+
+#### Cosine Similarity (5 tests)
+
+| # | Test Name | Input | Expected |
+|---|---|---|---|
+| 1 | `test_identical_vectors_similarity_1` | same vector, same vector | ~1.0 |
+| 2 | `test_orthogonal_vectors_similarity_0` | [1,0,...], [0,1,...] | ~0.0 |
+| 3 | `test_opposite_vectors_similarity_neg1` | v, -v | ~-1.0 |
+| 4 | `test_similar_above_threshold` | cos_sim > 0.5 | match found |
+| 5 | `test_different_below_threshold` | cos_sim < 0.5 | no match |
+
+#### Store Operations (3 tests)
+
+| # | Test Name | Behavior | Expected |
+|---|---|---|---|
+| 6 | `test_register_and_retrieve` | register("Alice", emb), getAll() | list contains Alice |
+| 7 | `test_delete_face` | register("Bob", emb), delete("Bob") | count == 0 |
+| 8 | `test_find_best_match` | register 2 faces, query similar | returns closest name |
 
 ---
 
