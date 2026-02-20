@@ -1,16 +1,20 @@
 package com.incabin
 
+import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.DecelerateInterpolator
+import androidx.core.content.ContextCompat
 
 /**
  * Custom View that draws a color-coded arc representing the driving safety score (0-100).
- * Green >= 75, Orange 40-74, Red < 40.
+ * Animated transitions between scores, glow on foreground arc.
  */
 class ScoreArcView @JvmOverloads constructor(
     context: Context,
@@ -18,16 +22,27 @@ class ScoreArcView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+    private var displayScore: Float = 100f
+    private var animator: ValueAnimator? = null
+
     var score: Int = 100
         set(value) {
-            field = value.coerceIn(0, 100)
-            invalidate()
+            val clamped = value.coerceIn(0, 100)
+            if (clamped == field) return
+            field = clamped
+            animateTo(clamped.toFloat())
         }
+
+    private val colorSafe = ContextCompat.getColor(context, R.color.safe)
+    private val colorCaution = ContextCompat.getColor(context, R.color.caution)
+    private val colorDanger = ContextCompat.getColor(context, R.color.danger)
+    private val colorBg = Color.rgb(0x1E, 0x1F, 0x2A)
+    private val colorTextPrimary = ContextCompat.getColor(context, R.color.text_primary)
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
-        color = Color.rgb(0x33, 0x33, 0x33)
+        color = colorBg
     }
 
     private val fgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -35,58 +50,88 @@ class ScoreArcView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
     }
 
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+
     private val scorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        color = Color.WHITE
+        color = colorTextPrimary
         isFakeBoldText = true
     }
 
-    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER
-        color = Color.rgb(0x99, 0x99, 0x99)
-    }
-
     private val arcRect = RectF()
+    private val glowRect = RectF()
 
     companion object {
         private const val ARC_START = 150f
         private const val ARC_SWEEP = 240f
-        private val COLOR_GREEN = Color.rgb(0x4C, 0xAF, 0x50)
-        private val COLOR_ORANGE = Color.rgb(0xFF, 0x98, 0x00)
-        private val COLOR_RED = Color.rgb(0xF4, 0x43, 0x36)
+        private const val ANIM_DURATION = 400L
+    }
+
+    init {
+        // Enable software rendering for BlurMaskFilter
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+    }
+
+    private fun animateTo(target: Float) {
+        animator?.cancel()
+        animator = ValueAnimator.ofFloat(displayScore, target).apply {
+            duration = ANIM_DURATION
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                displayScore = it.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    private fun scoreColor(s: Float): Int = when {
+        s >= 75f -> colorSafe
+        s >= 40f -> colorCaution
+        else -> colorDanger
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val strokeW = height * 0.08f
+        val strokeW = height * 0.12f
         bgPaint.strokeWidth = strokeW
         fgPaint.strokeWidth = strokeW
+        glowPaint.strokeWidth = strokeW * 1.8f
 
-        val pad = strokeW + 2f
+        val pad = strokeW * 1.5f
         arcRect.set(pad, pad, width - pad, height - pad)
+        glowRect.set(pad, pad, width - pad, height - pad)
 
         // Background arc
         canvas.drawArc(arcRect, ARC_START, ARC_SWEEP, false, bgPaint)
 
-        // Foreground arc (colored by score)
-        fgPaint.color = when {
-            score >= 75 -> COLOR_GREEN
-            score >= 40 -> COLOR_ORANGE
-            else -> COLOR_RED
-        }
-        val sweep = ARC_SWEEP * score / 100f
+        // Foreground arc with glow
+        val color = scoreColor(displayScore)
+        val sweep = ARC_SWEEP * displayScore / 100f
         if (sweep > 0f) {
+            // Glow layer
+            glowPaint.color = color
+            glowPaint.alpha = 60
+            glowPaint.maskFilter = BlurMaskFilter(strokeW * 0.8f, BlurMaskFilter.Blur.NORMAL)
+            canvas.drawArc(glowRect, ARC_START, sweep, false, glowPaint)
+
+            // Foreground arc
+            fgPaint.color = color
             canvas.drawArc(arcRect, ARC_START, sweep, false, fgPaint)
         }
 
-        // Score number
-        scorePaint.textSize = height * 0.32f
-        val textY = height / 2f + scorePaint.textSize * 0.3f
-        canvas.drawText(score.toString(), width / 2f, textY, scorePaint)
+        // Score number (no "SCORE" label)
+        scorePaint.textSize = height * 0.30f
+        val textY = height / 2f + scorePaint.textSize * 0.35f
+        canvas.drawText(displayScore.toInt().toString(), width / 2f, textY, scorePaint)
+    }
 
-        // "SCORE" label
-        labelPaint.textSize = height * 0.14f
-        canvas.drawText("SCORE", width / 2f, height * 0.8f, labelPaint)
+    override fun onDetachedFromWindow() {
+        animator?.cancel()
+        super.onDetachedFromWindow()
     }
 }

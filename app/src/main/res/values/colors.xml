@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Premium palette -->
+    <color name="background">#0A0A0F</color>
+    <color name="surface">#12131A</color>
+    <color name="surface_elevated">#1A1B24</color>
+
+    <color name="text_primary">#E8E9ED</color>
+    <color name="text_secondary">#6B6E7B</color>
+    <color name="text_muted">#3D3F4A</color>
+
+    <color name="accent">#5B8DEF</color>
+    <color name="safe">#2ECC71</color>
+    <color name="caution">#F39C12</color>
+    <color name="danger">#E74C3C</color>
+    <color name="gold">#F1C40F</color>
+
+    <color name="divider">#1E1F2A</color>
+</resources>

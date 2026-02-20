@@ -3,297 +3,352 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="8dp"
-    android:background="#FF000000">
+    android:background="@color/background">
 
-    <!-- Top row: status + button -->
+    <!-- ═══════════ Three-zone horizontal body ═══════════ -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="4dp">
-
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Status: Idle"
-            android:textSize="14sp"
-            android:textColor="#FFFFFFFF" />
-
-        <TextView
-            android:id="@+id/cameraStatusText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Cam: --"
-            android:textSize="11sp"
-            android:textColor="#FFFF5252"
-            android:layout_marginEnd="6dp" />
-
-        <Button
-            android:id="@+id/previewToggle"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="Preview"
-            android:textSize="11sp"
-            android:minWidth="60dp"
-            android:layout_marginEnd="4dp" />
-
-        <Button
-            android:id="@+id/registerButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="Faces"
-            android:textSize="12sp"
-            android:minWidth="70dp"
-            android:layout_marginEnd="4dp" />
-
-        <Button
-            android:id="@+id/toggleButton"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="@string/start_service"
-            android:textSize="12sp"
-            android:minWidth="100dp" />
-    </LinearLayout>
-
-    <!-- AI status message bar -->
-    <TextView
-        android:id="@+id/aiStatusText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Tap Start to begin monitoring"
-        android:textSize="16sp"
-        android:textStyle="italic"
-        android:textColor="#FF4CAF50"
-        android:gravity="center"
-        android:background="#FF1A1A1A"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:layout_marginBottom="4dp" />
-
-    <!-- Score + Streak row (hidden when idle) -->
-    <LinearLayout
-        android:id="@+id/scorePanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:visibility="gone"
-        android:layout_marginBottom="4dp">
-
-        <com.incabin.ScoreArcView
-            android:id="@+id/scoreArc"
-            android:layout_width="70dp"
-            android:layout_height="70dp" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:paddingStart="12dp"
-            android:paddingEnd="8dp">
-
-            <TextView
-                android:id="@+id/streakText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Streak: 0:00"
-                android:textSize="15sp"
-                android:textColor="#FF4CAF50" />
-
-            <TextView
-                android:id="@+id/bestStreakText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Best: 0:00"
-                android:textSize="12sp"
-                android:textColor="#FF888888" />
-
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/sessionTimeText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Session: 0:00"
-            android:textSize="13sp"
-            android:textColor="#FFAAAAAA"
-            android:paddingEnd="4dp" />
-    </LinearLayout>
-
-    <!-- Camera preview -->
-    <ImageView
-        android:id="@+id/previewImage"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:scaleType="fitCenter"
-        android:background="#FF111111"
-        android:contentDescription="Camera preview" />
+        android:orientation="horizontal">
 
-    <!-- Dashboard panel (hidden when idle) -->
-    <LinearLayout
-        android:id="@+id/dashboardPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone"
-        android:padding="8dp"
-        android:layout_marginTop="4dp">
-
-        <!-- Risk level banner -->
-        <TextView
-            android:id="@+id/riskBanner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="RISK: LOW"
-            android:textSize="32sp"
-            android:textStyle="bold"
-            android:textColor="#FF000000"
-            android:background="#FF4CAF50"
-            android:gravity="center"
-            android:padding="6dp" />
-
-        <!-- Driver name display -->
-        <TextView
-            android:id="@+id/driverNameText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:textColor="#FF64B5F6"
-            android:gravity="center"
-            android:layout_marginTop="4dp"
-            android:visibility="gone" />
-
-        <!-- Metrics row (hidden - engineering data) -->
+        <!-- ──── LEFT PANEL: Controls + Score ──── -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="6dp"
+            android:id="@+id/leftPanel"
+            android:layout_width="@dimen/left_panel_width"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@color/surface"
+            android:paddingStart="@dimen/space_lg"
+            android:paddingEnd="@dimen/space_lg"
+            android:paddingTop="@dimen/space_lg"
+            android:paddingBottom="@dimen/space_sm">
+
+            <!-- Score arc (hidden when idle) -->
+            <FrameLayout
+                android:id="@+id/scoreContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                android:layout_marginBottom="@dimen/space_md">
+
+                <com.incabin.ScoreArcView
+                    android:id="@+id/scoreArc"
+                    android:layout_width="@dimen/score_arc_size"
+                    android:layout_height="@dimen/score_arc_size"
+                    android:layout_gravity="center_horizontal" />
+            </FrameLayout>
+
+            <!-- Streak / session (hidden when idle) -->
+            <LinearLayout
+                android:id="@+id/scorePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:layout_marginBottom="@dimen/space_lg">
+
+                <TextView
+                    android:id="@+id/streakText"
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Streak: 0:00" />
+
+                <TextView
+                    android:id="@+id/bestStreakText"
+                    style="@style/TextMicro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Best: 0:00"
+                    android:layout_marginTop="2dp" />
+
+                <TextView
+                    android:id="@+id/sessionTimeText"
+                    style="@style/TextMicro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Session: 0:00"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/leftDivider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/divider"
+                android:layout_marginBottom="@dimen/space_md"
+                android:visibility="gone" />
+
+            <!-- Camera status -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="@dimen/space_md">
+
+                <View
+                    android:id="@+id/cameraStatusDot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:background="@color/danger"
+                    android:layout_marginEnd="@dimen/space_sm" />
+
+                <TextView
+                    android:id="@+id/cameraStatusText"
+                    style="@style/TextMicro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="No camera" />
+            </LinearLayout>
+
+            <!-- Spacer -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Preview toggle button -->
+            <Button
+                android:id="@+id/previewToggle"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height"
+                android:background="@drawable/bg_button"
+                android:text="Preview"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="false"
+                android:layout_marginBottom="@dimen/space_sm"
+                android:stateListAnimator="@null" />
+
+            <!-- Faces button -->
+            <Button
+                android:id="@+id/registerButton"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height"
+                android:background="@drawable/bg_button"
+                android:text="Faces"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="false"
+                android:layout_marginBottom="@dimen/space_sm"
+                android:stateListAnimator="@null" />
+
+            <!-- Start / Stop button -->
+            <Button
+                android:id="@+id/toggleButton"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height_large"
+                android:background="@drawable/bg_button_accent"
+                android:text="@string/start_service"
+                android:textSize="14sp"
+                android:textColor="#FFFFFFFF"
+                android:textAllCaps="false"
+                android:stateListAnimator="@null" />
+        </LinearLayout>
+
+        <!-- ──── CENTER: Camera preview + AI status overlay ──── -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <ImageView
+                android:id="@+id/previewImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:background="@color/surface"
+                android:contentDescription="Camera preview" />
+
+            <!-- Idle branding (visible when not monitoring) -->
+            <LinearLayout
+                android:id="@+id/idleOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@color/surface">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Honda Smart Cabin"
+                    style="@style/TextTitle"
+                    android:textColor="@color/text_muted" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Tap Start to begin monitoring"
+                    android:layout_marginTop="@dimen/space_sm" />
+            </LinearLayout>
+
+            <!-- AI status overlay at bottom of preview -->
+            <TextView
+                android:id="@+id/aiStatusText"
+                style="@style/TextBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:background="@drawable/bg_ai_scrim"
+                android:gravity="center"
+                android:paddingTop="@dimen/space_xl"
+                android:paddingBottom="@dimen/space_md"
+                android:paddingStart="@dimen/space_lg"
+                android:paddingEnd="@dimen/space_lg"
+                android:text="Tap Start to begin monitoring"
+                android:textColor="@color/text_secondary"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- ──── RIGHT PANEL: Safety dashboard ──── -->
+        <LinearLayout
+            android:id="@+id/rightPanel"
+            android:layout_width="@dimen/right_panel_width"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@color/surface"
+            android:paddingStart="@dimen/space_lg"
+            android:paddingEnd="@dimen/space_lg"
+            android:paddingTop="@dimen/space_lg"
+            android:paddingBottom="@dimen/space_sm"
             android:visibility="gone">
 
+            <!-- Risk pill -->
+            <TextView
+                android:id="@+id/riskBanner"
+                style="@style/TextHeadline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_risk_pill"
+                android:paddingStart="@dimen/risk_pill_padding_h"
+                android:paddingEnd="@dimen/risk_pill_padding_h"
+                android:paddingTop="@dimen/risk_pill_padding_v"
+                android:paddingBottom="@dimen/risk_pill_padding_v"
+                android:text="LOW"
+                android:textColor="#FF000000"
+                android:layout_marginBottom="@dimen/space_lg" />
+
+            <!-- Driver name -->
+            <TextView
+                android:id="@+id/driverNameText"
+                style="@style/TextTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/accent"
+                android:visibility="gone"
+                android:layout_marginBottom="@dimen/space_md" />
+
+            <!-- Passengers -->
+            <TextView
+                android:id="@+id/passengerText"
+                style="@style/TextBody"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 passengers"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="@dimen/space_xs" />
+
+            <!-- Distraction timer -->
+            <TextView
+                android:id="@+id/distractionText"
+                style="@style/TextBody"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Distraction: 0s"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="@dimen/space_lg" />
+
+            <!-- Detection labels container -->
+            <LinearLayout
+                android:id="@+id/detectionsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="@dimen/space_md" />
+
+            <!-- Spacer -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Ticker: last 3 events -->
+            <LinearLayout
+                android:id="@+id/tickerContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <TextView
+                    android:id="@+id/tickerLine1"
+                    style="@style/TextMicro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tickerLine2"
+                    style="@style/TextMicro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tickerLine3"
+                    style="@style/TextMicro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <!-- Hidden engineering metrics (kept in layout for compatibility) -->
             <TextView
                 android:id="@+id/earText"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="EAR: --"
-                android:textSize="13sp"
-                android:textColor="#FFCCCCCC"
-                android:gravity="center" />
-
+                android:layout_height="0dp"
+                android:visibility="gone" />
             <TextView
                 android:id="@+id/marText"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="MAR: --"
-                android:textSize="13sp"
-                android:textColor="#FFCCCCCC"
-                android:gravity="center" />
-
+                android:layout_height="0dp"
+                android:visibility="gone" />
             <TextView
                 android:id="@+id/yawText"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Yaw: --"
-                android:textSize="13sp"
-                android:textColor="#FFCCCCCC"
-                android:gravity="center" />
-
+                android:layout_height="0dp"
+                android:visibility="gone" />
             <TextView
                 android:id="@+id/pitchText"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Pitch: --"
-                android:textSize="13sp"
-                android:textColor="#FFCCCCCC"
-                android:gravity="center" />
+                android:layout_height="0dp"
+                android:visibility="gone" />
         </LinearLayout>
-
-        <!-- Info row -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="4dp">
-
-            <TextView
-                android:id="@+id/passengerText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Passengers: 0"
-                android:textSize="26sp"
-                android:textStyle="bold"
-                android:textColor="#FFCCCCCC"
-                android:gravity="center" />
-
-            <TextView
-                android:id="@+id/distractionText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Distraction: 0s"
-                android:textSize="26sp"
-                android:textStyle="bold"
-                android:textColor="#FFCCCCCC"
-                android:gravity="center" />
-        </LinearLayout>
-
-        <!-- Active detections -->
-        <TextView
-            android:id="@+id/detectionsText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="13sp"
-            android:textColor="#FFFF5252"
-            android:gravity="center"
-            android:layout_marginTop="4dp" />
-
     </LinearLayout>
 
-    <!-- Detection history ticker -->
+    <!-- ═══════════ Footer ═══════════ -->
     <TextView
-        android:id="@+id/tickerText"
+        style="@style/TextMicro"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:singleLine="true"
-        android:ellipsize="marquee"
-        android:marqueeRepeatLimit="marquee_forever"
-        android:focusable="true"
-        android:focusableInTouchMode="true"
-        android:scrollHorizontally="true"
-        android:text=""
-        android:textSize="11sp"
-        android:textColor="#FFAAAAAA"
-        android:background="#FF0D0D0D"
-        android:paddingTop="3dp"
-        android:paddingBottom="3dp"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:layout_marginTop="2dp" />
-
-    <!-- Footer -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Demo by KPIT Technologies, India"
-        android:textSize="20sp"
-        android:textColor="#FF888888"
+        android:text="KPIT Technologies, India"
         android:gravity="center"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp" />
+        android:paddingTop="@dimen/space_xs"
+        android:paddingBottom="@dimen/space_xs" />
 
 </LinearLayout>

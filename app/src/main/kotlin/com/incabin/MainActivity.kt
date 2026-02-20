@@ -1,22 +1,29 @@
 package com.incabin
 
 import android.Manifest
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import android.app.Activity
 import android.util.Log
+import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -94,24 +101,43 @@ class MainActivity : Activity() {
             "Eyes on the road. Looking good!"
         )
 
-        private val COLOR_GREEN = Color.rgb(0x4C, 0xAF, 0x50)
-        private val COLOR_ORANGE = Color.rgb(0xFF, 0x98, 0x00)
-        private val COLOR_RED = Color.rgb(0xF4, 0x43, 0x36)
-        private val COLOR_BLUE = Color.rgb(0x64, 0xB5, 0xF6)
-        private val COLOR_GOLD = Color.rgb(0xFF, 0xD5, 0x4F)
+        // Detection labels with dot colors
+        private val DETECTION_CONFIGS = listOf(
+            Triple("driverUsingPhone", "Phone Detected", true),
+            Triple("driverEyesClosed", "Eyes Closed", true),
+            Triple("driverYawning", "Yawning", false),
+            Triple("driverDistracted", "Distracted", false),
+            Triple("driverEatingDrinking", "Eating / Drinking", false),
+            Triple("dangerousPosture", "Dangerous Posture", false),
+            Triple("childSlouching", "Child Slouching", false)
+        )
 
         private val TICKER_TIME_FORMAT = SimpleDateFormat("HH:mm:ss", Locale.US)
     }
+
+    // --- Palette colors (resolved once) ---
+    private var colorSafe = 0
+    private var colorCaution = 0
+    private var colorDanger = 0
+    private var colorAccent = 0
+    private var colorGold = 0
+    private var colorTextPrimary = 0
+    private var colorTextSecondary = 0
+    private var colorTextMuted = 0
+    private var colorSurface = 0
+    private var colorSurfaceElevated = 0
 
     // --- UI references ---
     private lateinit var toggleButton: Button
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
     private lateinit var cameraStatusText: TextView
+    private lateinit var cameraStatusDot: View
     private lateinit var driverNameText: TextView
     private lateinit var statusText: TextView
     private lateinit var previewImage: ImageView
-    private lateinit var dashboardPanel: LinearLayout
+    private lateinit var idleOverlay: LinearLayout
+    private lateinit var rightPanel: LinearLayout
     private lateinit var riskBanner: TextView
     private lateinit var earText: TextView
     private lateinit var marText: TextView
@@ -119,14 +145,19 @@ class MainActivity : Activity() {
     private lateinit var pitchText: TextView
     private lateinit var passengerText: TextView
     private lateinit var distractionText: TextView
-    private lateinit var detectionsText: TextView
+    private lateinit var detectionsContainer: LinearLayout
     private lateinit var aiStatusText: TextView
     private lateinit var scoreArc: ScoreArcView
+    private lateinit var scoreContainer: FrameLayout
     private lateinit var streakText: TextView
     private lateinit var bestStreakText: TextView
     private lateinit var sessionTimeText: TextView
     private lateinit var scorePanel: LinearLayout
-    private lateinit var tickerText: TextView
+    private lateinit var leftDivider: View
+    private lateinit var tickerContainer: LinearLayout
+    private lateinit var tickerLine1: TextView
+    private lateinit var tickerLine2: TextView
+    private lateinit var tickerLine3: TextView
 
     private var isRunning = false
     private var isSettingUp = false
@@ -152,6 +183,11 @@ class MainActivity : Activity() {
     // --- Ticker ---
     private val tickerEvents = mutableListOf<String>()
     private var lastTickerDetections = ""
+
+    // --- Animation state ---
+    private var currentRiskColor = 0
+    private var riskAnimator: ValueAnimator? = null
+    private var currentDetections = setOf<String>()
 
     // --- Dedup: skip re-processing the same frame ---
     private var lastFrameTimestamp = ""
@@ -198,17 +234,32 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Resolve palette colors once
+        colorSafe = ContextCompat.getColor(this, R.color.safe)
+        colorCaution = ContextCompat.getColor(this, R.color.caution)
+        colorDanger = ContextCompat.getColor(this, R.color.danger)
+        colorAccent = ContextCompat.getColor(this, R.color.accent)
+        colorGold = ContextCompat.getColor(this, R.color.gold)
+        colorTextPrimary = ContextCompat.getColor(this, R.color.text_primary)
+        colorTextSecondary = ContextCompat.getColor(this, R.color.text_secondary)
+        colorTextMuted = ContextCompat.getColor(this, R.color.text_muted)
+        colorSurface = ContextCompat.getColor(this, R.color.surface)
+        colorSurfaceElevated = ContextCompat.getColor(this, R.color.surface_elevated)
+
         // Detect platform once
         platformProfile = PlatformProfile.detect()
 
+        // Bind views
         toggleButton = findViewById(R.id.toggleButton)
         registerButton = findViewById(R.id.registerButton)
         previewToggle = findViewById(R.id.previewToggle)
         cameraStatusText = findViewById(R.id.cameraStatusText)
+        cameraStatusDot = findViewById(R.id.cameraStatusDot)
         driverNameText = findViewById(R.id.driverNameText)
         statusText = findViewById(R.id.statusText)
         previewImage = findViewById(R.id.previewImage)
-        dashboardPanel = findViewById(R.id.dashboardPanel)
+        idleOverlay = findViewById(R.id.idleOverlay)
+        rightPanel = findViewById(R.id.rightPanel)
         riskBanner = findViewById(R.id.riskBanner)
         earText = findViewById(R.id.earText)
         marText = findViewById(R.id.marText)
@@ -216,14 +267,21 @@ class MainActivity : Activity() {
         pitchText = findViewById(R.id.pitchText)
         passengerText = findViewById(R.id.passengerText)
         distractionText = findViewById(R.id.distractionText)
-        detectionsText = findViewById(R.id.detectionsText)
+        detectionsContainer = findViewById(R.id.detectionsContainer)
         aiStatusText = findViewById(R.id.aiStatusText)
         scoreArc = findViewById(R.id.scoreArc)
+        scoreContainer = findViewById(R.id.scoreContainer)
         streakText = findViewById(R.id.streakText)
         bestStreakText = findViewById(R.id.bestStreakText)
         sessionTimeText = findViewById(R.id.sessionTimeText)
         scorePanel = findViewById(R.id.scorePanel)
-        tickerText = findViewById(R.id.tickerText)
+        leftDivider = findViewById(R.id.leftDivider)
+        tickerContainer = findViewById(R.id.tickerContainer)
+        tickerLine1 = findViewById(R.id.tickerLine1)
+        tickerLine2 = findViewById(R.id.tickerLine2)
+        tickerLine3 = findViewById(R.id.tickerLine3)
+
+        currentRiskColor = colorSafe
 
         // Restore preview toggle state
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -275,6 +333,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        riskAnimator?.cancel()
         deviceSetup?.cancel()
         super.onDestroy()
     }
@@ -286,45 +345,54 @@ class MainActivity : Activity() {
     private fun updatePreviewToggleUI() {
         if (Config.ENABLE_PREVIEW) {
             previewToggle.text = "Preview ON"
-            previewToggle.alpha = 1.0f
+            previewToggle.setTextColor(colorTextPrimary)
         } else {
             previewToggle.text = "Preview"
-            previewToggle.alpha = 0.6f
+            previewToggle.setTextColor(colorTextSecondary)
         }
     }
 
     // ---------------------------------------------------------------------
-    // Camera Status Indicator
+    // Camera Status Indicator (dot + text)
     // ---------------------------------------------------------------------
+
+    private fun setCameraStatusDotColor(color: Int) {
+        val bg = cameraStatusDot.background
+        if (bg is GradientDrawable) {
+            bg.setColor(color)
+        } else {
+            cameraStatusDot.setBackgroundColor(color)
+        }
+    }
 
     private fun updateCameraStatus() {
         val status = FrameHolder.getCameraStatus()
         when (status) {
             FrameHolder.CameraStatus.NOT_CONNECTED -> {
-                cameraStatusText.text = "Cam: None"
-                cameraStatusText.setTextColor(COLOR_RED)
+                cameraStatusText.text = "No camera"
+                setCameraStatusDotColor(colorDanger)
             }
             FrameHolder.CameraStatus.CONNECTING -> {
-                cameraStatusText.text = "Cam: ..."
-                cameraStatusText.setTextColor(COLOR_ORANGE)
+                cameraStatusText.text = "Connecting..."
+                setCameraStatusDotColor(colorCaution)
             }
             FrameHolder.CameraStatus.READY -> {
-                cameraStatusText.text = "Cam: Ready"
-                cameraStatusText.setTextColor(COLOR_GREEN)
+                cameraStatusText.text = "Ready"
+                setCameraStatusDotColor(colorSafe)
             }
             FrameHolder.CameraStatus.ACTIVE -> {
-                cameraStatusText.text = "Cam: Active"
-                cameraStatusText.setTextColor(COLOR_GREEN)
+                cameraStatusText.text = "Active"
+                setCameraStatusDotColor(colorSafe)
             }
             FrameHolder.CameraStatus.LOST -> {
-                cameraStatusText.text = "Cam: Lost"
-                cameraStatusText.setTextColor(COLOR_RED)
+                cameraStatusText.text = "Lost"
+                setCameraStatusDotColor(colorDanger)
             }
         }
     }
 
     // ---------------------------------------------------------------------
-    // Setup Flow (Feature 1)
+    // Setup Flow
     // ---------------------------------------------------------------------
 
     private fun onStartButtonTap() {
@@ -336,7 +404,6 @@ class MainActivity : Activity() {
     }
 
     private fun startAutomotiveSetup() {
-        // Check if camera is already available (app restart case)
         val setup = DeviceSetup()
         deviceSetup = setup
 
@@ -356,7 +423,7 @@ class MainActivity : Activity() {
         setup.startSetup(packageName, object : DeviceSetup.Callback {
             override fun onStageChanged(stage: DeviceSetup.Stage, message: String) {
                 runOnUiThread {
-                    statusText.text = "Status: $message"
+                    statusText.text = message
                     Log.i(TAG, "Setup stage: $stage - $message")
                 }
             }
@@ -375,9 +442,8 @@ class MainActivity : Activity() {
                     isSettingUp = false
                     toggleButton.isEnabled = true
                     toggleButton.text = getString(R.string.start_service)
-                    statusText.text = "Status: Setup failed"
+                    statusText.text = "Setup failed"
                     Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                    // Allow manual start anyway — user might have done setup manually
                     Log.w(TAG, "Setup failed: $message, user can still start manually")
                 }
             }
@@ -413,7 +479,7 @@ class MainActivity : Activity() {
             if (cameraGranted) {
                 startMonitoring()
             } else {
-                statusText.text = "Status: Camera permission denied"
+                statusText.text = "Camera permission denied"
                 Log.w(TAG, "Camera permission denied")
             }
         }
@@ -426,7 +492,7 @@ class MainActivity : Activity() {
         startForegroundService(intent)
         isRunning = true
         toggleButton.text = getString(R.string.stop_service)
-        statusText.text = "Status: Monitoring active"
+        statusText.text = "Monitoring active"
 
         // Reset all state
         drivingScore = 100f
@@ -442,18 +508,38 @@ class MainActivity : Activity() {
         tickerEvents.clear()
         lastTickerDetections = ""
         lastFrameTimestamp = ""
+        currentDetections = emptySet()
 
-        aiStatusText.text = "Warming up the AI brain..."
-        aiStatusText.setTextColor(COLOR_BLUE)
         scoreArc.score = 100
         streakText.text = "Streak: 0:00"
         bestStreakText.text = "Best: 0:00"
         sessionTimeText.text = "Session: 0:00"
 
-        scorePanel.visibility = LinearLayout.VISIBLE
-        dashboardPanel.visibility = LinearLayout.VISIBLE
-        tickerText.visibility = TextView.VISIBLE
-        tickerText.isSelected = true // start marquee
+        // Show monitoring UI with fade-in
+        idleOverlay.animate().alpha(0f).setDuration(200).withEndAction {
+            idleOverlay.visibility = View.GONE
+        }.start()
+
+        scoreContainer.visibility = View.VISIBLE
+        scorePanel.visibility = View.VISIBLE
+        leftDivider.visibility = View.VISIBLE
+        aiStatusText.visibility = View.VISIBLE
+        aiStatusText.text = "Warming up the AI brain..."
+        aiStatusText.setTextColor(colorAccent)
+
+        // Fade in right panel
+        rightPanel.alpha = 0f
+        rightPanel.visibility = View.VISIBLE
+        rightPanel.animate().alpha(1f).setDuration(300).setInterpolator(DecelerateInterpolator()).start()
+
+        tickerContainer.visibility = View.VISIBLE
+
+        // Reset risk banner
+        currentRiskColor = colorSafe
+        setRiskPillColor(colorSafe)
+        riskBanner.text = "LOW"
+        riskBanner.setTextColor(Color.BLACK)
+
         handler.post(previewPoller)
         Log.i(TAG, "Monitoring started")
     }
@@ -469,14 +555,27 @@ class MainActivity : Activity() {
 
         isRunning = false
         toggleButton.text = getString(R.string.start_service)
-        statusText.text = "Status: Idle"
-        aiStatusText.text = "Tap Start to begin monitoring"
-        aiStatusText.setTextColor(COLOR_GREEN)
-        scorePanel.visibility = LinearLayout.GONE
-        dashboardPanel.visibility = LinearLayout.GONE
-        tickerText.visibility = TextView.GONE
+        statusText.text = "Tap Start to begin monitoring"
+
+        // Hide monitoring UI with fade
+        rightPanel.animate().alpha(0f).setDuration(200).withEndAction {
+            rightPanel.visibility = View.GONE
+        }.start()
+
+        scoreContainer.visibility = View.GONE
+        scorePanel.visibility = View.GONE
+        leftDivider.visibility = View.GONE
+        aiStatusText.visibility = View.GONE
+        tickerContainer.visibility = View.GONE
+
+        // Show idle overlay
+        idleOverlay.visibility = View.VISIBLE
+        idleOverlay.alpha = 0f
+        idleOverlay.animate().alpha(1f).setDuration(300).start()
+
         handler.removeCallbacks(previewPoller)
         previewImage.setImageBitmap(null)
+        detectionsContainer.removeAllViews()
         Log.i(TAG, "Monitoring stopped")
     }
 
@@ -485,54 +584,168 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------------
 
     private fun updateDashboard(result: OutputResult) {
+        // --- Risk pill with animated color transition ---
+        val targetColor: Int
+        val riskText: String
+        val riskTextColor: Int
+
         if (result.passengerCount == 0) {
-            riskBanner.text = "NO PASSENGERS"
-            riskBanner.setBackgroundColor(Color.DKGRAY)
-            riskBanner.setTextColor(Color.WHITE)
+            targetColor = colorSurfaceElevated
+            riskText = "NO OCCUPANTS"
+            riskTextColor = colorTextSecondary
         } else when (result.riskLevel) {
             "high" -> {
-                riskBanner.text = "RISK: HIGH"
-                riskBanner.setBackgroundColor(COLOR_RED)
-                riskBanner.setTextColor(Color.WHITE)
+                targetColor = colorDanger
+                riskText = "HIGH"
+                riskTextColor = Color.WHITE
             }
             "medium" -> {
-                riskBanner.text = "RISK: MEDIUM"
-                riskBanner.setBackgroundColor(COLOR_ORANGE)
-                riskBanner.setTextColor(Color.BLACK)
+                targetColor = colorCaution
+                riskText = "MEDIUM"
+                riskTextColor = Color.BLACK
             }
             else -> {
-                riskBanner.text = "RISK: LOW"
-                riskBanner.setBackgroundColor(COLOR_GREEN)
-                riskBanner.setTextColor(Color.BLACK)
+                targetColor = colorSafe
+                riskText = "LOW"
+                riskTextColor = Color.BLACK
             }
         }
+
+        riskBanner.text = riskText
+        riskBanner.setTextColor(riskTextColor)
+        animateRiskColor(targetColor)
 
         // Driver name
         val name = result.driverName
         if (name != null) {
             driverNameText.text = "Driver: $name"
-            driverNameText.visibility = TextView.VISIBLE
+            if (driverNameText.visibility != View.VISIBLE) {
+                driverNameText.alpha = 0f
+                driverNameText.visibility = View.VISIBLE
+                driverNameText.animate().alpha(1f).setDuration(200).start()
+            }
         } else {
-            driverNameText.visibility = TextView.GONE
+            driverNameText.visibility = View.GONE
         }
 
+        // Engineering metrics (hidden, but kept updated)
         earText.text = "EAR: ${result.earValue?.let { "%.3f".format(it) } ?: "--"}"
         marText.text = "MAR: ${result.marValue?.let { "%.3f".format(it) } ?: "--"}"
         yawText.text = "Yaw: ${result.headYaw?.let { "%.1f".format(it) } ?: "--"}"
         pitchText.text = "Pitch: ${result.headPitch?.let { "%.1f".format(it) } ?: "--"}"
 
-        passengerText.text = "Passengers: ${result.passengerCount}"
-        distractionText.text = "Distraction: ${result.distractionDurationS}s"
+        // Info
+        val pCount = result.passengerCount
+        passengerText.text = "$pCount passenger${if (pCount != 1) "s" else ""}"
+        val distS = result.distractionDurationS
+        if (distS > 0) {
+            distractionText.text = "Distraction: ${distS}s"
+            distractionText.setTextColor(if (distS >= 10) colorDanger else colorCaution)
+        } else {
+            distractionText.text = "Distraction: 0s"
+            distractionText.setTextColor(colorTextSecondary)
+        }
 
-        val active = mutableListOf<String>()
-        if (result.driverUsingPhone) active.add("Phone")
+        // --- Detection labels with animated appear/disappear ---
+        updateDetectionLabels(result)
+    }
+
+    // --- Risk pill color animation ---
+    private fun animateRiskColor(targetColor: Int) {
+        if (targetColor == currentRiskColor) return
+        riskAnimator?.cancel()
+        riskAnimator = ValueAnimator.ofObject(ArgbEvaluator(), currentRiskColor, targetColor).apply {
+            duration = 500
+            addUpdateListener { setRiskPillColor(it.animatedValue as Int) }
+            start()
+        }
+        currentRiskColor = targetColor
+    }
+
+    private fun setRiskPillColor(color: Int) {
+        val bg = riskBanner.background
+        if (bg is GradientDrawable) {
+            bg.setColor(color)
+        }
+    }
+
+    // --- Detection labels: vertical stack with dots ---
+    private fun updateDetectionLabels(result: OutputResult) {
+        val active = mutableSetOf<String>()
+        if (result.driverUsingPhone) active.add("Phone Detected")
         if (result.driverEyesClosed) active.add("Eyes Closed")
         if (result.driverYawning) active.add("Yawning")
         if (result.driverDistracted) active.add("Distracted")
-        if (result.driverEatingDrinking) active.add("Eating/Drinking")
-        if (result.dangerousPosture) active.add("Bad Posture")
+        if (result.driverEatingDrinking) active.add("Eating / Drinking")
+        if (result.dangerousPosture) active.add("Dangerous Posture")
         if (result.childSlouching) active.add("Child Slouching")
-        detectionsText.text = active.joinToString(" | ")
+
+        // Skip update if unchanged
+        if (active == currentDetections) return
+        val removed = currentDetections - active
+        val added = active - currentDetections
+        currentDetections = active
+
+        // Remove labels that are no longer active
+        for (label in removed) {
+            val tag = "det_$label"
+            val view = detectionsContainer.findViewWithTag<View>(tag)
+            if (view != null) {
+                view.animate().alpha(0f).setDuration(300).withEndAction {
+                    detectionsContainer.removeView(view)
+                    showAllClearIfEmpty()
+                }.start()
+            }
+        }
+
+        // Remove "All Clear" if we're adding detections
+        if (added.isNotEmpty()) {
+            val allClearView = detectionsContainer.findViewWithTag<View>("det_allclear")
+            if (allClearView != null) {
+                detectionsContainer.removeView(allClearView)
+            }
+        }
+
+        // Add new detection labels
+        for (label in added) {
+            val isDanger = label == "Phone Detected" || label == "Eyes Closed"
+            val dotColor = if (isDanger) colorDanger else colorCaution
+
+            val tv = TextView(this).apply {
+                tag = "det_$label"
+                text = "\u25CF  $label"
+                textSize = 15f
+                setTextColor(dotColor)
+                setPadding(0, dpToPx(2), 0, dpToPx(2))
+                alpha = 0f
+            }
+            detectionsContainer.addView(tv)
+            tv.animate().alpha(1f).setDuration(200).start()
+        }
+
+        // Show "All Clear" if nothing active
+        if (active.isEmpty()) {
+            showAllClearIfEmpty()
+        }
+    }
+
+    private fun showAllClearIfEmpty() {
+        if (currentDetections.isNotEmpty()) return
+        if (detectionsContainer.findViewWithTag<View>("det_allclear") != null) return
+
+        // Check no animated views still present
+        if (detectionsContainer.childCount > 0) return
+
+        val tv = TextView(this).apply {
+            tag = "det_allclear"
+            text = "All Clear"
+            textSize = 15f
+            setTextColor(colorSafe)
+            setPadding(0, dpToPx(2), 0, dpToPx(2))
+            alpha = 0f
+        }
+        detectionsContainer.addView(tv)
+        tv.animate().alpha(1f).setDuration(200).start()
     }
 
     // ---------------------------------------------------------------------
@@ -574,7 +787,6 @@ class MainActivity : Activity() {
             result.childSlouching
 
         if (hasDetection) {
-            // Track detection counts for session summary
             if (result.driverUsingPhone) detectionCounts["Phone"] = (detectionCounts["Phone"] ?: 0) + 1
             if (result.driverEyesClosed) detectionCounts["Eyes Closed"] = (detectionCounts["Eyes Closed"] ?: 0) + 1
             if (result.driverYawning) detectionCounts["Yawning"] = (detectionCounts["Yawning"] ?: 0) + 1
@@ -583,7 +795,6 @@ class MainActivity : Activity() {
             if (result.dangerousPosture) detectionCounts["Posture"] = (detectionCounts["Posture"] ?: 0) + 1
             if (result.childSlouching) detectionCounts["Child Slouch"] = (detectionCounts["Child Slouch"] ?: 0) + 1
 
-            // Save best streak before reset
             val currentStreak = now - lastDetectionMs
             if (currentStreak > bestStreakMs) {
                 bestStreakMs = currentStreak
@@ -594,114 +805,73 @@ class MainActivity : Activity() {
 
         val streakMs = now - lastDetectionMs
         streakText.text = "Streak: ${formatDuration(streakMs)}"
-        streakText.setTextColor(if (streakMs > 60_000) COLOR_GREEN else Color.rgb(0xCC, 0xCC, 0xCC))
+        streakText.setTextColor(if (streakMs > 60_000) colorSafe else colorTextSecondary)
 
         val displayBest = if (streakMs > bestStreakMs) streakMs else bestStreakMs
         bestStreakText.text = "Best: ${formatDuration(displayBest)}"
     }
 
     // ---------------------------------------------------------------------
-    // AI Status with Varied Messages + Milestones
+    // AI Status with crossfade
     // ---------------------------------------------------------------------
 
     private fun updateAiStatus(result: OutputResult) {
         framesSinceStart++
 
-        // First few frames: initialization feedback
-        if (framesSinceStart == 1) {
-            aiStatusText.text = "Smart eyes are ready!"
-            aiStatusText.setTextColor(COLOR_BLUE)
-            return
-        }
-        if (framesSinceStart == 2) {
-            aiStatusText.text = "Got you! Let's roll."
-            aiStatusText.setTextColor(COLOR_GREEN)
-            return
-        }
-
-        // Check for streak milestones
-        val streakMs = System.currentTimeMillis() - lastDetectionMs
-        for ((thresholdMs, milestoneMsg) in STREAK_MILESTONES) {
-            if (streakMs >= thresholdMs && thresholdMs !in announcedMilestones) {
-                announcedMilestones.add(thresholdMs)
-                aiStatusText.text = milestoneMsg
-                aiStatusText.setTextColor(COLOR_GOLD)
-                return
-            }
-        }
-
         val message: String
         val color: Int
 
-        when {
-            // Priority 1: Detection messages (varied)
-            result.driverUsingPhone -> {
-                message = PHONE_MESSAGES.random()
-                color = COLOR_RED
-            }
-            result.driverEyesClosed -> {
-                message = EYES_MESSAGES.random()
-                color = COLOR_RED
-            }
-            result.driverDistracted -> {
-                message = DISTRACTED_MESSAGES.random()
-                color = COLOR_ORANGE
-            }
-            result.driverYawning -> {
-                message = YAWNING_MESSAGES.random()
-                color = COLOR_ORANGE
-            }
-            result.driverEatingDrinking -> {
-                message = EATING_MESSAGES.random()
-                color = COLOR_ORANGE
-            }
-            result.dangerousPosture -> {
-                message = POSTURE_MESSAGES.random()
-                color = COLOR_ORANGE
-            }
-            result.childSlouching -> {
-                message = CHILD_SLOUCH_MESSAGES.random()
-                color = COLOR_ORANGE
+        // First few frames: initialization feedback
+        if (framesSinceStart == 1) {
+            message = "Smart eyes are ready!"
+            color = colorAccent
+        } else if (framesSinceStart == 2) {
+            message = "Got you! Let's roll."
+            color = colorSafe
+        } else {
+            // Check for streak milestones
+            val streakMs = System.currentTimeMillis() - lastDetectionMs
+            val milestone = STREAK_MILESTONES.firstOrNull { (thresholdMs, _) ->
+                streakMs >= thresholdMs && thresholdMs !in announcedMilestones
             }
 
-            // Priority 2: Distraction duration
-            result.distractionDurationS >= 20 -> {
-                message = "20 seconds! Please pull over."
-                color = COLOR_RED
-            }
-            result.distractionDurationS >= 10 -> {
-                message = "10 seconds! Seriously, eyes on road."
-                color = COLOR_RED
-            }
-            result.distractionDurationS >= 5 -> {
-                message = "5 seconds distracted... focus up!"
-                color = COLOR_ORANGE
-            }
-
-            // Priority 3: Risk escalation
-            result.riskLevel == "high" -> {
-                message = "Danger zone! Focus NOW."
-                color = COLOR_RED
-            }
-            result.riskLevel == "medium" -> {
-                message = "Heads up! Stay alert."
-                color = COLOR_ORANGE
-            }
-
-            // All clear: rotate messages
-            else -> {
-                message = ALL_CLEAR_MESSAGES[allClearIndex % ALL_CLEAR_MESSAGES.size]
-                allClearIndex++
-                color = COLOR_GREEN
+            if (milestone != null) {
+                announcedMilestones.add(milestone.first)
+                message = milestone.second
+                color = colorGold
+            } else when {
+                result.driverUsingPhone -> { message = PHONE_MESSAGES.random(); color = colorDanger }
+                result.driverEyesClosed -> { message = EYES_MESSAGES.random(); color = colorDanger }
+                result.driverDistracted -> { message = DISTRACTED_MESSAGES.random(); color = colorCaution }
+                result.driverYawning -> { message = YAWNING_MESSAGES.random(); color = colorCaution }
+                result.driverEatingDrinking -> { message = EATING_MESSAGES.random(); color = colorCaution }
+                result.dangerousPosture -> { message = POSTURE_MESSAGES.random(); color = colorCaution }
+                result.childSlouching -> { message = CHILD_SLOUCH_MESSAGES.random(); color = colorCaution }
+                result.distractionDurationS >= 20 -> { message = "20 seconds! Please pull over."; color = colorDanger }
+                result.distractionDurationS >= 10 -> { message = "10 seconds! Seriously, eyes on road."; color = colorDanger }
+                result.distractionDurationS >= 5 -> { message = "5 seconds distracted... focus up!"; color = colorCaution }
+                result.riskLevel == "high" -> { message = "Danger zone! Focus NOW."; color = colorDanger }
+                result.riskLevel == "medium" -> { message = "Heads up! Stay alert."; color = colorCaution }
+                else -> {
+                    message = ALL_CLEAR_MESSAGES[allClearIndex % ALL_CLEAR_MESSAGES.size]
+                    allClearIndex++
+                    color = colorSafe
+                }
             }
         }
 
-        aiStatusText.text = message
-        aiStatusText.setTextColor(color)
+        // Crossfade: alpha out → set text → alpha in
+        if (aiStatusText.text != message) {
+            aiStatusText.animate().alpha(0f).setDuration(75).withEndAction {
+                aiStatusText.text = message
+                aiStatusText.setTextColor(color)
+                aiStatusText.animate().alpha(1f).setDuration(150).start()
+            }.start()
+        }
     }
 
     // ---------------------------------------------------------------------
-    // Detection History Ticker
+    // Detection History Ticker (last 3 events, static lines)
     // ---------------------------------------------------------------------
 
     private fun updateTicker(result: OutputResult) {
@@ -716,13 +886,16 @@ class MainActivity : Activity() {
 
         val currentLabel = if (active.isEmpty()) "All clear" else active.joinToString(", ")
 
-        // Only add event when state changes
         if (currentLabel != lastTickerDetections) {
             lastTickerDetections = currentLabel
             val timestamp = TICKER_TIME_FORMAT.format(Date())
-            tickerEvents.add(0, "$timestamp - $currentLabel")
+            tickerEvents.add(0, "$timestamp  $currentLabel")
             if (tickerEvents.size > 20) tickerEvents.removeAt(tickerEvents.size - 1)
-            tickerText.text = tickerEvents.joinToString("    |    ")
+
+            // Update the 3 static lines
+            tickerLine1.text = tickerEvents.getOrNull(0) ?: ""
+            tickerLine2.text = tickerEvents.getOrNull(1) ?: ""
+            tickerLine3.text = tickerEvents.getOrNull(2) ?: ""
         }
     }
 
@@ -790,5 +963,9 @@ class MainActivity : Activity() {
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return "%d:%02d".format(minutes, seconds)
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
     }
 }
