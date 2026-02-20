@@ -8,20 +8,21 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ArrayBlockingQueue
 
 /**
- * Audio alerter that announces danger state changes and distraction durations
- * via Android TextToSpeech. Messages are queued to a background worker thread
- * and spoken sequentially. At most one message is enqueued per inference cycle.
+ * Premium audio alerter with priority queue, staleness checks, per-danger cooldown,
+ * progressive escalation, and beep-TTS coordination on a single worker thread.
+ *
+ * Call site: `audioAlerter.checkAndAnnounce(result)` — unchanged from previous API.
  */
 class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttributes.USAGE_ASSISTANCE_SONIFICATION) {
 
@@ -41,28 +42,162 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         )
 
         val FRIENDLY_NAMES = mapOf(
-            "driver_using_phone" to "phone detected",
-            "driver_eyes_closed" to "eyes closed",
-            "driver_yawning" to "yawning detected",
-            "driver_distracted" to "driver distracted",
-            "driver_eating_drinking" to "eating or drinking",
-            "dangerous_posture" to "dangerous posture",
-            "child_slouching" to "child slouching"
+            "driver_using_phone" to "Phone",
+            "driver_eyes_closed" to "Eyes closed",
+            "driver_yawning" to "Yawning",
+            "driver_distracted" to "Distracted",
+            "driver_eating_drinking" to "Eating",
+            "dangerous_posture" to "Posture",
+            "child_slouching" to "Child slouching"
         )
 
         val FRIENDLY_NAMES_JA = mapOf(
-            "driver_using_phone" to "スマホを検出しました",
+            "driver_using_phone" to "スマホ",
             "driver_eyes_closed" to "目を閉じています",
-            "driver_yawning" to "あくびを検出しました",
-            "driver_distracted" to "よそ見をしています",
-            "driver_eating_drinking" to "飲食を検出しました",
-            "dangerous_posture" to "危険な姿勢です",
-            "child_slouching" to "お子様の姿勢が悪いです"
+            "driver_yawning" to "あくび",
+            "driver_distracted" to "よそ見",
+            "driver_eating_drinking" to "飲食",
+            "dangerous_posture" to "姿勢",
+            "child_slouching" to "子供の姿勢"
         )
+
+        fun priorityForField(field: String): AlertPriority = when (field) {
+            "driver_using_phone", "driver_eyes_closed" -> AlertPriority.CRITICAL
+            else -> AlertPriority.WARNING
+        }
+
+        /**
+         * Builds alert messages from a state transition. Mutates [cooldownMap] and
+         * [escalationMap] in place but has no other side effects — safe for unit testing.
+         */
+        fun buildAlerts(
+            current: DangerSnapshot,
+            prev: DangerSnapshot,
+            duration: Int,
+            prevDuration: Int,
+            nowMs: Long,
+            cooldownMap: MutableMap<String, Long>,
+            escalationMap: MutableMap<String, EscalationState>,
+            isJapanese: Boolean = false
+        ): List<AlertMessage> {
+            val nameMap = if (isJapanese) FRIENDLY_NAMES_JA else FRIENDLY_NAMES
+
+            // --- All-clear flush ---
+            if (prev.any() && !current.any()) {
+                cooldownMap.clear()
+                escalationMap.clear()
+                val text = if (isJapanese) "安全です" else "All clear"
+                return listOf(AlertMessage(AlertPriority.INFO, text, null, false, nowMs))
+            }
+
+            val alerts = mutableListOf<AlertMessage>()
+
+            // --- New dangers (onset) ---
+            val criticalParts = mutableListOf<String>()
+            val warningParts = mutableListOf<String>()
+            val newDangerFields = mutableListOf<String>()
+
+            for (i in DANGER_FIELDS.indices) {
+                val field = DANGER_FIELDS[i]
+                if (current.get(i) && !prev.get(i)) {
+                    val lastAnnounced = cooldownMap[field]
+                    if (lastAnnounced != null && (nowMs - lastAnnounced) < Config.ALERT_COOLDOWN_MS) {
+                        continue
+                    }
+                    val name = nameMap[field] ?: field
+                    val priority = priorityForField(field)
+                    if (priority == AlertPriority.CRITICAL) {
+                        criticalParts.add(name)
+                    } else {
+                        warningParts.add(name)
+                    }
+                    newDangerFields.add(field)
+                }
+            }
+
+            // Build joined onset message (CRITICAL parts first, then WARNING)
+            val allParts = criticalParts + warningParts
+            if (allParts.isNotEmpty()) {
+                val text = allParts.joinToString(". ")
+                val priority = if (criticalParts.isNotEmpty()) AlertPriority.CRITICAL else AlertPriority.WARNING
+                val primaryField = newDangerFields.first()
+                alerts.add(AlertMessage(priority, text, primaryField, false, nowMs))
+
+                for (field in newDangerFields) {
+                    cooldownMap[field] = nowMs
+                }
+            }
+
+            // --- Escalation ladder (only if no onset message) ---
+            if (alerts.isEmpty() && duration > 0) {
+                val escAlert = buildEscalationAlert(duration, nowMs, escalationMap, isJapanese)
+                if (escAlert != null) {
+                    alerts.add(escAlert)
+                }
+            }
+
+            return alerts
+        }
+
+        fun buildEscalationAlert(
+            duration: Int,
+            nowMs: Long,
+            escalationMap: MutableMap<String, EscalationState>,
+            isJapanese: Boolean
+        ): AlertMessage? {
+            val key = "distraction"
+            val state = escalationMap.getOrPut(key) { EscalationState(0, 0) }
+
+            if (duration >= Config.ALERT_ESCALATION_FIRST_S && state.lastAnnouncedDuration < Config.ALERT_ESCALATION_FIRST_S) {
+                state.lastAnnouncedDuration = duration
+                val text = if (isJapanese) "まだよそ見、${Config.ALERT_ESCALATION_FIRST_S}秒"
+                           else "Still distracted, ${Config.ALERT_ESCALATION_FIRST_S} seconds"
+                return AlertMessage(AlertPriority.WARNING, text, null, false, nowMs)
+            }
+
+            if (duration >= Config.ALERT_ESCALATION_BEEP_S && state.lastAnnouncedDuration < Config.ALERT_ESCALATION_BEEP_S) {
+                state.lastAnnouncedDuration = duration
+                state.beepCount = 1
+                val text = if (isJapanese) "警告。${Config.ALERT_ESCALATION_BEEP_S}秒よそ見"
+                           else "Warning. Distracted ${Config.ALERT_ESCALATION_BEEP_S} seconds"
+                return AlertMessage(AlertPriority.CRITICAL, text, null, true, nowMs)
+            }
+
+            if (duration >= Config.ALERT_ESCALATION_BEEP_S) {
+                val nextThreshold = Config.ALERT_ESCALATION_BEEP_S + state.beepCount * Config.ALERT_ESCALATION_REPEAT_S
+                if (duration >= nextThreshold && state.lastAnnouncedDuration < nextThreshold) {
+                    state.lastAnnouncedDuration = duration
+                    state.beepCount++
+                    val text = if (isJapanese) "警告。${duration}秒よそ見"
+                               else "Warning. Distracted $duration seconds"
+                    return AlertMessage(AlertPriority.CRITICAL, text, null, true, nowMs)
+                }
+            }
+
+            return null
+        }
     }
 
-    /** Snapshot of the previous frame's danger booleans (indexed by DANGER_FIELDS order). */
-    private class DangerSnapshot(
+    // --- Priority system ---
+
+    enum class AlertPriority {
+        INFO,      // all-clear, duration milestones
+        WARNING,   // yawning, distracted, eating, posture, slouching
+        CRITICAL   // phone, eyes_closed
+    }
+
+    data class AlertMessage(
+        val priority: AlertPriority,
+        val text: String,
+        val dangerField: String?,    // null for all-clear / duration
+        val playBeepFirst: Boolean,
+        val createdAtMs: Long
+    )
+
+    data class EscalationState(var lastAnnouncedDuration: Int, var beepCount: Int)
+
+    /** Snapshot of one frame's danger booleans, indexed by DANGER_FIELDS order. */
+    data class DangerSnapshot(
         val phone: Boolean, val eyes: Boolean, val yawning: Boolean,
         val distracted: Boolean, val eating: Boolean, val posture: Boolean,
         val slouching: Boolean
@@ -71,32 +206,42 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             0 -> phone; 1 -> eyes; 2 -> yawning; 3 -> distracted
             4 -> eating; 5 -> posture; 6 -> slouching; else -> false
         }
+        fun getByField(field: String): Boolean = when (field) {
+            "driver_using_phone" -> phone
+            "driver_eyes_closed" -> eyes
+            "driver_yawning" -> yawning
+            "driver_distracted" -> distracted
+            "driver_eating_drinking" -> eating
+            "dangerous_posture" -> posture
+            "child_slouching" -> slouching
+            else -> false
+        }
         fun any(): Boolean = phone || eyes || yawning || distracted || eating || posture || slouching
     }
 
+    // --- State ---
     private var prevDangers: DangerSnapshot? = null
-    private val announcedDurations = mutableSetOf<Int>()
-    @Volatile private var beepPlayed = false
     private var prevDuration = 0
-    private var currentTtsLang = "en"  // Track current TTS locale to auto-sync with Config.LANGUAGE
-    // H3: Store Handler so pending TTS retry can be cancelled in close()
+    private val cooldownMap = HashMap<String, Long>()
+    private val escalationMap = HashMap<String, EscalationState>()
+    private var currentTtsLang = "en"
     private val retryHandler = Handler(Looper.getMainLooper())
 
-    private val messageQueue = LinkedBlockingQueue<String>()
-    private val STOP_SIGNAL = "\u0000" // sentinel for worker shutdown
+    // Bounded priority queue
+    private val messageQueue = ArrayBlockingQueue<AlertMessage>(Config.ALERT_QUEUE_CAPACITY + 1) // +1 for STOP sentinel
+    private val STOP_SENTINEL = AlertMessage(AlertPriority.INFO, "", null, false, 0L)
 
-    @Volatile
-    private var ttsReady = false
+    @Volatile private var ttsReady = false
     private var tts: TextToSpeech
     private var ttsRetried = false
     private val appContext: Context = context.applicationContext
     private val notificationManager: NotificationManager =
         appContext.getSystemService(NotificationManager::class.java)
 
-    /** Pre-built PCM beep buffer (1kHz sine wave, 2 seconds, 16-bit mono 44100Hz). */
+    /** Pre-built PCM beep buffer (1kHz sine wave, 1 second, 16-bit mono 44100Hz). */
     private val beepBuffer: ShortArray = run {
         val sampleRate = 44100
-        val durationMs = 2000
+        val durationMs = Config.ALERT_BEEP_DURATION_MS
         val numSamples = sampleRate * durationMs / 1000
         val freq = 1000.0
         ShortArray(numSamples) { i ->
@@ -107,7 +252,6 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     private val workerThread: Thread
 
     init {
-        // Create high-importance channel for alert notifications
         val alertChannel = NotificationChannel(
             ALERT_CHANNEL_ID,
             "InCabin Alerts",
@@ -117,25 +261,17 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
         notificationManager.createNotificationChannel(alertChannel)
 
-        tts = TextToSpeech(appContext) { status ->
-            onTtsInit(status)
-        }
+        tts = TextToSpeech(appContext) { status -> onTtsInit(status) }
 
         workerThread = Thread({
             Log.i(TAG, "Worker thread started")
             while (true) {
-                val message = messageQueue.take() // blocks until available
-                if (message == STOP_SIGNAL) {
+                val msg = messageQueue.take()
+                if (msg === STOP_SENTINEL) {
                     Log.i(TAG, "Worker received stop signal")
                     break
                 }
-                if (ttsReady) {
-                    val utteranceId = UUID.randomUUID().toString()
-                    tts.speak(message, TextToSpeech.QUEUE_ADD, null, utteranceId)
-                    Log.i(TAG, "Speaking: $message")
-                } else {
-                    Log.i(TAG, "[ALERT] $message")
-                }
+                processAlertMessage(msg)
             }
         }, "AudioAlerter-Worker")
         workerThread.isDaemon = true
@@ -181,13 +317,6 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
     }
 
-    /**
-     * Examines the current [result], compares with previous state, and enqueues
-     * an audio announcement if a state change warrants one.
-     *
-     * Must be called from the main/inference thread (not the TTS worker).
-     */
-    /** Update TTS locale when language changes at runtime. */
     fun setLanguage(langCode: String) {
         if (!ttsReady) return
         val locale = if (langCode == "ja") Locale.JAPANESE else Locale.US
@@ -200,8 +329,91 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
     }
 
+    // --- Worker thread: process one alert message ---
+
+    private fun processAlertMessage(msg: AlertMessage) {
+        // Staleness check: age
+        val age = SystemClock.elapsedRealtime() - msg.createdAtMs
+        if (age > Config.ALERT_STALENESS_MS) {
+            Log.i(TAG, "Dropping stale message (age=${age}ms): ${msg.text}")
+            return
+        }
+
+        // Staleness check: danger still active?
+        if (msg.dangerField != null) {
+            val latestResult = FrameHolder.getLatestResult()
+            if (latestResult != null) {
+                val stillActive = isDangerActive(latestResult, msg.dangerField)
+                if (!stillActive) {
+                    Log.i(TAG, "Dropping resolved message (${msg.dangerField}): ${msg.text}")
+                    return
+                }
+            }
+        }
+
+        // Beep-then-speak coordination
+        if (msg.playBeepFirst) {
+            tts.stop()
+            playBeepBlocking()
+            try { Thread.sleep(200) } catch (_: InterruptedException) {}
+        }
+
+        // Speak
+        if (ttsReady) {
+            val utteranceId = UUID.randomUUID().toString()
+            tts.speak(msg.text, TextToSpeech.QUEUE_ADD, null, utteranceId)
+            Log.i(TAG, "Speaking: ${msg.text}")
+        } else {
+            Log.i(TAG, "[ALERT] ${msg.text}")
+        }
+    }
+
+    private fun isDangerActive(result: OutputResult, field: String): Boolean = when (field) {
+        "driver_using_phone" -> result.driverUsingPhone
+        "driver_eyes_closed" -> result.driverEyesClosed
+        "driver_yawning" -> result.driverYawning
+        "driver_distracted" -> result.driverDistracted
+        "driver_eating_drinking" -> result.driverEatingDrinking
+        "dangerous_posture" -> result.dangerousPosture
+        "child_slouching" -> result.childSlouching
+        else -> false
+    }
+
+    private fun playBeepBlocking() {
+        var track: AudioTrack? = null
+        try {
+            val attrs = AudioAttributes.Builder()
+                .setUsage(audioUsage)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            track = AudioTrack.Builder()
+                .setAudioAttributes(attrs)
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(44100)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(beepBuffer.size * 2)
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .build()
+            track.write(beepBuffer, 0, beepBuffer.size)
+            track.play()
+            Thread.sleep(Config.ALERT_BEEP_DURATION_MS.toLong())
+            Log.i(TAG, "Beep playback completed")
+        } catch (e: Exception) {
+            Log.w(TAG, "Beep playback failed", e)
+        } finally {
+            try { track?.stop() } catch (_: Exception) {}
+            try { track?.release() } catch (_: Exception) {}
+        }
+    }
+
+    // --- Main thread: build alerts and enqueue ---
+
     fun checkAndAnnounce(result: OutputResult) {
-        // Auto-sync TTS locale when Config.LANGUAGE changes at runtime
+        // Auto-sync TTS locale
         val lang = Config.LANGUAGE
         if (lang != currentTtsLang) {
             currentTtsLang = lang
@@ -215,103 +427,37 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             result.dangerousPosture, result.childSlouching
         )
 
-        // First frame: store state and return without speaking
+        // First frame: store state only
         if (prevDangers == null) {
             prevDangers = current
             return
         }
 
         val prev = prevDangers!!
-        val parts = mutableListOf<String>()
+        val now = SystemClock.elapsedRealtime()
 
-        // Step 1: New dangers activated (in DANGER_FIELDS order)
+        // All-clear flush: drain queue + stop TTS before building the all-clear message
+        val isAllClear = prev.any() && !current.any()
+        if (isAllClear) {
+            drainQueue()
+            tts.stop()
+        }
+
         val isJapanese = Config.LANGUAGE == "ja"
-        val nameMap = if (isJapanese) FRIENDLY_NAMES_JA else FRIENDLY_NAMES
-        for (i in DANGER_FIELDS.indices) {
-            if (current.get(i) && !prev.get(i)) {
-                nameMap[DANGER_FIELDS[i]]?.let { parts.add(it) }
-            }
-        }
+        val alerts = buildAlerts(current, prev, duration, prevDuration, now, cooldownMap, escalationMap, isJapanese)
 
-        // Step 2: All-clear override
-        val anyPrevDanger = prev.any()
-        val anyCurrDanger = current.any()
-        if (anyPrevDanger && !anyCurrDanger) {
-            parts.clear()
-            parts.add(if (isJapanese) "安全です" else "all clear")
-        }
-
-        // Step 3: Distraction duration (only if no other message)
-        if (parts.isEmpty()) {
-            for (threshold in Config.DISTRACTION_ALERT_THRESHOLDS) {
-                if (duration >= threshold && threshold !in announcedDurations) {
-                    announcedDurations.add(threshold)
-                    parts.add(
-                        if (isJapanese) "${threshold}秒間よそ見しています"
-                        else "distracted $threshold seconds"
-                    )
-                    break // one per cycle
-                }
-            }
-        }
-
-        // Reset announced durations only on transition from distracted→clear
-        // (not on every frame where duration==0, which caused double-beep)
-        if (duration == 0 && prevDuration > 0) {
-            announcedDurations.clear()
-            beepPlayed = false
-        }
-        prevDuration = duration
-
-        // Loud beep at 20s distraction threshold
-        if (duration >= Config.DISTRACTION_BEEP_THRESHOLD_S && !beepPlayed) {
-            beepPlayed = true
-            Log.i(TAG, "Playing loud beep at ${Config.DISTRACTION_BEEP_THRESHOLD_S}s distraction")
-            Thread({
-                var track: AudioTrack? = null
-                try {
-                    val attrs = AudioAttributes.Builder()
-                        .setUsage(audioUsage)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                    track = AudioTrack.Builder()
-                        .setAudioAttributes(attrs)
-                        .setAudioFormat(
-                            AudioFormat.Builder()
-                                .setSampleRate(44100)
-                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                                .build()
-                        )
-                        .setBufferSizeInBytes(beepBuffer.size * 2)
-                        .setTransferMode(AudioTrack.MODE_STATIC)
-                        .build()
-                    track.write(beepBuffer, 0, beepBuffer.size)
-                    track.play()
-                    Thread.sleep(2000)
-                    Log.i(TAG, "Beep playback completed")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Beep playback failed", e)
-                } finally {
-                    try { track?.stop() } catch (_: Exception) {}
-                    try { track?.release() } catch (_: Exception) {}
-                }
-            }, "Beep-Player").start()
-        }
-
-        // Enqueue message if we have anything to say
-        if (parts.isNotEmpty()) {
-            val message = parts.joinToString(". ")
-            messageQueue.put(message)
+        // Enqueue alerts
+        for (alert in alerts) {
+            enqueueWithPriority(alert)
             try {
-                postAlertNotification(message, result.riskLevel)
+                postAlertNotification(alert.text, result.riskLevel)
             } catch (e: Exception) {
                 Log.w(TAG, "Notification posting failed, TTS unaffected", e)
             }
         }
 
-        // Dismiss alert notification when all dangers clear
-        if (!anyCurrDanger) {
+        // Dismiss notification when all dangers clear
+        if (!current.any()) {
             try {
                 notificationManager.cancel(ALERT_NOTIFICATION_ID)
             } catch (e: Exception) {
@@ -319,8 +465,42 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             }
         }
 
-        // Update previous state
+        // Reset escalation on duration drop to 0
+        if (duration == 0 && prevDuration > 0) {
+            escalationMap.clear()
+        }
+
         prevDangers = current
+        prevDuration = duration
+    }
+
+    private fun drainQueue() {
+        var drained = 0
+        while (messageQueue.poll() != null) { drained++ }
+        if (drained > 0) Log.i(TAG, "Drained $drained messages from queue")
+    }
+
+    /**
+     * Enqueue with priority insertion. If queue is full, drain → sort by priority → keep
+     * top (CAPACITY-1) → add new message → re-insert all.
+     */
+    private fun enqueueWithPriority(alert: AlertMessage) {
+        if (messageQueue.offer(alert)) return
+
+        // Queue full — drain, sort, keep highest priority
+        val existing = mutableListOf<AlertMessage>()
+        messageQueue.drainTo(existing)
+        existing.add(alert)
+        existing.sortByDescending { it.priority.ordinal }
+
+        // Keep top CAPACITY messages
+        val keep = existing.take(Config.ALERT_QUEUE_CAPACITY)
+        val dropped = existing.size - keep.size
+        if (dropped > 0) Log.i(TAG, "Dropped $dropped low-priority messages")
+
+        for (msg in keep) {
+            messageQueue.offer(msg)
+        }
     }
 
     private fun postAlertNotification(message: String, riskLevel: String) {
@@ -348,18 +528,16 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         Log.i(TAG, "Posted notification: $message")
     }
 
-    // extractDangers removed — replaced by DangerSnapshot to avoid per-frame Map allocation
-
-    /**
-     * Shuts down the TTS engine and stops the background worker thread.
-     * Call this from service onDestroy or when the alerter is no longer needed.
-     */
     fun close() {
-        // H3: Cancel pending TTS retry callback to prevent leak after service destroyed
         retryHandler.removeCallbacksAndMessages(null)
-        messageQueue.put(STOP_SIGNAL) // stop signal to worker
+        // Use offer to avoid blocking if queue is full; worst case worker exits on thread interrupt
+        if (!messageQueue.offer(STOP_SENTINEL)) {
+            messageQueue.clear()
+            messageQueue.offer(STOP_SENTINEL)
+        }
         tts.stop()
         tts.shutdown()
         Log.i(TAG, "AudioAlerter closed")
     }
+
 }

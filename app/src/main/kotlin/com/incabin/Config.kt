@@ -36,9 +36,14 @@ object Config {
     const val POSTURE_MIN_FRAMES = 3          // ~3s — allow brief adjustments
     const val CHILD_SLOUCH_MIN_FRAMES = 5     // ~5s — kids shift constantly
 
-    // Audio
-    val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
-    const val DISTRACTION_BEEP_THRESHOLD_S = 20
+    // Audio — escalation ladder
+    const val ALERT_COOLDOWN_MS = 10_000L
+    const val ALERT_STALENESS_MS = 4_000L
+    const val ALERT_ESCALATION_FIRST_S = 10
+    const val ALERT_ESCALATION_BEEP_S = 20
+    const val ALERT_ESCALATION_REPEAT_S = 10
+    const val ALERT_BEEP_DURATION_MS = 1000
+    const val ALERT_QUEUE_CAPACITY = 3
     const val DISTRACTION_GRACE_FRAMES = 2  // consecutive clean frames before reset
 
     // Preview (toggleable at runtime via UI; persisted in SharedPreferences)
