@@ -45,6 +45,7 @@ class MjpegCameraManager(
     fun start(streamUrl: String): Boolean {
         if (running) return true
         running = true
+        wasConnected = false
 
         streamThread = Thread({
             Log.i(TAG, "Connecting to MJPEG stream: $streamUrl")

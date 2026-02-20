@@ -53,37 +53,42 @@ class V4l2CameraManager(
         running = true
         captureThread = Thread({
             Log.i(TAG, "V4L2 capture thread started")
-            while (running) {
-                if (cameraPtr == 0L) {
-                    if (!attemptReconnect()) {
-                        Log.i(TAG, "Reconnect failed, backing off ${reconnectDelayMs}ms")
-                        Thread.sleep(reconnectDelayMs)
-                        reconnectDelayMs = (reconnectDelayMs * 2)
-                            .coerceAtMost(Config.V4L2_RECONNECT_MAX_DELAY_MS)
-                        continue
+            try {
+                while (running) {
+                    if (cameraPtr == 0L) {
+                        if (!attemptReconnect()) {
+                            Log.i(TAG, "Reconnect failed, backing off ${reconnectDelayMs}ms")
+                            Thread.sleep(reconnectDelayMs)
+                            reconnectDelayMs = (reconnectDelayMs * 2)
+                                .coerceAtMost(Config.V4L2_RECONNECT_MAX_DELAY_MS)
+                            continue
+                        }
                     }
-                }
 
-                val grabStartMs = System.currentTimeMillis()
-                val bgrData = nativeLib.nativeGrabBgrFrame(cameraPtr)
-                val grabElapsed = System.currentTimeMillis() - grabStartMs
-                if (bgrData != null) {
-                    consecutiveFailures = 0
-                    if (!firstFrameLogged) {
-                        firstFrameLogged = true
-                        Log.i(TAG, "First V4L2 frame: ${Config.CAMERA_WIDTH}x${Config.CAMERA_HEIGHT}, ${bgrData.size} bytes BGR, grab=${grabElapsed}ms")
+                    val grabStartMs = System.currentTimeMillis()
+                    val bgrData = nativeLib.nativeGrabBgrFrame(cameraPtr)
+                    val grabElapsed = System.currentTimeMillis() - grabStartMs
+                    if (bgrData != null) {
+                        consecutiveFailures = 0
+                        if (!firstFrameLogged) {
+                            firstFrameLogged = true
+                            Log.i(TAG, "First V4L2 frame: ${Config.CAMERA_WIDTH}x${Config.CAMERA_HEIGHT}, ${bgrData.size} bytes BGR, grab=${grabElapsed}ms")
+                        }
+                        onBgrFrame(bgrData, Config.CAMERA_WIDTH, Config.CAMERA_HEIGHT)
+                    } else {
+                        consecutiveFailures++
+                        Log.w(TAG, "V4L2 frame grab returned null ($consecutiveFailures/${Config.V4L2_MAX_CONSECUTIVE_FAILURES})")
+                        if (consecutiveFailures >= Config.V4L2_MAX_CONSECUTIVE_FAILURES) {
+                            Log.e(TAG, "V4L2 webcam disconnected (${Config.V4L2_MAX_CONSECUTIVE_FAILURES} consecutive failures), entering reconnect mode")
+                            destroyCamera()
+                            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
+                            continue
+                        }
                     }
-                    onBgrFrame(bgrData, Config.CAMERA_WIDTH, Config.CAMERA_HEIGHT)
-                } else {
-                    consecutiveFailures++
-                    Log.w(TAG, "V4L2 frame grab returned null ($consecutiveFailures/${Config.V4L2_MAX_CONSECUTIVE_FAILURES})")
-                    if (consecutiveFailures >= Config.V4L2_MAX_CONSECUTIVE_FAILURES) {
-                        Log.e(TAG, "V4L2 webcam disconnected (${Config.V4L2_MAX_CONSECUTIVE_FAILURES} consecutive failures), entering reconnect mode")
-                        destroyCamera()
-                        continue
-                    }
+                    Thread.sleep(Config.INFERENCE_INTERVAL_MS)
                 }
-                Thread.sleep(Config.INFERENCE_INTERVAL_MS)
+            } catch (_: InterruptedException) {
+                Log.i(TAG, "V4L2 capture thread interrupted")
             }
             Log.i(TAG, "V4L2 capture thread stopped")
         }, "V4L2-Capture")
@@ -114,12 +119,14 @@ class V4l2CameraManager(
         consecutiveFailures = 0
         reconnectDelayMs = Config.V4L2_RECONNECT_INITIAL_DELAY_MS
         firstFrameLogged = false
+        FrameHolder.postCameraStatus(FrameHolder.CameraStatus.ACTIVE)
         Log.i(TAG, "Reconnected to V4L2 device: $devicePath")
         return true
     }
 
     fun stop() {
         running = false
+        captureThread?.interrupt()
         captureThread?.join(2000)
         captureThread = null
         destroyCamera()

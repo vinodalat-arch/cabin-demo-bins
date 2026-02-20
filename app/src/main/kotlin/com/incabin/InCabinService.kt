@@ -35,8 +35,8 @@ class InCabinService : Service() {
         }
 
         private val ASSET_FILES = listOf(
-            "yolov8n-pose.onnx",
-            "yolov8n.onnx",
+            "yolov8n-pose.onnx", "yolov8n-pose-fp16.onnx",
+            "yolov8n.onnx", "yolov8n-fp16.onnx",
             "face_landmarker.task",
             "mobilefacenet-fp16.onnx"
         )
@@ -169,8 +169,13 @@ class InCabinService : Service() {
             try {
                 val size = assets.open(assetName).use { it.available().toLong() }
                 Log.i(TAG, "Asset $assetName: $size bytes")
-            } catch (e: Exception) {
-                Log.e(TAG, "Asset $assetName: MISSING or unreadable", e)
+            } catch (_: Exception) {
+                // FP32/FP16 variants: only warn (C++ falls back between them)
+                if (assetName.endsWith("-fp16.onnx") || assetName == "yolov8n-pose.onnx" || assetName == "yolov8n.onnx") {
+                    Log.d(TAG, "Asset $assetName: not found (variant, C++ will try fallback)")
+                } else {
+                    Log.e(TAG, "Asset $assetName: MISSING or unreadable")
+                }
             }
         }
 
@@ -489,8 +494,8 @@ class InCabinService : Service() {
 
         recognitionFrameCounter++
 
-        // Return cached result on non-recognition frames
-        if (recognitionFrameCounter % Config.FACE_RECOGNITION_INTERVAL != 1 && cachedDriverName != null) {
+        // Return cached result on non-recognition frames (run every Nth frame)
+        if (recognitionFrameCounter % Config.FACE_RECOGNITION_INTERVAL != 0 && cachedDriverName != null) {
             return cachedDriverName
         }
 

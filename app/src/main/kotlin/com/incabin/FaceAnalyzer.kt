@@ -207,7 +207,9 @@ class FaceAnalyzer(context: Context) {
             avgEar < earBaseline!! * Config.EAR_BASELINE_RATIO
         } else {
             // Still calibrating — collect samples and use fixed threshold as fallback
-            if (earBaselineSamples.size < Config.BASELINE_FRAMES) {
+            // Only accumulate when eyes appear open (EAR >= threshold) to avoid
+            // corrupting baseline with closed-eye samples
+            if (earBaselineSamples.size < Config.BASELINE_FRAMES && avgEar >= Config.EAR_THRESHOLD) {
                 earBaselineSamples.add(avgEar)
                 if (earBaselineSamples.size == Config.BASELINE_FRAMES) {
                     earBaseline = earBaselineSamples.average()
@@ -238,7 +240,9 @@ class FaceAnalyzer(context: Context) {
             abs(pitchDeg - pitchBaseline!!) > Config.PITCH_BASELINE_DEVIATION
         } else {
             // Still calibrating — collect samples and use fixed threshold as fallback
-            if (pitchBaselineSamples.size < Config.BASELINE_FRAMES) {
+            // Only accumulate when head is roughly forward (|pitch| < fixed threshold)
+            // to avoid corrupting baseline with looked-down/up samples
+            if (pitchBaselineSamples.size < Config.BASELINE_FRAMES && abs(pitchDeg) < Config.HEAD_PITCH_THRESHOLD) {
                 pitchBaselineSamples.add(pitchDeg)
                 if (pitchBaselineSamples.size == Config.BASELINE_FRAMES) {
                     pitchBaseline = pitchBaselineSamples.average()

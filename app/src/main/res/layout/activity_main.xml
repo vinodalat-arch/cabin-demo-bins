@@ -123,6 +123,19 @@
                 android:layout_marginBottom="@dimen/space_sm"
                 android:stateListAnimator="@null" />
 
+            <!-- WiFi camera button -->
+            <Button
+                android:id="@+id/wifiCamButton"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height"
+                android:background="@drawable/bg_button"
+                android:text="WiFi Cam"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="false"
+                android:layout_marginBottom="@dimen/space_sm"
+                android:stateListAnimator="@null" />
+
             <!-- Language toggle button -->
             <Button
                 android:id="@+id/langToggle"

@@ -62,14 +62,6 @@ class OverlayRenderer {
         intArrayOf(12, 14), intArrayOf(14, 16)  // right leg
     )
 
-    /**
-     * Render detection overlays onto the source bitmap.
-     * Returns a new annotated bitmap (source is not modified).
-     */
-    /**
-     * Render detection overlays directly onto the source bitmap (in-place).
-     * Avoids 3.6 MB bitmap copy per frame. Source must be mutable.
-     */
     /** Current driver name for overlay label (set before render). */
     var driverName: String? = null
 

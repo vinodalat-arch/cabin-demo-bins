@@ -46,7 +46,7 @@ class FaceRecognizerBridge(
      * @param bgrCrop BGR pixel data (HWC uint8)
      * @param cropW   Crop width
      * @param cropH   Crop height
-     * @return FloatArray of 128 dimensions (L2-normalized), or null on failure
+     * @return FloatArray of 512 dimensions (L2-normalized), or null on failure
      */
     fun computeEmbedding(bgrCrop: ByteArray, cropW: Int, cropH: Int): FloatArray? {
         if (nativePtr == 0L) {

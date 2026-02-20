@@ -20,6 +20,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.EditText
 import android.widget.Toast
 import android.app.Activity
 import android.util.Log
@@ -197,6 +198,7 @@ class MainActivity : Activity() {
     private lateinit var audioToggle: Button
     private lateinit var langToggle: Button
     private lateinit var seatToggle: Button
+    private lateinit var wifiCamButton: Button
     private lateinit var cameraStatusText: TextView
     private lateinit var cameraStatusDot: View
     private lateinit var driverNameText: TextView
@@ -322,6 +324,7 @@ class MainActivity : Activity() {
         audioToggle = findViewById(R.id.audioToggle)
         langToggle = findViewById(R.id.langToggle)
         seatToggle = findViewById(R.id.seatToggle)
+        wifiCamButton = findViewById(R.id.wifiCamButton)
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
         driverNameText = findViewById(R.id.driverNameText)
@@ -363,6 +366,7 @@ class MainActivity : Activity() {
         updateAudioToggleUI()
         updateLangToggleUI()
         updateSeatToggleUI()
+        updateWifiCamButtonUI()
 
         toggleButton.setOnClickListener {
             if (isSettingUp) return@setOnClickListener
@@ -423,6 +427,14 @@ class MainActivity : Activity() {
                 .apply()
             updateSeatToggleUI()
             Log.i(TAG, "Driver seat side: ${Config.DRIVER_SEAT_SIDE}")
+        }
+
+        wifiCamButton.setOnClickListener {
+            if (isRunning) {
+                Toast.makeText(this, "Stop monitoring before changing camera", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showWifiCameraDialog()
         }
     }
 
@@ -487,6 +499,80 @@ class MainActivity : Activity() {
             seatToggle.text = "Seat: Left"
             seatToggle.setTextColor(colorTextSecondary)
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // WiFi Camera Configuration
+    // ---------------------------------------------------------------------
+
+    private fun updateWifiCamButtonUI() {
+        if (Config.WIFI_CAMERA_URL.isNotBlank()) {
+            wifiCamButton.text = "WiFi Cam ON"
+            wifiCamButton.setTextColor(colorAccent)
+        } else {
+            wifiCamButton.text = "WiFi Cam"
+            wifiCamButton.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun showWifiCameraDialog() {
+        val currentUrl = Config.WIFI_CAMERA_URL
+
+        val input = EditText(this).apply {
+            setText(currentUrl)
+            hint = "http://192.168.1.100:8080/video"
+            setHintTextColor(colorTextMuted)
+            setTextColor(colorTextPrimary)
+            setBackgroundColor(colorSurfaceElevated)
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+            textSize = 14f
+            isSingleLine = true
+            if (currentUrl.isNotBlank()) selectAll()
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(20), dpToPx(12), dpToPx(20), 0)
+            addView(input)
+            // Subtitle hint
+            addView(TextView(this@MainActivity).apply {
+                text = "MJPEG stream URL (e.g. IP Webcam app)"
+                setTextColor(colorTextMuted)
+                textSize = 11f
+                setPadding(0, dpToPx(6), 0, 0)
+            })
+        }
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog)
+            .setTitle("WiFi Camera")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isNotBlank() && !url.startsWith("http://") && !url.startsWith("https://")) {
+                    Toast.makeText(this, "URL must start with http:// or https://", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                Config.WIFI_CAMERA_URL = url
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_WIFI_URL, url)
+                    .apply()
+                updateWifiCamButtonUI()
+                Log.i(TAG, "WiFi camera URL: ${if (url.isBlank()) "(cleared)" else url}")
+            }
+            .setNeutralButton("Clear") { _, _ ->
+                Config.WIFI_CAMERA_URL = ""
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_WIFI_URL, "")
+                    .apply()
+                updateWifiCamButtonUI()
+                Log.i(TAG, "WiFi camera URL cleared")
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
     }
 
     // ---------------------------------------------------------------------
@@ -897,8 +983,14 @@ class MainActivity : Activity() {
         if (currentDetections.isNotEmpty()) return
         if (detectionsContainer.findViewWithTag<View>("det_allclear") != null) return
 
-        // Check no animated views still present
-        if (detectionsContainer.childCount > 0) return
+        // Remove any lingering animated-out views (their withEndAction may not have fired yet)
+        for (i in detectionsContainer.childCount - 1 downTo 0) {
+            val child = detectionsContainer.getChildAt(i)
+            if (child.tag?.toString()?.startsWith("det_") == true && child.tag != "det_allclear") {
+                child.animate().cancel()
+                detectionsContainer.removeViewAt(i)
+            }
+        }
 
         val tv = TextView(this).apply {
             tag = "det_allclear"
