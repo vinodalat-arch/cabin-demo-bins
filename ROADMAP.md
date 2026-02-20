@@ -1,6 +1,6 @@
 # Roadmap — In-Cabin AI Perception (SA8155)
 
-Features are discussed and specced here first. Once implemented, they move to `SA8155_PORT_SPEC.md` and `CLAUDE.md`.
+Features are discussed and specced here first. Once implemented, they move to `SPEC.md` and `CLAUDE.md`.
 
 ### Guidelines for Feature Design
 - **Review the entire design** before proposing or implementing any new feature. Consider how it interacts with every existing component — not just the files being modified.

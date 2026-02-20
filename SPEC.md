@@ -1,10 +1,10 @@
-# SA8155 Android Port — Complete Project Specification
+# In-Cabin AI Perception — Complete Project Specification
 
-Use this document as the sole input to implement the Android port from scratch. It contains every algorithm, threshold, landmark index, data flow, platform-specific detail, and test case needed. No additional context required.
+Use this document as the sole input to implement the in-cabin perception system from scratch. It contains every algorithm, threshold, landmark index, data flow, platform-specific detail, and test case needed. No additional context required.
 
 ## 1. Project Overview
 
-Port an in-cabin driver monitoring system to a native Android application running on Qualcomm SA8155 (CPU-only). The system captures 1 frame per second from a USB webcam, runs local ML inference, and outputs a structured JSON result with audio alerts on state changes.
+An in-cabin driver monitoring system running as a native Android application on Qualcomm automotive SoCs (SA8155, SA8295) and generic Android devices (CPU-only). The system captures 1 frame per second from a USB webcam, runs local ML inference, and outputs a structured JSON result with audio alerts on state changes.
 
 ### What the System Detects
 
@@ -1510,7 +1510,7 @@ object Config {
 in_cabin_poc-sa8155/
 ├── .gitignore
 ├── CLAUDE.md
-├── SA8155_PORT_SPEC.md
+├── SPEC.md
 ├── build.gradle.kts              (AGP 8.7.3 + Kotlin 2.0.21)
 ├── settings.gradle.kts
 ├── gradle.properties

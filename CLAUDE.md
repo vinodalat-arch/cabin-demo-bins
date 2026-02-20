@@ -1,4 +1,4 @@
-# SA8155 Android Port — In-Cabin AI Perception
+# In-Cabin AI Perception
 
 ## Status
 Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, UI polish, face recognition, multi-platform support, automated camera setup, and runtime preview toggle. Build verified (`assembleDebug` + all 98 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
@@ -10,7 +10,7 @@ Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug
 Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 17 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
 ## Full Specification
-**See `SA8155_PORT_SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and all 64 unit test specifications. That document is the single source of truth for this port.
+**See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and all 98 unit test specifications. That document is the single source of truth for this project.
 
 ## Architecture
 ```
