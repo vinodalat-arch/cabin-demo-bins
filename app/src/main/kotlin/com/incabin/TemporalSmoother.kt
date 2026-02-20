@@ -75,85 +75,77 @@ class TemporalSmoother(
             _eyesOpenStreak = 0
         }
 
-        // --- Smooth driver_eyes_closed (fast-clear + face-gated + sustained) ---
-        val rawEyesClosed: Boolean = if (_eyesOpenStreak >= Config.FAST_CLEAR_FRAMES) {
-            // Fast-clear: 2+ consecutive open-eye frames override buffer history
-            false
-        } else {
-            // Face-gated: only count frames where ear_value is present
-            val faceFrames = _buffer.filter { it.earValue != null }
-            if (faceFrames.isEmpty()) {
-                false
-            } else {
-                val trueCount = faceFrames.count { it.driverEyesClosed }
-                (trueCount.toFloat() / faceFrames.size) >= threshold
-            }
+        // --- Single-pass counting over buffer (avoids per-field filter/count allocations) ---
+        var earValidCount = 0; var eyesClosedCount = 0
+        var marValidCount = 0; var yawningCount = 0
+        var yawValidCount = 0; var distractedCount = 0
+        var phoneCount = 0; var eatingCount = 0; var postureCount = 0
+        var childPresentCount = 0; var childSlouchCount = 0
+        // Passenger count mode via small frequency array (max ~10 passengers)
+        val passengerFreq = IntArray(16)  // index = passenger count, value = frequency
+        var maxPassengerCount = 0
+
+        for (frame in _buffer) {
+            if (frame.earValue != null) { earValidCount++; if (frame.driverEyesClosed) eyesClosedCount++ }
+            if (frame.marValue != null) { marValidCount++; if (frame.driverYawning) yawningCount++ }
+            if (frame.headYaw != null) { yawValidCount++; if (frame.driverDistracted) distractedCount++ }
+            if (frame.driverUsingPhone) phoneCount++
+            if (frame.driverEatingDrinking) eatingCount++
+            if (frame.dangerousPosture) postureCount++
+            if (frame.childPresent) childPresentCount++
+            if (frame.childSlouching) childSlouchCount++
+            val pc = frame.passengerCount.coerceIn(0, passengerFreq.size - 1)
+            passengerFreq[pc]++
+            if (pc > maxPassengerCount) maxPassengerCount = pc
         }
 
-        // Require sustained detection for EYES_CLOSED_MIN_FRAMES (~3s) to filter blinks
-        if (rawEyesClosed) {
-            _eyesClosedStreak++
+        // --- Smooth driver_eyes_closed (fast-clear + face-gated + sustained) ---
+        val rawEyesClosed: Boolean = if (_eyesOpenStreak >= Config.FAST_CLEAR_FRAMES) {
+            false
         } else {
-            _eyesClosedStreak = 0
+            if (earValidCount == 0) false
+            else (eyesClosedCount.toFloat() / earValidCount) >= threshold
         }
+        if (rawEyesClosed) _eyesClosedStreak++ else _eyesClosedStreak = 0
         val smoothedEyesClosed = _eyesClosedStreak >= Config.EYES_CLOSED_MIN_FRAMES
 
         // --- Smooth driver_yawning (face-gated by mar_value) ---
-        val smoothedYawning: Boolean = run {
-            val gated = _buffer.filter { it.marValue != null }
-            if (gated.isEmpty()) {
-                false
-            } else {
-                val trueCount = gated.count { it.driverYawning }
-                (trueCount.toFloat() / gated.size) >= threshold
-            }
-        }
+        val smoothedYawning = if (marValidCount == 0) false
+            else (yawningCount.toFloat() / marValidCount) >= threshold
 
         // --- Smooth driver_distracted (face-gated by head_yaw + sustained) ---
-        val rawDistracted: Boolean = run {
-            val gated = _buffer.filter { it.headYaw != null }
-            if (gated.isEmpty()) {
-                false
-            } else {
-                val trueCount = gated.count { it.driverDistracted }
-                (trueCount.toFloat() / gated.size) >= threshold
-            }
-        }
+        val rawDistracted = if (yawValidCount == 0) false
+            else (distractedCount.toFloat() / yawValidCount) >= threshold
         if (rawDistracted) _distractedStreak++ else _distractedStreak = 0
         val smoothedDistracted = _distractedStreak >= Config.DISTRACTED_MIN_FRAMES
 
         // --- Smooth standard boolean fields ---
-        val smoothedPhone: Boolean =
-            (_buffer.count { it.driverUsingPhone }.toFloat() / n) >= threshold
+        val smoothedPhone = (phoneCount.toFloat() / n) >= threshold
 
-        // --- Eating/drinking (sustained) ---
-        val rawEating: Boolean =
-            (_buffer.count { it.driverEatingDrinking }.toFloat() / n) >= threshold
+        val rawEating = (eatingCount.toFloat() / n) >= threshold
         if (rawEating) _eatingStreak++ else _eatingStreak = 0
         val smoothedEating = _eatingStreak >= Config.EATING_MIN_FRAMES
 
-        // --- Dangerous posture (sustained) ---
-        val rawPosture: Boolean =
-            (_buffer.count { it.dangerousPosture }.toFloat() / n) >= threshold
+        val rawPosture = (postureCount.toFloat() / n) >= threshold
         if (rawPosture) _postureStreak++ else _postureStreak = 0
         val smoothedPosture = _postureStreak >= Config.POSTURE_MIN_FRAMES
 
-        val smoothedChildPresent: Boolean =
-            (_buffer.count { it.childPresent }.toFloat() / n) >= threshold
+        val smoothedChildPresent = (childPresentCount.toFloat() / n) >= threshold
 
-        // --- Child slouching (sustained) ---
-        val rawChildSlouching: Boolean =
-            (_buffer.count { it.childSlouching }.toFloat() / n) >= threshold
+        val rawChildSlouching = (childSlouchCount.toFloat() / n) >= threshold
         if (rawChildSlouching) _childSlouchStreak++ else _childSlouchStreak = 0
         val smoothedChildSlouching = _childSlouchStreak >= Config.CHILD_SLOUCH_MIN_FRAMES
 
-        // --- Passenger count: mode (highest count wins on tie) ---
+        // --- Passenger count mode (highest count wins on tie) ---
         val smoothedPassengerCount: Int = run {
-            val counts = _buffer.map { it.passengerCount }
-            val freq = counts.groupingBy { it }.eachCount()
-            val maxFreq = freq.values.max()
-            // Among values with max frequency, pick the highest count
-            freq.filter { it.value == maxFreq }.keys.max()
+            if (n == 0) return@run 0
+            var bestCount = 0; var bestFreq = 0
+            for (i in 0..maxPassengerCount) {
+                if (passengerFreq[i] > bestFreq || (passengerFreq[i] == bestFreq && i > bestCount)) {
+                    bestFreq = passengerFreq[i]; bestCount = i
+                }
+            }
+            bestCount
         }
 
         // --- Recompute risk from smoothed booleans ---

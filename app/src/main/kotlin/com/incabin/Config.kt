@@ -12,11 +12,11 @@ object Config {
     const val YOLO_PHONE_CLASS = 67
     val FOOD_DRINK_CLASSES = intArrayOf(39, 40, 41, 42, 43, 44, 45, 46, 47, 48)
 
-    // Face analysis
-    const val EAR_THRESHOLD = 0.21f
+    // Face analysis (EAR and HEAD_PITCH are overridable per platform at service startup)
+    @JvmStatic var EAR_THRESHOLD = 0.21f
     const val MAR_THRESHOLD = 0.5f
     const val HEAD_YAW_THRESHOLD = 30.0f
-    const val HEAD_PITCH_THRESHOLD = 35.0f
+    @JvmStatic var HEAD_PITCH_THRESHOLD = 35.0f
 
     // Pose analysis
     const val POSTURE_LEAN_THRESHOLD = 30.0f
@@ -39,9 +39,22 @@ object Config {
     // Audio
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
     const val DISTRACTION_BEEP_THRESHOLD_S = 20
+    const val DISTRACTION_GRACE_FRAMES = 2  // consecutive clean frames before reset
 
     // Preview (toggleable at runtime via UI; persisted in SharedPreferences)
     @JvmStatic @Volatile var ENABLE_PREVIEW = false
+
+    // Audio alerts (toggleable at runtime via UI; persisted in SharedPreferences)
+    @JvmStatic @Volatile var ENABLE_AUDIO_ALERTS = true
+
+    // Language: "en" or "ja" (toggleable at runtime via UI; persisted in SharedPreferences)
+    @JvmStatic @Volatile var LANGUAGE = "en"
+
+    // WiFi camera MJPEG stream URL (empty = disabled; persisted in SharedPreferences)
+    @JvmStatic @Volatile var WIFI_CAMERA_URL = ""
+
+    // Driver seat side: "left" (LHD) or "right" (RHD)
+    @JvmStatic @Volatile var DRIVER_SEAT_SIDE = "left"
 
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2

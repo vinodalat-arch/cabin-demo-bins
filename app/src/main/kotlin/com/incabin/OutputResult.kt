@@ -55,7 +55,29 @@ data class OutputResult(
     @SerializedName("driver_name")
     val driverName: String? = null
 ) {
-    fun toJson(): String = gson.toJson(this)
+    fun toJson(): String {
+        val sb = StringBuilder(384)
+        sb.append("{\"timestamp\":\"").append(timestamp)
+        sb.append("\",\"passenger_count\":").append(passengerCount)
+        sb.append(",\"driver_using_phone\":").append(driverUsingPhone)
+        sb.append(",\"driver_eyes_closed\":").append(driverEyesClosed)
+        sb.append(",\"driver_yawning\":").append(driverYawning)
+        sb.append(",\"driver_distracted\":").append(driverDistracted)
+        sb.append(",\"driver_eating_drinking\":").append(driverEatingDrinking)
+        sb.append(",\"dangerous_posture\":").append(dangerousPosture)
+        sb.append(",\"child_present\":").append(childPresent)
+        sb.append(",\"child_slouching\":").append(childSlouching)
+        sb.append(",\"risk_level\":\"").append(riskLevel).append('"')
+        sb.append(",\"ear_value\":").append(earValue ?: "null")
+        sb.append(",\"mar_value\":").append(marValue ?: "null")
+        sb.append(",\"head_yaw\":").append(headYaw ?: "null")
+        sb.append(",\"head_pitch\":").append(headPitch ?: "null")
+        sb.append(",\"distraction_duration_s\":").append(distractionDurationS)
+        sb.append(",\"driver_name\":")
+        if (driverName != null) sb.append('"').append(driverName).append('"') else sb.append("null")
+        sb.append('}')
+        return sb.toString()
+    }
 
     fun toMap(): Map<String, Any?> = mapOf(
         "timestamp" to timestamp,

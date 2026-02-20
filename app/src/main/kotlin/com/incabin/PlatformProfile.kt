@@ -11,6 +11,7 @@ import android.util.Log
  */
 enum class Platform {
     SA8155,
+    SA8255,
     SA8295,
     GENERIC
 }
@@ -22,7 +23,11 @@ data class PlatformProfile(
     val faceRecThreadCount: Int,
     val faceRecThreadAffinity: String,
     val audioUsage: Int,
-    val cameraStrategy: CameraStrategy
+    val cameraStrategy: CameraStrategy,
+    /** Head pitch threshold (degrees) — tuned per platform for camera mount angle */
+    val headPitchThreshold: Float = 35.0f,
+    /** EAR threshold — default 0.21, may need tuning per camera/IR */
+    val earThreshold: Float = 0.21f
 ) {
     enum class CameraStrategy {
         V4L2_FIRST,
@@ -31,7 +36,7 @@ data class PlatformProfile(
 
     /** True if running on an automotive BSP that needs full setup (ODK, chmod, etc.) */
     val isAutomotiveBsp: Boolean
-        get() = platform == Platform.SA8155 || platform == Platform.SA8295
+        get() = platform == Platform.SA8155 || platform == Platform.SA8255 || platform == Platform.SA8295
 
     companion object {
         private const val TAG = "PlatformProfile"
@@ -74,6 +79,7 @@ data class PlatformProfile(
         ): Platform {
             return when {
                 isSA8155(manufacturer, hardware, socModel) -> Platform.SA8155
+                isSA8255(hardware, socModel) -> Platform.SA8255
                 isSA8295(hardware, socModel) -> Platform.SA8295
                 else -> Platform.GENERIC
             }
@@ -88,6 +94,16 @@ data class PlatformProfile(
                 faceRecThreadCount = 2,
                 faceRecThreadAffinity = "5",
                 audioUsage = USAGE_ASSISTANCE_SONIFICATION,
+                cameraStrategy = CameraStrategy.V4L2_FIRST,
+                headPitchThreshold = 35.0f  // Camera mount angle causes ~5-10° pitch baseline
+            )
+            Platform.SA8255 -> PlatformProfile(
+                platform = Platform.SA8255,
+                poseThreadCount = 4,
+                poseThreadAffinity = "",  // Conservative — no pinning until profiled on hardware
+                faceRecThreadCount = 2,
+                faceRecThreadAffinity = "",
+                audioUsage = USAGE_ALARM,
                 cameraStrategy = CameraStrategy.V4L2_FIRST
             )
             Platform.SA8295 -> PlatformProfile(
@@ -114,6 +130,11 @@ data class PlatformProfile(
             return manufacturer.contains("ALPSALPINE", ignoreCase = true) ||
                 socModel.contains("SA8155", ignoreCase = true) ||
                 hardware.contains("SA8155", ignoreCase = true)
+        }
+
+        private fun isSA8255(hardware: String, socModel: String): Boolean {
+            return socModel.contains("SA8255", ignoreCase = true) ||
+                hardware.contains("SA8255", ignoreCase = true)
         }
 
         private fun isSA8295(hardware: String, socModel: String): Boolean {

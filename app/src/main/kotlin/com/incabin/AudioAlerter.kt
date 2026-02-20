@@ -49,17 +49,36 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             "dangerous_posture" to "dangerous posture",
             "child_slouching" to "child slouching"
         )
+
+        val FRIENDLY_NAMES_JA = mapOf(
+            "driver_using_phone" to "スマホを検出しました",
+            "driver_eyes_closed" to "目を閉じています",
+            "driver_yawning" to "あくびを検出しました",
+            "driver_distracted" to "よそ見をしています",
+            "driver_eating_drinking" to "飲食を検出しました",
+            "dangerous_posture" to "危険な姿勢です",
+            "child_slouching" to "お子様の姿勢が悪いです"
+        )
     }
 
-    /** Snapshot of the previous frame's risk level and danger booleans. */
-    private data class AlertState(
-        val riskLevel: String,
-        val dangers: Map<String, Boolean>
-    )
+    /** Snapshot of the previous frame's danger booleans (indexed by DANGER_FIELDS order). */
+    private class DangerSnapshot(
+        val phone: Boolean, val eyes: Boolean, val yawning: Boolean,
+        val distracted: Boolean, val eating: Boolean, val posture: Boolean,
+        val slouching: Boolean
+    ) {
+        fun get(index: Int): Boolean = when (index) {
+            0 -> phone; 1 -> eyes; 2 -> yawning; 3 -> distracted
+            4 -> eating; 5 -> posture; 6 -> slouching; else -> false
+        }
+        fun any(): Boolean = phone || eyes || yawning || distracted || eating || posture || slouching
+    }
 
-    private var prevState: AlertState? = null
+    private var prevDangers: DangerSnapshot? = null
     private val announcedDurations = mutableSetOf<Int>()
-    private var beepPlayed = false
+    @Volatile private var beepPlayed = false
+    private var prevDuration = 0
+    private var currentTtsLang = "en"  // Track current TTS locale to auto-sync with Config.LANGUAGE
     // H3: Store Handler so pending TTS retry can be cancelled in close()
     private val retryHandler = Handler(Looper.getMainLooper())
 
@@ -168,35 +187,58 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
      *
      * Must be called from the main/inference thread (not the TTS worker).
      */
+    /** Update TTS locale when language changes at runtime. */
+    fun setLanguage(langCode: String) {
+        if (!ttsReady) return
+        val locale = if (langCode == "ja") Locale.JAPANESE else Locale.US
+        val result = tts.setLanguage(locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Log.w(TAG, "TTS language $locale not available (result=$result), falling back to US")
+            tts.setLanguage(Locale.US)
+        } else {
+            Log.i(TAG, "TTS language set to: $locale")
+        }
+    }
+
     fun checkAndAnnounce(result: OutputResult) {
-        val currentRisk = result.riskLevel
-        val currentDangers = extractDangers(result)
+        // Auto-sync TTS locale when Config.LANGUAGE changes at runtime
+        val lang = Config.LANGUAGE
+        if (lang != currentTtsLang) {
+            currentTtsLang = lang
+            setLanguage(lang)
+        }
+
         val duration = result.distractionDurationS
+        val current = DangerSnapshot(
+            result.driverUsingPhone, result.driverEyesClosed, result.driverYawning,
+            result.driverDistracted, result.driverEatingDrinking,
+            result.dangerousPosture, result.childSlouching
+        )
 
         // First frame: store state and return without speaking
-        if (prevState == null) {
-            prevState = AlertState(riskLevel = currentRisk, dangers = currentDangers)
+        if (prevDangers == null) {
+            prevDangers = current
             return
         }
 
-        val prevDangers = prevState!!.dangers
+        val prev = prevDangers!!
         val parts = mutableListOf<String>()
 
         // Step 1: New dangers activated (in DANGER_FIELDS order)
-        for (field in DANGER_FIELDS) {
-            val current = currentDangers[field] ?: false
-            val previous = prevDangers[field] ?: false
-            if (current && !previous) {
-                FRIENDLY_NAMES[field]?.let { parts.add(it) }
+        val isJapanese = Config.LANGUAGE == "ja"
+        val nameMap = if (isJapanese) FRIENDLY_NAMES_JA else FRIENDLY_NAMES
+        for (i in DANGER_FIELDS.indices) {
+            if (current.get(i) && !prev.get(i)) {
+                nameMap[DANGER_FIELDS[i]]?.let { parts.add(it) }
             }
         }
 
         // Step 2: All-clear override
-        val anyPrevDanger = prevDangers.values.any { it }
-        val anyCurrDanger = currentDangers.values.any { it }
+        val anyPrevDanger = prev.any()
+        val anyCurrDanger = current.any()
         if (anyPrevDanger && !anyCurrDanger) {
             parts.clear()
-            parts.add("all clear")
+            parts.add(if (isJapanese) "安全です" else "all clear")
         }
 
         // Step 3: Distraction duration (only if no other message)
@@ -204,29 +246,35 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             for (threshold in Config.DISTRACTION_ALERT_THRESHOLDS) {
                 if (duration >= threshold && threshold !in announcedDurations) {
                     announcedDurations.add(threshold)
-                    parts.add("distracted $threshold seconds")
+                    parts.add(
+                        if (isJapanese) "${threshold}秒間よそ見しています"
+                        else "distracted $threshold seconds"
+                    )
                     break // one per cycle
                 }
             }
         }
 
-        // Reset announced durations when distraction clears
-        if (duration == 0) {
+        // Reset announced durations only on transition from distracted→clear
+        // (not on every frame where duration==0, which caused double-beep)
+        if (duration == 0 && prevDuration > 0) {
             announcedDurations.clear()
             beepPlayed = false
         }
+        prevDuration = duration
 
         // Loud beep at 20s distraction threshold
         if (duration >= Config.DISTRACTION_BEEP_THRESHOLD_S && !beepPlayed) {
             beepPlayed = true
             Log.i(TAG, "Playing loud beep at ${Config.DISTRACTION_BEEP_THRESHOLD_S}s distraction")
             Thread({
+                var track: AudioTrack? = null
                 try {
                     val attrs = AudioAttributes.Builder()
                         .setUsage(audioUsage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
-                    val track = AudioTrack.Builder()
+                    track = AudioTrack.Builder()
                         .setAudioAttributes(attrs)
                         .setAudioFormat(
                             AudioFormat.Builder()
@@ -241,11 +289,12 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
                     track.write(beepBuffer, 0, beepBuffer.size)
                     track.play()
                     Thread.sleep(2000)
-                    track.stop()
-                    track.release()
                     Log.i(TAG, "Beep playback completed")
                 } catch (e: Exception) {
                     Log.w(TAG, "Beep playback failed", e)
+                } finally {
+                    try { track?.stop() } catch (_: Exception) {}
+                    try { track?.release() } catch (_: Exception) {}
                 }
             }, "Beep-Player").start()
         }
@@ -255,7 +304,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             val message = parts.joinToString(". ")
             messageQueue.put(message)
             try {
-                postAlertNotification(message, currentRisk)
+                postAlertNotification(message, result.riskLevel)
             } catch (e: Exception) {
                 Log.w(TAG, "Notification posting failed, TTS unaffected", e)
             }
@@ -271,7 +320,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
 
         // Update previous state
-        prevState = AlertState(riskLevel = currentRisk, dangers = currentDangers)
+        prevDangers = current
     }
 
     private fun postAlertNotification(message: String, riskLevel: String) {
@@ -299,21 +348,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         Log.i(TAG, "Posted notification: $message")
     }
 
-    /**
-     * Extracts the danger boolean fields from an [OutputResult] into a map
-     * keyed by the JSON field names used in [DANGER_FIELDS].
-     */
-    private fun extractDangers(result: OutputResult): Map<String, Boolean> {
-        return mapOf(
-            "driver_using_phone" to result.driverUsingPhone,
-            "driver_eyes_closed" to result.driverEyesClosed,
-            "driver_yawning" to result.driverYawning,
-            "driver_distracted" to result.driverDistracted,
-            "driver_eating_drinking" to result.driverEatingDrinking,
-            "dangerous_posture" to result.dangerousPosture,
-            "child_slouching" to result.childSlouching
-        )
-    }
+    // extractDangers removed — replaced by DangerSnapshot to avoid per-frame Map allocation
 
     /**
      * Shuts down the TTS engine and stops the background worker thread.

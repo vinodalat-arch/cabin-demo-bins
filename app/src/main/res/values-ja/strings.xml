@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Honda Smart Cabin</string>
+    <string name="start_service">モニタリング開始</string>
+    <string name="stop_service">モニタリング停止</string>
+    <string name="notification_channel">InCabinサービス</string>
+    <string name="notification_title">車内モニター</string>
+    <string name="notification_text">モニタリング中</string>
+</resources>

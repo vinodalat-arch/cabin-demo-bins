@@ -36,6 +36,10 @@ class MainActivity : Activity() {
         private const val PREVIEW_POLL_MS = 500L
         private const val PREFS_NAME = "incabin_prefs"
         private const val PREF_PREVIEW_ENABLED = "preview_enabled"
+        private const val PREF_AUDIO_ENABLED = "audio_enabled"
+        private const val PREF_LANGUAGE = "language"
+        private const val PREF_SEAT_SIDE = "seat_side"
+        private const val PREF_WIFI_URL = "wifi_camera_url"
 
         // Score tuning
         private const val SCORE_RECOVERY = 0.5f
@@ -50,10 +54,15 @@ class MainActivity : Activity() {
         )
 
         // Streak milestones in milliseconds
-        private val STREAK_MILESTONES = listOf(
+        private val STREAK_MILESTONES_EN = listOf(
             5L * 60 * 1000 to "5 minutes distraction-free! Keep it up!",
             15L * 60 * 1000 to "15 minutes! You're on fire!",
             30L * 60 * 1000 to "Half hour of perfect driving. Legend!"
+        )
+        private val STREAK_MILESTONES_JA = listOf(
+            5L * 60 * 1000 to "5分間集中！この調子で！",
+            15L * 60 * 1000 to "15分間！素晴らしい！",
+            30L * 60 * 1000 to "30分間完璧な運転。伝説です！"
         )
 
         // Varied detection messages
@@ -101,16 +110,70 @@ class MainActivity : Activity() {
             "Eyes on the road. Looking good!"
         )
 
-        // Detection labels with dot colors
-        private val DETECTION_CONFIGS = listOf(
-            Triple("driverUsingPhone", "Phone Detected", true),
-            Triple("driverEyesClosed", "Eyes Closed", true),
-            Triple("driverYawning", "Yawning", false),
-            Triple("driverDistracted", "Distracted", false),
-            Triple("driverEatingDrinking", "Eating / Drinking", false),
-            Triple("dangerousPosture", "Dangerous Posture", false),
-            Triple("childSlouching", "Child Slouching", false)
+        // Japanese AI status messages
+        private val PHONE_MESSAGES_JA = listOf(
+            "スマホを検出！運転に集中してください。",
+            "スマホは置いて、前を見て！",
+            "メッセージは後で。安全が最優先です。"
         )
+        private val EYES_MESSAGES_JA = listOf(
+            "目を覚まして！居眠り危険です。",
+            "まばたきはOK。居眠りはNG！",
+            "目を開けて！前方注意です。"
+        )
+        private val DISTRACTED_MESSAGES_JA = listOf(
+            "前を向いてください！",
+            "よそ見注意！前方を確認して。",
+            "集中！景色は後で楽しみましょう。"
+        )
+        private val YAWNING_MESSAGES_JA = listOf(
+            "大あくび！休憩しませんか？",
+            "眠そうですね。休憩をおすすめします。",
+            "あくび検出！ストレッチ休憩は？"
+        )
+        private val EATING_MESSAGES_JA = listOf(
+            "運転中の飲食は危険です！",
+            "食事は停車してから！",
+            "ハンドルをしっかり握って！"
+        )
+        private val POSTURE_MESSAGES_JA = listOf(
+            "姿勢を正してください！",
+            "姿勢チェック！背筋を伸ばして。",
+            "正しい姿勢で安全運転を。"
+        )
+        private val CHILD_SLOUCH_MESSAGES_JA = listOf(
+            "お子様の姿勢が悪いです！",
+            "後部座席のお子様を確認して！",
+            "お子様の姿勢チェック！"
+        )
+        private val ALL_CLEAR_MESSAGES_JA = listOf(
+            "順調です！安全運転を。",
+            "問題なし。素晴らしい運転です！",
+            "快適走行中。油断せずに。",
+            "安全運転モード：ON",
+            "前方注視。いい調子です！"
+        )
+
+        // Detection labels with dot colors
+        private val DETECTION_LABELS_EN = mapOf(
+            "driverUsingPhone" to "Phone Detected",
+            "driverEyesClosed" to "Eyes Closed",
+            "driverYawning" to "Yawning",
+            "driverDistracted" to "Distracted",
+            "driverEatingDrinking" to "Eating / Drinking",
+            "dangerousPosture" to "Dangerous Posture",
+            "childSlouching" to "Child Slouching"
+        )
+        private val DETECTION_LABELS_JA = mapOf(
+            "driverUsingPhone" to "スマホ検出",
+            "driverEyesClosed" to "目を閉じている",
+            "driverYawning" to "あくび",
+            "driverDistracted" to "よそ見",
+            "driverEatingDrinking" to "飲食中",
+            "dangerousPosture" to "危険な姿勢",
+            "childSlouching" to "子供の姿勢不良"
+        )
+        private val DETECTION_DANGER_FIELDS = setOf("driverUsingPhone", "driverEyesClosed")
 
         private val TICKER_TIME_FORMAT = SimpleDateFormat("HH:mm:ss", Locale.US)
     }
@@ -131,6 +194,9 @@ class MainActivity : Activity() {
     private lateinit var toggleButton: Button
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
+    private lateinit var audioToggle: Button
+    private lateinit var langToggle: Button
+    private lateinit var seatToggle: Button
     private lateinit var cameraStatusText: TextView
     private lateinit var cameraStatusDot: View
     private lateinit var driverNameText: TextView
@@ -253,6 +319,9 @@ class MainActivity : Activity() {
         toggleButton = findViewById(R.id.toggleButton)
         registerButton = findViewById(R.id.registerButton)
         previewToggle = findViewById(R.id.previewToggle)
+        audioToggle = findViewById(R.id.audioToggle)
+        langToggle = findViewById(R.id.langToggle)
+        seatToggle = findViewById(R.id.seatToggle)
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
         driverNameText = findViewById(R.id.driverNameText)
@@ -283,10 +352,17 @@ class MainActivity : Activity() {
 
         currentRiskColor = colorSafe
 
-        // Restore preview toggle state
+        // Restore toggle states
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         Config.ENABLE_PREVIEW = prefs.getBoolean(PREF_PREVIEW_ENABLED, false)
+        Config.ENABLE_AUDIO_ALERTS = prefs.getBoolean(PREF_AUDIO_ENABLED, true)
+        Config.LANGUAGE = prefs.getString(PREF_LANGUAGE, "en") ?: "en"
+        Config.DRIVER_SEAT_SIDE = prefs.getString(PREF_SEAT_SIDE, "left") ?: "left"
+        Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
         updatePreviewToggleUI()
+        updateAudioToggleUI()
+        updateLangToggleUI()
+        updateSeatToggleUI()
 
         toggleButton.setOnClickListener {
             if (isSettingUp) return@setOnClickListener
@@ -318,6 +394,36 @@ class MainActivity : Activity() {
             }
             Log.i(TAG, "Preview toggled: ${Config.ENABLE_PREVIEW}")
         }
+
+        audioToggle.setOnClickListener {
+            Config.ENABLE_AUDIO_ALERTS = !Config.ENABLE_AUDIO_ALERTS
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_AUDIO_ENABLED, Config.ENABLE_AUDIO_ALERTS)
+                .apply()
+            updateAudioToggleUI()
+            Log.i(TAG, "Audio alerts toggled: ${Config.ENABLE_AUDIO_ALERTS}")
+        }
+
+        langToggle.setOnClickListener {
+            Config.LANGUAGE = if (Config.LANGUAGE == "en") "ja" else "en"
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_LANGUAGE, Config.LANGUAGE)
+                .apply()
+            updateLangToggleUI()
+            Log.i(TAG, "Language toggled: ${Config.LANGUAGE}")
+        }
+
+        seatToggle.setOnClickListener {
+            Config.DRIVER_SEAT_SIDE = if (Config.DRIVER_SEAT_SIDE == "left") "right" else "left"
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_SEAT_SIDE, Config.DRIVER_SEAT_SIDE)
+                .apply()
+            updateSeatToggleUI()
+            Log.i(TAG, "Driver seat side: ${Config.DRIVER_SEAT_SIDE}")
+        }
     }
 
     override fun onResume() {
@@ -335,6 +441,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         riskAnimator?.cancel()
         deviceSetup?.cancel()
+        handler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
 
@@ -349,6 +456,36 @@ class MainActivity : Activity() {
         } else {
             previewToggle.text = "Preview"
             previewToggle.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun updateAudioToggleUI() {
+        if (Config.ENABLE_AUDIO_ALERTS) {
+            audioToggle.text = "Audio ON"
+            audioToggle.setTextColor(colorTextPrimary)
+        } else {
+            audioToggle.text = "Audio OFF"
+            audioToggle.setTextColor(colorTextMuted)
+        }
+    }
+
+    private fun updateLangToggleUI() {
+        if (Config.LANGUAGE == "ja") {
+            langToggle.text = "JA"
+            langToggle.setTextColor(colorTextPrimary)
+        } else {
+            langToggle.text = "EN"
+            langToggle.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun updateSeatToggleUI() {
+        if (Config.DRIVER_SEAT_SIDE == "right") {
+            seatToggle.text = "Seat: Right"
+            seatToggle.setTextColor(colorTextPrimary)
+        } else {
+            seatToggle.text = "Seat: Left"
+            seatToggle.setTextColor(colorTextSecondary)
         }
     }
 
@@ -397,10 +534,27 @@ class MainActivity : Activity() {
 
     private fun onStartButtonTap() {
         if (platformProfile.isAutomotiveBsp) {
-            startAutomotiveSetup()
+            // On automotive BSP: check if camera is already available first
+            // to skip the full setup flow (ODK/chmod/grant) when unnecessary
+            val setup = DeviceSetup()
+            if (setup.isCameraAvailable() && hasRequiredPermissions()) {
+                Log.i(TAG, "Camera + permissions already available, skipping setup")
+                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.READY)
+                startMonitoring()
+            } else {
+                startAutomotiveSetup()
+            }
         } else {
             checkPermissionsAndStart()
         }
+    }
+
+    private fun hasRequiredPermissions(): Boolean {
+        val cameraGranted = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val notifGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else true
+        return cameraGranted && notifGranted
     }
 
     private fun startAutomotiveSetup() {
@@ -671,29 +825,38 @@ class MainActivity : Activity() {
 
     // --- Detection labels: vertical stack with dots ---
     private fun updateDetectionLabels(result: OutputResult) {
-        val active = mutableSetOf<String>()
-        if (result.driverUsingPhone) active.add("Phone Detected")
-        if (result.driverEyesClosed) active.add("Eyes Closed")
-        if (result.driverYawning) active.add("Yawning")
-        if (result.driverDistracted) active.add("Distracted")
-        if (result.driverEatingDrinking) active.add("Eating / Drinking")
-        if (result.dangerousPosture) active.add("Dangerous Posture")
-        if (result.childSlouching) active.add("Child Slouching")
+        val labelMap = if (Config.LANGUAGE == "ja") DETECTION_LABELS_JA else DETECTION_LABELS_EN
+
+        // Build active set using field keys (language-independent)
+        val activeKeys = mutableSetOf<String>()
+        if (result.driverUsingPhone) activeKeys.add("driverUsingPhone")
+        if (result.driverEyesClosed) activeKeys.add("driverEyesClosed")
+        if (result.driverYawning) activeKeys.add("driverYawning")
+        if (result.driverDistracted) activeKeys.add("driverDistracted")
+        if (result.driverEatingDrinking) activeKeys.add("driverEatingDrinking")
+        if (result.dangerousPosture) activeKeys.add("dangerousPosture")
+        if (result.childSlouching) activeKeys.add("childSlouching")
 
         // Skip update if unchanged
-        if (active == currentDetections) return
-        val removed = currentDetections - active
-        val added = active - currentDetections
-        currentDetections = active
+        if (activeKeys == currentDetections) return
+        val removed = currentDetections - activeKeys
+        val added = activeKeys - currentDetections
+        currentDetections = activeKeys
 
         // Remove labels that are no longer active
-        for (label in removed) {
-            val tag = "det_$label"
+        for (key in removed) {
+            val tag = "det_$key"
             val view = detectionsContainer.findViewWithTag<View>(tag)
             if (view != null) {
                 view.animate().alpha(0f).setDuration(300).withEndAction {
-                    detectionsContainer.removeView(view)
-                    showAllClearIfEmpty()
+                    try {
+                        if (view.parent == detectionsContainer) {
+                            detectionsContainer.removeView(view)
+                        }
+                        showAllClearIfEmpty()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to remove detection label", e)
+                    }
                 }.start()
             }
         }
@@ -707,13 +870,14 @@ class MainActivity : Activity() {
         }
 
         // Add new detection labels
-        for (label in added) {
-            val isDanger = label == "Phone Detected" || label == "Eyes Closed"
+        for (key in added) {
+            val isDanger = key in DETECTION_DANGER_FIELDS
             val dotColor = if (isDanger) colorDanger else colorCaution
+            val displayLabel = labelMap[key] ?: key
 
             val tv = TextView(this).apply {
-                tag = "det_$label"
-                text = "\u25CF  $label"
+                tag = "det_$key"
+                text = "\u25CF  $displayLabel"
                 textSize = 15f
                 setTextColor(dotColor)
                 setPadding(0, dpToPx(2), 0, dpToPx(2))
@@ -724,7 +888,7 @@ class MainActivity : Activity() {
         }
 
         // Show "All Clear" if nothing active
-        if (active.isEmpty()) {
+        if (activeKeys.isEmpty()) {
             showAllClearIfEmpty()
         }
     }
@@ -738,7 +902,7 @@ class MainActivity : Activity() {
 
         val tv = TextView(this).apply {
             tag = "det_allclear"
-            text = "All Clear"
+            text = if (Config.LANGUAGE == "ja") "安全" else "All Clear"
             textSize = 15f
             setTextColor(colorSafe)
             setPadding(0, dpToPx(2), 0, dpToPx(2))
@@ -817,21 +981,23 @@ class MainActivity : Activity() {
 
     private fun updateAiStatus(result: OutputResult) {
         framesSinceStart++
+        val isJa = Config.LANGUAGE == "ja"
 
         val message: String
         val color: Int
 
         // First few frames: initialization feedback
         if (framesSinceStart == 1) {
-            message = "Smart eyes are ready!"
+            message = if (isJa) "AIの準備が完了しました！" else "Smart eyes are ready!"
             color = colorAccent
         } else if (framesSinceStart == 2) {
-            message = "Got you! Let's roll."
+            message = if (isJa) "検出開始！安全運転を。" else "Got you! Let's roll."
             color = colorSafe
         } else {
             // Check for streak milestones
             val streakMs = System.currentTimeMillis() - lastDetectionMs
-            val milestone = STREAK_MILESTONES.firstOrNull { (thresholdMs, _) ->
+            val milestones = if (isJa) STREAK_MILESTONES_JA else STREAK_MILESTONES_EN
+            val milestone = milestones.firstOrNull { (thresholdMs, _) ->
                 streakMs >= thresholdMs && thresholdMs !in announcedMilestones
             }
 
@@ -840,20 +1006,21 @@ class MainActivity : Activity() {
                 message = milestone.second
                 color = colorGold
             } else when {
-                result.driverUsingPhone -> { message = PHONE_MESSAGES.random(); color = colorDanger }
-                result.driverEyesClosed -> { message = EYES_MESSAGES.random(); color = colorDanger }
-                result.driverDistracted -> { message = DISTRACTED_MESSAGES.random(); color = colorCaution }
-                result.driverYawning -> { message = YAWNING_MESSAGES.random(); color = colorCaution }
-                result.driverEatingDrinking -> { message = EATING_MESSAGES.random(); color = colorCaution }
-                result.dangerousPosture -> { message = POSTURE_MESSAGES.random(); color = colorCaution }
-                result.childSlouching -> { message = CHILD_SLOUCH_MESSAGES.random(); color = colorCaution }
-                result.distractionDurationS >= 20 -> { message = "20 seconds! Please pull over."; color = colorDanger }
-                result.distractionDurationS >= 10 -> { message = "10 seconds! Seriously, eyes on road."; color = colorDanger }
-                result.distractionDurationS >= 5 -> { message = "5 seconds distracted... focus up!"; color = colorCaution }
-                result.riskLevel == "high" -> { message = "Danger zone! Focus NOW."; color = colorDanger }
-                result.riskLevel == "medium" -> { message = "Heads up! Stay alert."; color = colorCaution }
+                result.driverUsingPhone -> { message = (if (isJa) PHONE_MESSAGES_JA else PHONE_MESSAGES).random(); color = colorDanger }
+                result.driverEyesClosed -> { message = (if (isJa) EYES_MESSAGES_JA else EYES_MESSAGES).random(); color = colorDanger }
+                result.driverDistracted -> { message = (if (isJa) DISTRACTED_MESSAGES_JA else DISTRACTED_MESSAGES).random(); color = colorCaution }
+                result.driverYawning -> { message = (if (isJa) YAWNING_MESSAGES_JA else YAWNING_MESSAGES).random(); color = colorCaution }
+                result.driverEatingDrinking -> { message = (if (isJa) EATING_MESSAGES_JA else EATING_MESSAGES).random(); color = colorCaution }
+                result.dangerousPosture -> { message = (if (isJa) POSTURE_MESSAGES_JA else POSTURE_MESSAGES).random(); color = colorCaution }
+                result.childSlouching -> { message = (if (isJa) CHILD_SLOUCH_MESSAGES_JA else CHILD_SLOUCH_MESSAGES).random(); color = colorCaution }
+                result.distractionDurationS >= 20 -> { message = if (isJa) "20秒間！停車してください。" else "20 seconds! Please pull over."; color = colorDanger }
+                result.distractionDurationS >= 10 -> { message = if (isJa) "10秒間！前を見て！" else "10 seconds! Seriously, eyes on road."; color = colorDanger }
+                result.distractionDurationS >= 5 -> { message = if (isJa) "5秒間よそ見…集中して！" else "5 seconds distracted... focus up!"; color = colorCaution }
+                result.riskLevel == "high" -> { message = if (isJa) "危険！今すぐ集中して！" else "Danger zone! Focus NOW."; color = colorDanger }
+                result.riskLevel == "medium" -> { message = if (isJa) "注意！油断しないで。" else "Heads up! Stay alert."; color = colorCaution }
                 else -> {
-                    message = ALL_CLEAR_MESSAGES[allClearIndex % ALL_CLEAR_MESSAGES.size]
+                    val clearMsgs = if (isJa) ALL_CLEAR_MESSAGES_JA else ALL_CLEAR_MESSAGES
+                    message = clearMsgs[allClearIndex % clearMsgs.size]
                     allClearIndex++
                     color = colorSafe
                 }
@@ -916,18 +1083,19 @@ class MainActivity : Activity() {
         val sessionDurationMs = System.currentTimeMillis() - sessionStartMs
         val avgScore = if (totalFrames > 0) (scoreSum / totalFrames).toInt() else 100
         val finalBest = maxOf(bestStreakMs, System.currentTimeMillis() - lastDetectionMs)
+        val isJa = Config.LANGUAGE == "ja"
 
         val sb = StringBuilder()
-        sb.appendLine("Duration: ${formatDuration(sessionDurationMs)}")
-        sb.appendLine("Attention Score: $avgScore / 100")
-        sb.appendLine("Final Score: ${drivingScore.toInt()} / 100")
-        sb.appendLine("Longest Streak: ${formatDuration(finalBest)}")
+        sb.appendLine("${if (isJa) "走行時間" else "Duration"}: ${formatDuration(sessionDurationMs)}")
+        sb.appendLine("${if (isJa) "注意スコア" else "Attention Score"}: $avgScore / 100")
+        sb.appendLine("${if (isJa) "最終スコア" else "Final Score"}: ${drivingScore.toInt()} / 100")
+        sb.appendLine("${if (isJa) "最長連続" else "Longest Streak"}: ${formatDuration(finalBest)}")
         sb.appendLine()
 
         if (detectionCounts.isEmpty()) {
-            sb.appendLine("Zero detections. Perfect session!")
+            sb.appendLine(if (isJa) "検出ゼロ。完璧なセッション！" else "Zero detections. Perfect session!")
         } else {
-            sb.appendLine("Detections:")
+            sb.appendLine(if (isJa) "検出:" else "Detections:")
             for ((name, count) in detectionCounts.entries.sortedByDescending { it.value }) {
                 sb.appendLine("  $name: $count")
             }
@@ -935,7 +1103,12 @@ class MainActivity : Activity() {
 
         sb.appendLine()
         sb.append(
-            when {
+            if (isJa) when {
+                avgScore >= 90 -> "素晴らしい運転！安全運転を続けてください。"
+                avgScore >= 70 -> "良いセッション。もう少し改善の余地があります！"
+                avgScore >= 50 -> "まずまず。次回はもっと集中しましょう。"
+                else -> "大変なセッション。休憩を検討してください。"
+            } else when {
                 avgScore >= 90 -> "Outstanding driving! Stay safe out there."
                 avgScore >= 70 -> "Good session. A bit of room to improve!"
                 avgScore >= 50 -> "Decent, but stay more focused next time."
@@ -945,7 +1118,7 @@ class MainActivity : Activity() {
 
         try {
             AlertDialog.Builder(this)
-                .setTitle("Session Summary")
+                .setTitle(if (isJa) "セッション概要" else "Session Summary")
                 .setMessage(sb.toString())
                 .setPositiveButton("OK", null)
                 .show()

@@ -32,7 +32,7 @@ class FaceStore private constructor(context: Context) {
 
         /**
          * Compute cosine similarity between two embeddings.
-         * Embeddings should be L2-normalized for this to equal true cosine similarity.
+         * Works correctly with both normalized and unnormalized inputs.
          */
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
             if (a.size != b.size || a.isEmpty()) return 0f

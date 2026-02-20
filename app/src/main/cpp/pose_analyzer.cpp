@@ -3,8 +3,8 @@
 #include <android/asset_manager.h>
 #include <android/log.h>
 #include <cmath>
+#include <cstdio>
 #include <algorithm>
-#include <sstream>
 
 #define TAG "InCabin-PoseAnalyzer"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -179,7 +179,7 @@ std::vector<Detection> PoseAnalyzer::runPoseModel(const uint8_t* bgr_data,
     letterbox(bgr_data, width, height, letterbox_buf_.data(), info);
     preprocess(letterbox_buf_.data(), input_tensor_buf_.data());
 
-    std::vector<int64_t> input_shape = {1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE};
+    static const std::vector<int64_t> input_shape = {1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE};
     constexpr size_t pose_output_size = POSE_OUTPUT_COLS * NUM_ANCHORS;  // 56*8400
     auto output = runInference(pose_session_.get(), input_tensor_buf_.data(), input_shape, pose_output_size);
     if (output.empty()) return {};
@@ -198,7 +198,7 @@ std::vector<Detection> PoseAnalyzer::runDetectModel(const uint8_t* crop_bgr,
     letterbox(crop_bgr, crop_w, crop_h, detect_letterbox_buf_.data(), info);
     preprocess(detect_letterbox_buf_.data(), detect_tensor_buf_.data());
 
-    std::vector<int64_t> input_shape = {1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE};
+    static const std::vector<int64_t> input_shape = {1, 3, YOLO_INPUT_SIZE, YOLO_INPUT_SIZE};
     constexpr size_t detect_output_size = DETECT_OUTPUT_COLS * NUM_ANCHORS;  // 84*8400
     auto output = runInference(detect_session_.get(), detect_tensor_buf_.data(), input_shape, detect_output_size);
     if (output.empty()) return {};
@@ -228,6 +228,18 @@ bool PoseAnalyzer::checkPosture(const std::array<Keypoint, NUM_KEYPOINTS>& kps,
         if (dy < 1e-6f) return true;  // shoulders at or below hips
 
         float lean_angle = std::atan2(std::abs(dx), dy) * 180.0f / static_cast<float>(M_PI);
+
+        // Elbow-augmented lean: if elbows are visible, compute elbow-hip lean
+        // and average with shoulder-hip lean for more robust detection
+        bool left_elbow_ok = kps[KP_LEFT_ELBOW].conf > KP_CONF_THRESHOLD;
+        bool right_elbow_ok = kps[KP_RIGHT_ELBOW].conf > KP_CONF_THRESHOLD;
+        if (left_elbow_ok && right_elbow_ok) {
+            float elbow_mid_x = (kps[KP_LEFT_ELBOW].x + kps[KP_RIGHT_ELBOW].x) / 2.0f;
+            float elbow_dx = elbow_mid_x - hip_mid_x;
+            float elbow_lean = std::atan2(std::abs(elbow_dx), dy) * 180.0f / static_cast<float>(M_PI);
+            lean_angle = (lean_angle + elbow_lean) / 2.0f;
+        }
+
         if (lean_angle > threshold_deg) return true;
 
         // Head droop check (nose below shoulder line)
@@ -242,15 +254,23 @@ bool PoseAnalyzer::checkPosture(const std::array<Keypoint, NUM_KEYPOINTS>& kps,
         float shoulder_width = std::abs(kps[KP_LEFT_SHOULDER].x - kps[KP_RIGHT_SHOULDER].x);
 
         if (shoulder_width > 1e-6f) {
-            // Face not visible check
-            if (kps[KP_NOSE].conf <= KP_CONF_THRESHOLD) {
-                return true;
+            // Multi-point face visibility: require at least 2 of 3 face points
+            // (nose, left_eye, right_eye) to be invisible before flagging
+            int face_points_visible = 0;
+            if (kps[KP_NOSE].conf > KP_CONF_THRESHOLD) face_points_visible++;
+            if (kps[KP_LEFT_EYE].conf > KP_CONF_THRESHOLD) face_points_visible++;
+            if (kps[KP_RIGHT_EYE].conf > KP_CONF_THRESHOLD) face_points_visible++;
+
+            if (face_points_visible == 0) {
+                return true;  // No face points visible at all
             }
 
-            // Head turn check
-            float nose_offset = std::abs(kps[KP_NOSE].x - shoulder_mid_x);
-            if (nose_offset > shoulder_width * HEAD_TURN_THRESHOLD) {
-                return true;
+            // Head turn check (only if nose is visible)
+            if (kps[KP_NOSE].conf > KP_CONF_THRESHOLD) {
+                float nose_offset = std::abs(kps[KP_NOSE].x - shoulder_mid_x);
+                if (nose_offset > shoulder_width * HEAD_TURN_THRESHOLD) {
+                    return true;
+                }
             }
         }
     }
@@ -288,16 +308,11 @@ bool PoseAnalyzer::detectObjectsInRegion(const uint8_t* frame_bgr, int frame_w, 
     if (crop_buf_.size() < crop_size) {
         crop_buf_.resize(crop_size);
     }
+    const int row_bytes = crop_w * 3;
     for (int y = 0; y < crop_h; y++) {
-        int src_row = (cy1 + y) * frame_w * 3;
-        int dst_row = y * crop_w * 3;
-        for (int x = 0; x < crop_w; x++) {
-            int src_idx = src_row + (cx1 + x) * 3;
-            int dst_idx = dst_row + x * 3;
-            crop_buf_[dst_idx]     = frame_bgr[src_idx];
-            crop_buf_[dst_idx + 1] = frame_bgr[src_idx + 1];
-            crop_buf_[dst_idx + 2] = frame_bgr[src_idx + 2];
-        }
+        const uint8_t* src = frame_bgr + ((cy1 + y) * frame_w + cx1) * 3;
+        uint8_t* dst = crop_buf_.data() + y * row_bytes;
+        std::memcpy(dst, src, row_bytes);
     }
 
     // Run detection on crop
@@ -380,7 +395,7 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
 
     // 5. Phone detection (two-strategy)
     // Strategy 1: driver ROI with 20% padding
-    std::vector<int> phone_classes = {YOLO_PHONE_CLASS};
+    static const std::vector<int> phone_classes = {YOLO_PHONE_CLASS};
     if (detectObjectsInCrop(bgr_data, width, height, driver, phone_classes, 0.2f)) {
         result.driver_using_phone = true;
     } else {
@@ -424,35 +439,56 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
 // ---- JSON Serialization ----
 
 std::string PoseResult::toJson() const {
-    std::ostringstream ss;
-    ss << "{"
-       << "\"passenger_count\":" << passenger_count << ","
-       << "\"driver_using_phone\":" << (driver_using_phone ? "true" : "false") << ","
-       << "\"dangerous_posture\":" << (dangerous_posture ? "true" : "false") << ","
-       << "\"child_present\":" << (child_present ? "true" : "false") << ","
-       << "\"child_slouching\":" << (child_slouching ? "true" : "false") << ","
-       << "\"driver_eating_drinking\":" << (driver_eating_drinking ? "true" : "false") << ","
-       << "\"persons\":[";
+    // Pre-reserve: ~200 bytes base + ~900 bytes per person (17 keypoints × ~50 bytes each)
+    std::string json;
+    json.reserve(256 + persons.size() * 1024);
+
+    json += "{\"passenger_count\":";
+    json += std::to_string(passenger_count);
+    json += ",\"driver_using_phone\":";
+    json += driver_using_phone ? "true" : "false";
+    json += ",\"dangerous_posture\":";
+    json += dangerous_posture ? "true" : "false";
+    json += ",\"child_present\":";
+    json += child_present ? "true" : "false";
+    json += ",\"child_slouching\":";
+    json += child_slouching ? "true" : "false";
+    json += ",\"driver_eating_drinking\":";
+    json += driver_eating_drinking ? "true" : "false";
+    json += ",\"persons\":[";
+
+    // Reusable buffer for float formatting (avoids repeated std::to_string heap allocs)
+    char fbuf[32];
     for (size_t i = 0; i < persons.size(); i++) {
-        if (i > 0) ss << ",";
+        if (i > 0) json += ',';
         const auto& p = persons[i];
-        ss << "{\"x1\":" << p.x1
-           << ",\"y1\":" << p.y1
-           << ",\"x2\":" << p.x2
-           << ",\"y2\":" << p.y2
-           << ",\"confidence\":" << p.confidence
-           << ",\"is_driver\":" << (p.is_driver ? "true" : "false")
-           << ",\"keypoints\":[";
+        json += "{\"x1\":";
+        snprintf(fbuf, sizeof(fbuf), "%.1f", p.x1); json += fbuf;
+        json += ",\"y1\":";
+        snprintf(fbuf, sizeof(fbuf), "%.1f", p.y1); json += fbuf;
+        json += ",\"x2\":";
+        snprintf(fbuf, sizeof(fbuf), "%.1f", p.x2); json += fbuf;
+        json += ",\"y2\":";
+        snprintf(fbuf, sizeof(fbuf), "%.1f", p.y2); json += fbuf;
+        json += ",\"confidence\":";
+        snprintf(fbuf, sizeof(fbuf), "%.4f", p.confidence); json += fbuf;
+        json += ",\"is_driver\":";
+        json += p.is_driver ? "true" : "false";
+        json += ",\"keypoints\":[";
         for (int k = 0; k < NUM_KEYPOINTS; k++) {
-            if (k > 0) ss << ",";
-            ss << "{\"x\":" << p.keypoints[k].x
-               << ",\"y\":" << p.keypoints[k].y
-               << ",\"c\":" << p.keypoints[k].conf << "}";
+            if (k > 0) json += ',';
+            json += "{\"x\":";
+            snprintf(fbuf, sizeof(fbuf), "%.1f", p.keypoints[k].x); json += fbuf;
+            json += ",\"y\":";
+            snprintf(fbuf, sizeof(fbuf), "%.1f", p.keypoints[k].y); json += fbuf;
+            json += ",\"c\":";
+            snprintf(fbuf, sizeof(fbuf), "%.4f", p.keypoints[k].conf); json += fbuf;
+            json += '}';
         }
-        ss << "]}";
+        json += "]}";
     }
-    ss << "]}";
-    return ss.str();
+    json += "]}";
+    return json;
 }
 
 } // namespace incabin

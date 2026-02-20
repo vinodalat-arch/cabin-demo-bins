@@ -75,19 +75,19 @@ Java_com_incabin_NativeLib_nativeBgrToArgbPixels(
     jint width,
     jint height
 ) {
-    jbyte* bgr = env->GetByteArrayElements(bgr_array, nullptr);
-    jint* pixels = env->GetIntArrayElements(pixel_array, nullptr);
-    if (!bgr || !pixels) {
-        LOGE("nativeBgrToArgbPixels: failed to get array elements");
-        if (bgr) env->ReleaseByteArrayElements(bgr_array, bgr, JNI_ABORT);
-        if (pixels) env->ReleaseIntArrayElements(pixel_array, pixels, JNI_ABORT);
+    if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+        LOGE("nativeBgrToArgbPixels: invalid dimensions %dx%d", width, height);
         return;
     }
 
-    if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
-        LOGE("nativeBgrToArgbPixels: invalid dimensions %dx%d", width, height);
-        env->ReleaseIntArrayElements(pixel_array, pixels, JNI_ABORT);
-        env->ReleaseByteArrayElements(bgr_array, bgr, JNI_ABORT);
+    // Use GetPrimitiveArrayCritical to pin arrays without copying (~6MB copy avoided)
+    // Safe: the loop below makes no JNI calls or Java allocations
+    jbyte* bgr = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(bgr_array, nullptr));
+    jint* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixel_array, nullptr));
+    if (!bgr || !pixels) {
+        LOGE("nativeBgrToArgbPixels: failed to get critical array elements");
+        if (pixels) env->ReleasePrimitiveArrayCritical(pixel_array, pixels, JNI_ABORT);
+        if (bgr) env->ReleasePrimitiveArrayCritical(bgr_array, bgr, JNI_ABORT);
         return;
     }
 
@@ -97,11 +97,12 @@ Java_com_incabin_NativeLib_nativeBgrToArgbPixels(
         uint8_t b = src[i * 3];
         uint8_t g = src[i * 3 + 1];
         uint8_t r = src[i * 3 + 2];
-        pixels[i] = static_cast<jint>((0xFF << 24) | (r << 16) | (g << 8) | b);
+        pixels[i] = static_cast<jint>((0xFFu << 24) | (r << 16) | (g << 8) | b);
     }
 
-    env->ReleaseIntArrayElements(pixel_array, pixels, 0);
-    env->ReleaseByteArrayElements(bgr_array, bgr, JNI_ABORT);
+    // Release pixels first (with commit), then bgr (read-only, abort)
+    env->ReleasePrimitiveArrayCritical(pixel_array, pixels, 0);
+    env->ReleasePrimitiveArrayCritical(bgr_array, bgr, JNI_ABORT);
 }
 
 // ---- PoseAnalyzer JNI: Create ----

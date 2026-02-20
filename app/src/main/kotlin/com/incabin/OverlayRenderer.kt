@@ -100,8 +100,8 @@ class OverlayRenderer {
 
             // Label
             val label = if (person.isDriver) (driverName ?: "Driver") else "Passenger"
-            val conf = "%.0f%%".format(person.confidence * 100)
-            val text = "$label $conf"
+            val conf = (person.confidence * 100).toInt()
+            val text = "$label ${conf}%"
             val textWidth = labelTextPaint.measureText(text)
             canvas.drawRect(person.x1, person.y1 - 34f, person.x1 + textWidth + 8f, person.y1, labelBgPaint)
             canvas.drawText(text, person.x1 + 4f, person.y1 - 8f, labelTextPaint)
@@ -155,10 +155,10 @@ class OverlayRenderer {
     private fun drawMetricLabels(canvas: Canvas, result: OutputResult) {
         val lines = mutableListOf<String>()
 
-        val earStr = result.earValue?.let { "%.3f".format(it) } ?: "N/A"
-        val marStr = result.marValue?.let { "%.3f".format(it) } ?: "N/A"
-        val yawStr = result.headYaw?.let { "%.1f".format(it) } ?: "N/A"
-        val pitchStr = result.headPitch?.let { "%.1f".format(it) } ?: "N/A"
+        val earStr = result.earValue?.let { ((it * 1000).toInt() / 1000f).toString() } ?: "N/A"
+        val marStr = result.marValue?.let { ((it * 1000).toInt() / 1000f).toString() } ?: "N/A"
+        val yawStr = result.headYaw?.let { ((it * 10).toInt() / 10f).toString() } ?: "N/A"
+        val pitchStr = result.headPitch?.let { ((it * 10).toInt() / 10f).toString() } ?: "N/A"
 
         lines.add("EAR: $earStr  MAR: $marStr")
         lines.add("Yaw: $yawStr  Pitch: $pitchStr")

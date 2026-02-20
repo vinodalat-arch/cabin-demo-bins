@@ -132,6 +132,10 @@ class FaceAnalyzer(context: Context) {
     private val imagePoints2d = MatOfPoint2f()
     private var cameraMatInitialized = false
 
+    // Pre-allocated list for solvePnP 2D points (avoids .map{} allocation per frame)
+    private val pnpPointsList = ArrayList<Point>(PNP_LANDMARK_INDICES.size)
+
+
     init {
         val baseOptions = BaseOptions.builder()
             .setModelAssetPath(MODEL_ASSET)
@@ -198,8 +202,8 @@ class FaceAnalyzer(context: Context) {
         val distracted = abs(yawDeg) > Config.HEAD_YAW_THRESHOLD ||
                 abs(pitchDeg) > Config.HEAD_PITCH_THRESHOLD
 
-        // --- Build Face Overlay ---
-        val faceOverlay = try {
+        // --- Build Face Overlay (only when preview is enabled — avoids 4 list allocations per frame) ---
+        val faceOverlay = if (!Config.ENABLE_PREVIEW) null else try {
             val rightEyeLandmarks = RIGHT_EYE_INDICES.map { idx ->
                 val lm = landmarks[idx]
                 OverlayLandmark((lm.x() * w).toFloat(), (lm.y() * h).toFloat())
@@ -406,12 +410,13 @@ class FaceAnalyzer(context: Context) {
             cameraMatInitialized = true
         }
 
-        // Build 2D image points from landmarks (reuse pre-allocated Mat)
-        val pointsList = PNP_LANDMARK_INDICES.map { idx ->
+        // Build 2D image points from landmarks (reuse pre-allocated list + Mat)
+        pnpPointsList.clear()
+        for (idx in PNP_LANDMARK_INDICES) {
             val lm = landmarks[idx]
-            Point(lm.x().toDouble() * frameWidth, lm.y().toDouble() * frameHeight)
+            pnpPointsList.add(Point(lm.x().toDouble() * frameWidth, lm.y().toDouble() * frameHeight))
         }
-        imagePoints2d.fromList(pointsList)
+        imagePoints2d.fromList(pnpPointsList)
 
         val success = Calib3d.solvePnP(
             modelPoints3d,

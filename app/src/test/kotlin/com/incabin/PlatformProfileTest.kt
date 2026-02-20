@@ -26,6 +26,18 @@ class PlatformProfileTest {
     }
 
     @Test
+    fun test_sa8255_detected_by_soc_model() {
+        val platform = PlatformProfile.detectPlatform("Unknown", "Unknown", "qcom", "SA8255P")
+        assertEquals(Platform.SA8255, platform)
+    }
+
+    @Test
+    fun test_sa8255_detected_by_hardware() {
+        val platform = PlatformProfile.detectPlatform("Unknown", "Unknown", "sa8255", "")
+        assertEquals(Platform.SA8255, platform)
+    }
+
+    @Test
     fun test_sa8295_detected_by_soc_model() {
         val platform = PlatformProfile.detectPlatform("Unknown", "Unknown", "qcom", "SA8295P")
         assertEquals(Platform.SA8295, platform)
@@ -52,6 +64,7 @@ class PlatformProfileTest {
     @Test
     fun test_case_insensitive_soc_model() {
         assertEquals(Platform.SA8295, PlatformProfile.detectPlatform("", "", "", "sa8295p"))
+        assertEquals(Platform.SA8255, PlatformProfile.detectPlatform("", "", "", "sa8255p"))
         assertEquals(Platform.SA8155, PlatformProfile.detectPlatform("", "", "", "Sa8155P"))
     }
 
@@ -76,6 +89,33 @@ class PlatformProfileTest {
     fun test_sa8155_is_automotive_bsp() {
         val profile = PlatformProfile.forPlatform(Platform.SA8155)
         assertTrue(profile.isAutomotiveBsp)
+    }
+
+    @Test
+    fun test_sa8255_profile_no_thread_pinning() {
+        val profile = PlatformProfile.forPlatform(Platform.SA8255)
+        assertEquals(4, profile.poseThreadCount)
+        assertEquals("", profile.poseThreadAffinity)
+        assertEquals(2, profile.faceRecThreadCount)
+        assertEquals("", profile.faceRecThreadAffinity)
+    }
+
+    @Test
+    fun test_sa8255_profile_camera_strategy() {
+        val profile = PlatformProfile.forPlatform(Platform.SA8255)
+        assertEquals(PlatformProfile.CameraStrategy.V4L2_FIRST, profile.cameraStrategy)
+    }
+
+    @Test
+    fun test_sa8255_is_automotive_bsp() {
+        val profile = PlatformProfile.forPlatform(Platform.SA8255)
+        assertTrue(profile.isAutomotiveBsp)
+    }
+
+    @Test
+    fun test_sa8255_uses_alarm() {
+        val profile = PlatformProfile.forPlatform(Platform.SA8255)
+        assertEquals(PlatformProfile.USAGE_ALARM, profile.audioUsage)
     }
 
     @Test

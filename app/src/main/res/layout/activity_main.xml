@@ -110,6 +110,45 @@
                 android:layout_height="0dp"
                 android:layout_weight="1" />
 
+            <!-- Seat side toggle (LHD/RHD) -->
+            <Button
+                android:id="@+id/seatToggle"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height"
+                android:background="@drawable/bg_button"
+                android:text="Seat: Left"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="false"
+                android:layout_marginBottom="@dimen/space_sm"
+                android:stateListAnimator="@null" />
+
+            <!-- Language toggle button -->
+            <Button
+                android:id="@+id/langToggle"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height"
+                android:background="@drawable/bg_button"
+                android:text="EN"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="false"
+                android:layout_marginBottom="@dimen/space_sm"
+                android:stateListAnimator="@null" />
+
+            <!-- Audio toggle button -->
+            <Button
+                android:id="@+id/audioToggle"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/button_height"
+                android:background="@drawable/bg_button"
+                android:text="Audio ON"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:layout_marginBottom="@dimen/space_sm"
+                android:stateListAnimator="@null" />
+
             <!-- Preview toggle button -->
             <Button
                 android:id="@+id/previewToggle"

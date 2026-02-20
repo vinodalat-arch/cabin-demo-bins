@@ -49,6 +49,7 @@ class InCabinService : Service() {
     private val nativeLib = NativeLib()
     private var v4l2Camera: V4l2CameraManager? = null
     private var cameraManager: CameraManager? = null
+    private var mjpegCamera: MjpegCameraManager? = null
     private var faceAnalyzer: FaceAnalyzer? = null
     private var poseAnalyzer: PoseAnalyzerBridge? = null
     private var smoother: TemporalSmoother? = null
@@ -67,6 +68,8 @@ class InCabinService : Service() {
 
     // --- Distraction duration counter (C2: AtomicInteger for thread-safe increment) ---
     private val distractionDurationS = AtomicInteger(0)
+    // Grace period: consecutive clean frames before resetting distraction counter
+    @Volatile private var cleanFrameCount = 0
 
     // --- Pre-allocated pixel buffer for BGR→Bitmap conversion ---
     private val pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
@@ -103,6 +106,9 @@ class InCabinService : Service() {
 
             v4l2Camera?.stop()
             v4l2Camera = null
+
+            mjpegCamera?.stop()
+            mjpegCamera = null
 
             cameraManager?.stop()
             cameraManager = null
@@ -141,6 +147,11 @@ class InCabinService : Service() {
         // --- Platform Detection ---
         platformProfile = PlatformProfile.detect()
         Log.i(TAG, "=== Platform: ${platformProfile.platform} ===")
+
+        // Apply per-platform thresholds
+        Config.EAR_THRESHOLD = platformProfile.earThreshold
+        Config.HEAD_PITCH_THRESHOLD = platformProfile.headPitchThreshold
+        Log.i(TAG, "Thresholds: EAR=${Config.EAR_THRESHOLD}, HEAD_PITCH=${Config.HEAD_PITCH_THRESHOLD}")
 
         // --- Device Info ---
         Log.i(TAG, "=== Device Info ===")
@@ -229,7 +240,7 @@ class InCabinService : Service() {
             Log.e(TAG, "FaceStore initialization failed", e)
         }
 
-        // TemporalSmoother (uses Config defaults: window=5, threshold=0.6)
+        // TemporalSmoother (uses Config defaults: window=3, threshold=0.6)
         smoother = TemporalSmoother()
         Log.i(TAG, "TemporalSmoother initialized")
 
@@ -245,6 +256,7 @@ class InCabinService : Service() {
 
         // Reset counters
         distractionDurationS.set(0)
+        cleanFrameCount = 0
         frameCount = 0
         recentFrameTimes.clear()
         recognitionFrameCounter = 0
@@ -259,6 +271,19 @@ class InCabinService : Service() {
     // -------------------------------------------------------------------------
 
     private fun startCamera() {
+        // WiFi camera: if URL is configured, try MJPEG stream first
+        val wifiUrl = Config.WIFI_CAMERA_URL
+        if (wifiUrl.isNotBlank()) {
+            val mjpeg = MjpegCameraManager(nativeLib, ::onBgrFrame)
+            if (mjpeg.start(wifiUrl)) {
+                mjpegCamera = mjpeg
+                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.CONNECTING)
+                Log.i(TAG, "Using WiFi MJPEG camera: $wifiUrl")
+                return
+            }
+            Log.w(TAG, "WiFi camera failed, falling back to local cameras")
+        }
+
         val tryV4l2First = platformProfile.cameraStrategy == PlatformProfile.CameraStrategy.V4L2_FIRST
 
         if (tryV4l2First) {
@@ -325,6 +350,7 @@ class InCabinService : Service() {
             val faceElapsed = System.currentTimeMillis() - faceStartMs
 
             // Step 2.5: Face recognition (try-catch isolated, never blocks core pipeline)
+            // Extract face crop once and reuse for both posting and recognition
             val recognizedName: String? = try {
                 recognizeDriver(bgrData, width, height, faceResult)
             } catch (e: Exception) {
@@ -339,11 +365,19 @@ class InCabinService : Service() {
             val smoothed = smoother?.smooth(merged) ?: merged
 
             // Step 5: Update distraction duration counter (C2: atomic read-modify-write)
+            // Grace period: require 2 consecutive clean frames before resetting,
+            // to avoid premature reset from single-frame detection dips
             val durationVal = if (DISTRACTION_FIELDS_CHECK(smoothed)) {
+                cleanFrameCount = 0
                 distractionDurationS.incrementAndGet()
             } else {
-                distractionDurationS.set(0)
-                0
+                cleanFrameCount++
+                if (cleanFrameCount >= Config.DISTRACTION_GRACE_FRAMES) {
+                    distractionDurationS.set(0)
+                    0
+                } else {
+                    distractionDurationS.get()
+                }
             }
 
             // Step 6: Inject distraction_duration_s and driver name into result
@@ -353,7 +387,9 @@ class InCabinService : Service() {
             )
 
             // Step 7: Audio alerter (core — must run even if overlay fails)
-            audioAlerter?.checkAndAnnounce(finalResult)
+            if (Config.ENABLE_AUDIO_ALERTS) {
+                audioAlerter?.checkAndAnnounce(finalResult)
+            }
 
             // Step 8: Log JSON output (core — must run even if overlay fails)
             Log.i(TAG, finalResult.toJson())
@@ -430,8 +466,21 @@ class InCabinService : Service() {
 
         lastFaceDetected = true
 
-        // Always post face crop for registration UI (even with no registered faces)
-        postFaceCrop(bgrData, width, height, landmarks)
+        // Extract face crop ONCE and reuse for both posting and recognition
+        val crop = try {
+            faceAnalyzer?.extractFaceCrop(bgrData, width, height, landmarks)
+        } catch (e: Exception) {
+            null
+        }
+
+        // Post face crop for registration UI (even with no registered faces)
+        if (crop != null) {
+            try {
+                FrameHolder.postCaptureData(
+                    FrameHolder.CaptureData(crop.bgrData, crop.width, crop.height)
+                )
+            } catch (_: Exception) {}
+        }
 
         // Skip recognition if no recognizer or no registered faces
         val recognizer = faceRecognizer ?: return null
@@ -445,8 +494,8 @@ class InCabinService : Service() {
             return cachedDriverName
         }
 
-        // Run recognition
-        val crop = faceAnalyzer?.extractFaceCrop(bgrData, width, height, landmarks) ?: return cachedDriverName
+        // Run recognition using the already-extracted crop
+        if (crop == null) return cachedDriverName
         val embedding = recognizer.computeEmbedding(crop.bgrData, crop.width, crop.height) ?: return cachedDriverName
         val match = store.findBestMatch(embedding, Config.FACE_RECOGNITION_THRESHOLD)
 
@@ -456,20 +505,6 @@ class InCabinService : Service() {
         }
 
         return cachedDriverName
-    }
-
-    private fun postFaceCrop(
-        bgrData: ByteArray, width: Int, height: Int,
-        landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>
-    ) {
-        try {
-            val crop = faceAnalyzer?.extractFaceCrop(bgrData, width, height, landmarks) ?: return
-            FrameHolder.postCaptureData(
-                FrameHolder.CaptureData(crop.bgrData, crop.width, crop.height)
-            )
-        } catch (e: Exception) {
-            // Non-critical — ignore
-        }
     }
 
     // -------------------------------------------------------------------------

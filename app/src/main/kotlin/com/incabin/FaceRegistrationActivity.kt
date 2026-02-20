@@ -16,6 +16,9 @@ import androidx.core.content.ContextCompat
  * Activity for registering face embeddings.
  * Uses programmatic UI (no layout XML) with premium palette.
  *
+ * Multi-shot capture: captures 3 frames and averages embeddings for robustness.
+ * Quality gate: rejects captures where embeddings are too inconsistent (cosine < 0.7).
+ *
  * The monitoring service must be running for face capture to work,
  * as it provides BGR face crops via FrameHolder.
  */
@@ -24,6 +27,9 @@ class FaceRegistrationActivity : Activity() {
     companion object {
         private const val TAG = "FaceRegistration"
         private const val PREVIEW_POLL_MS = 500L
+        private const val MULTI_SHOT_COUNT = 3
+        private const val MULTI_SHOT_DELAY_MS = 1500L
+        private const val QUALITY_THRESHOLD = 0.7f  // min cosine between any pair of shots
     }
 
     private lateinit var previewImage: ImageView
@@ -32,6 +38,7 @@ class FaceRegistrationActivity : Activity() {
     private lateinit var captureButton: Button
     private lateinit var saveButton: Button
     private lateinit var faceListLayout: LinearLayout
+    private lateinit var captureProgress: ProgressBar
 
     // Palette
     private var colorBg = 0
@@ -118,6 +125,17 @@ class FaceRegistrationActivity : Activity() {
         root.addView(previewImage, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(300)
         ).apply { bottomMargin = dp(12) })
+
+        // Capture progress bar (hidden until multi-shot capture)
+        captureProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = MULTI_SHOT_COUNT
+            progress = 0
+            visibility = android.view.View.GONE
+        }
+        root.addView(captureProgress, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(4) })
 
         // Status
         statusText = TextView(this).apply {
@@ -224,6 +242,11 @@ class FaceRegistrationActivity : Activity() {
         }
     }
 
+    /**
+     * Multi-shot capture: captures MULTI_SHOT_COUNT frames with delays between them,
+     * computes embeddings for each, checks quality (pairwise cosine similarity),
+     * and averages the embeddings.
+     */
     private fun onCapture() {
         val captureData = FrameHolder.getCaptureData()
         if (captureData == null) {
@@ -232,37 +255,135 @@ class FaceRegistrationActivity : Activity() {
             return
         }
 
-        statusText.text = "Computing embedding..."
+        statusText.text = "Capturing 1/$MULTI_SHOT_COUNT..."
         statusText.setTextColor(colorAccent)
         captureButton.isEnabled = false
+        captureProgress.visibility = android.view.View.VISIBLE
+        captureProgress.progress = 0
 
         Thread({
-            var embedding: FloatArray? = null
+            val embeddings = mutableListOf<FloatArray>()
             var recognizer: FaceRecognizerBridge? = null
+
             try {
                 recognizer = FaceRecognizerBridge(assets)
-                embedding = recognizer.computeEmbedding(
-                    captureData.bgrCrop, captureData.cropWidth, captureData.cropHeight
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Embedding computation failed", e)
-            } finally {
-                recognizer?.close()
-            }
 
-            handler.post {
-                captureButton.isEnabled = true
-                if (embedding != null) {
-                    capturedEmbedding = embedding
-                    saveButton.isEnabled = true
-                    statusText.text = "Face captured! Enter a name and tap Save."
-                    statusText.setTextColor(colorSafe)
-                } else {
+                for (shot in 0 until MULTI_SHOT_COUNT) {
+                    // Get latest face crop
+                    val data = FrameHolder.getCaptureData()
+                    if (data == null) {
+                        handler.post {
+                            statusText.text = "Face lost during capture. Try again."
+                            statusText.setTextColor(colorDanger)
+                        }
+                        return@Thread
+                    }
+
+                    val embedding = recognizer.computeEmbedding(
+                        data.bgrCrop, data.cropWidth, data.cropHeight
+                    )
+
+                    if (embedding == null) {
+                        handler.post {
+                            statusText.text = "Embedding failed on shot ${shot + 1}. Try again."
+                            statusText.setTextColor(colorDanger)
+                        }
+                        return@Thread
+                    }
+
+                    embeddings.add(embedding)
+
+                    handler.post {
+                        captureProgress.progress = shot + 1
+                        statusText.text = "Captured ${shot + 1}/$MULTI_SHOT_COUNT"
+                    }
+
+                    // Wait between shots (except after last)
+                    if (shot < MULTI_SHOT_COUNT - 1) {
+                        Thread.sleep(MULTI_SHOT_DELAY_MS)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Multi-shot capture failed", e)
+                handler.post {
                     statusText.text = "Capture failed. Try again."
                     statusText.setTextColor(colorDanger)
                 }
+                return@Thread
+            } finally {
+                recognizer?.close()
+                if (!isFinishing && !isDestroyed) {
+                    handler.post {
+                        captureButton.isEnabled = true
+                        captureProgress.visibility = android.view.View.GONE
+                    }
+                }
             }
-        }, "FaceCapture").start()
+
+            // Quality gate: check pairwise cosine similarity
+            if (!checkQuality(embeddings)) {
+                handler.post {
+                    statusText.text = "Quality check failed — face was inconsistent. Try again."
+                    statusText.setTextColor(colorCaution)
+                }
+                return@Thread
+            }
+
+            // Average embeddings
+            val averaged = averageEmbeddings(embeddings)
+
+            handler.post {
+                capturedEmbedding = averaged
+                saveButton.isEnabled = true
+                statusText.text = "Face captured ($MULTI_SHOT_COUNT shots)! Enter a name and tap Save."
+                statusText.setTextColor(colorSafe)
+            }
+        }, "FaceCapture-MultiShot").start()
+    }
+
+    /** Check that all pairwise cosine similarities exceed the quality threshold. */
+    private fun checkQuality(embeddings: List<FloatArray>): Boolean {
+        for (i in embeddings.indices) {
+            for (j in i + 1 until embeddings.size) {
+                val sim = cosineSimilarity(embeddings[i], embeddings[j])
+                Log.d(TAG, "Quality check: shot $i vs $j = %.3f".format(sim))
+                if (sim < QUALITY_THRESHOLD) return false
+            }
+        }
+        return true
+    }
+
+    /** Average multiple embedding vectors into one, then L2-normalize. */
+    private fun averageEmbeddings(embeddings: List<FloatArray>): FloatArray {
+        val dim = embeddings[0].size
+        val avg = FloatArray(dim)
+        for (emb in embeddings) {
+            for (i in 0 until dim) {
+                avg[i] += emb[i]
+            }
+        }
+        // L2 normalize
+        var norm = 0f
+        for (v in avg) norm += v * v
+        norm = Math.sqrt(norm.toDouble()).toFloat()
+        if (norm > 1e-6f) {
+            for (i in avg.indices) avg[i] /= norm
+        }
+        return avg
+    }
+
+    /** Cosine similarity between two vectors. */
+    private fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
+        var dot = 0f
+        var normA = 0f
+        var normB = 0f
+        for (i in a.indices) {
+            dot += a[i] * b[i]
+            normA += a[i] * a[i]
+            normB += b[i] * b[i]
+        }
+        val denom = Math.sqrt(normA.toDouble()) * Math.sqrt(normB.toDouble())
+        return if (denom > 1e-6) (dot / denom.toFloat()) else 0f
     }
 
     private fun onSave() {
