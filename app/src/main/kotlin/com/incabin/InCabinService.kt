@@ -223,7 +223,7 @@ class InCabinService : Service() {
 
         // FaceStore (fast disk I/O, init on main thread)
         try {
-            faceStore = FaceStore(this)
+            faceStore = FaceStore.getInstance(this)
             Log.i(TAG, "FaceStore initialized (${faceStore?.count() ?: 0} faces)")
         } catch (e: Exception) {
             Log.e(TAG, "FaceStore initialization failed", e)

@@ -8,15 +8,27 @@ import java.io.File
 
 /**
  * Persistent store for registered face embeddings.
+ * Singleton — shared between InCabinService and FaceRegistrationActivity
+ * so that newly registered faces are immediately available for recognition.
  * Saves as flat JSON file (faces.json) on internal storage.
  * All public methods are synchronized for thread safety.
  */
-class FaceStore(context: Context) {
+class FaceStore private constructor(context: Context) {
 
     companion object {
         private const val TAG = "FaceStore"
         private const val FILENAME = "faces.json"
         private val gson = Gson()
+
+        @Volatile
+        private var instance: FaceStore? = null
+
+        /** Get the singleton FaceStore instance. */
+        fun getInstance(context: Context): FaceStore {
+            return instance ?: synchronized(this) {
+                instance ?: FaceStore(context.applicationContext).also { instance = it }
+            }
+        }
 
         /**
          * Compute cosine similarity between two embeddings.

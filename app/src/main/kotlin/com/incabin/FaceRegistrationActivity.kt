@@ -51,7 +51,7 @@ class FaceRegistrationActivity : Activity() {
         buildUI()
 
         try {
-            faceStore = FaceStore(this)
+            faceStore = FaceStore.getInstance(this)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init FaceStore", e)
             statusText.text = "Error: Could not load face store"
