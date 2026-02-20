@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, and premium audio alerter redesign. Build verified (`assembleDebug` + all 140 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, and detection accuracy fine-tuning. Build verified (`assembleDebug` + all 142 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
@@ -103,10 +103,11 @@ Runtime toggle button in the top row enables/disables camera preview:
 | `mobilefacenet-fp16.onnx` | ONNX FP16 | ~6.5 MB | InsightFace buffalo_sc w600k_mbf → FP16 convert |
 
 ## Key Thresholds
-- EAR < 0.21 → eyes closed
+- EAR < 0.21 → eyes closed (fallback); after 10-frame calibration: EAR < baseline × 0.65
 - MAR > 0.5 → yawning
-- |yaw| > 30° or |pitch| > 35° → distracted
-- YOLO confidence > 0.35, NMS IoU 0.45
+- |yaw| > 30° or |pitch| > 35° → distracted (fallback); after 10-frame calibration: |pitch - baseline| > 25°
+- Yaw/pitch smoothed via 3-frame moving average before thresholding
+- YOLO confidence > 0.35 (pose), Phone > 0.45, Food/drink > 0.50, NMS IoU 0.45
 - Phone: COCO class 67, Food/drink: classes 39-48
 - Posture lean > 30°, Child slouch > 20°
 - Head turn: nose offset > 30% of shoulder width
@@ -114,6 +115,7 @@ Runtime toggle button in the top row enables/disables camera preview:
 - Keypoint confidence threshold: 0.5
 - Wrist crop: 200x200px
 - Smoother: 3-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
+- Sustained detection: eyes 3 frames, yawning 2 frames, distracted 3 frames, eating 3 frames, posture 3 frames, child slouch 5 frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 - Face recognition: cosine similarity > 0.5, every 5th frame, 512-dim embedding
 
@@ -127,22 +129,27 @@ score >= 3 → high, >= 1 → medium, else → low
 
 ### Face Analysis (Kotlin + MediaPipe + OpenCV)
 - **EAR**: Right eye [33,160,158,133,153,144], Left eye [362,385,387,263,373,380]. Formula: (dist(p2,p6)+dist(p3,p5))/(2*dist(p1,p4))
+- **EAR auto-baseline**: First 10 frames with face detected accumulate EAR samples; baseline = mean. After calibration, eyes closed = `ear < baseline × 0.65` (adapts to individual eye geometry). Before calibration, falls back to fixed `ear < 0.21`
 - **MAR**: Landmarks 13,14,61,291,0,17. Formula: (dist(top,bottom)+dist(upper_mid,lower_mid))/(2*dist(left,right))
 - **Head Pose**: solvePnP with landmarks [1,152,33,263,61,291], 3D model points, Euler angle extraction
+- **Angle smoothing**: Yaw and pitch values smoothed via 3-frame moving average (`ArrayDeque`) before boolean thresholding. Eliminates solvePnP single-frame spikes
+- **Pitch auto-baseline**: First 10 frames accumulate smoothed pitch; baseline = mean. After calibration, distracted = `|pitch - baseline| > 25°` (eliminates camera mounting angle bias). Before calibration, falls back to fixed `|pitch| > 35°`
+- **Baseline lifecycle**: FaceAnalyzer is recreated each monitoring session — baselines reset automatically on stop/start
 - **Import note**: `FaceLandmarkerOptions` is a nested class — import as `FaceLandmarker.FaceLandmarkerOptions`
 
 ### Pose Analysis (C++ + ONNX Runtime)
 - **YOLOv8n-pose**: Output [1,56,8400] → transpose → filter conf>0.35 → NMS IoU 0.45
-- **YOLOv8n detect**: Output [1,84,8400] → transpose → argmax class scores → filter → NMS
+- **YOLOv8n detect**: Output [1,84,8400] → transpose → argmax class scores → filter → NMS. Per-class confidence thresholds threaded through `runDetectModel` → `parseDetectOutput`
 - **Driver**: Largest bbox by area
 - **Posture**: 4 checks (torso lean, head droop, head turn, face not visible)
-- **Phone**: 2-strategy (driver ROI + 20% pad → wrist crops 200x200px)
-- **Food/drink**: Driver ROI + 20% pad, COCO classes 39-48
+- **Phone**: 2-strategy (driver ROI + 20% pad → wrist crops 200x200px), confidence 0.45 (higher than default 0.35 to reduce false positives)
+- **Food/drink**: Driver ROI + 20% pad, COCO classes 39-48, confidence 0.50
 - **Child**: bbox height ratio < 0.75, slouch check at 20°
 
 ### Temporal Smoother
 - Standard fields: majority voting over buffer
 - Face-gated fields: eyes→ear_value, yawning→mar_value, distracted→head_yaw (skip null frames)
+- Sustained detection thresholds (streak counters): eyes 3 frames, yawning 2 frames, distracted 3 frames, eating 3 frames, posture 3 frames, child slouch 5 frames. Majority voting must agree AND streak must reach min_frames before detection fires
 - Fast-clear: 2 consecutive frames with ear >= 0.21 → immediately clear eyes_closed
 - Passenger count: mode of buffer
 - Risk: recomputed from smoothed booleans
@@ -259,11 +266,11 @@ in_cabin_poc-sa8155/
 ```
 
 ## Testing
-- 140 unit tests (all passing):
+- 142 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
-  - TemporalSmootherTest: 21 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
+  - TemporalSmootherTest: 23 tests (voting, face-gating, fast-clear, sustained thresholds incl. yawning min_frames, passenger mode, risk recomputation)
   - MergerTest: 19 tests (risk scoring + merge logic)
   - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
