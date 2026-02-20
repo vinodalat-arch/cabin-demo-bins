@@ -45,10 +45,20 @@ class TemporalSmootherTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_single_frame_below_threshold() {
-        // 1/1 = 1.0 >= 0.6 -> eyes_closed = true
+    fun test_single_frame_below_sustained_threshold() {
+        // 1 frame of eyes_closed with low EAR: majority says true, but sustained counter < 3 → false
         val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
-        val result = s.smooth(makeResult(eyes = true))
+        val result = s.smooth(makeResult(eyes = true, ear = 0.10f))
+        assertFalse(result.driverEyesClosed) // blink filtered out
+    }
+
+    @Test
+    fun test_eyes_closed_sustained_threshold() {
+        // 3 consecutive frames of eyes_closed with low EAR → sustained counter reaches 3 → true
+        val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
+        s.smooth(makeResult(eyes = true, ear = 0.10f))
+        s.smooth(makeResult(eyes = true, ear = 0.10f))
+        val result = s.smooth(makeResult(eyes = true, ear = 0.10f))
         assertTrue(result.driverEyesClosed)
     }
 
@@ -170,12 +180,13 @@ class TemporalSmootherTest {
 
     @Test
     fun test_eating_drinking_majority_voting() {
-        // 3/5 = 0.6 >= 0.6 -> eating = true
-        val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
-        repeat(2) { s.smooth(makeResult(eating = false)) }
-        var result: OutputResult? = null
-        repeat(3) { result = s.smooth(makeResult(eating = true)) }
-        assertTrue(result!!.driverEatingDrinking)
+        // Sustained: need 3 consecutive frames where majority votes true
+        // Fill window with eating=true so majority is always true
+        val s = TemporalSmoother(windowSize = 3, threshold = 0.6f)
+        s.smooth(makeResult(eating = true))
+        s.smooth(makeResult(eating = true))
+        val result = s.smooth(makeResult(eating = true))
+        assertTrue(result.driverEatingDrinking)
     }
 
     @Test

@@ -416,10 +416,6 @@ class InCabinService : Service() {
     private fun recognizeDriver(
         bgrData: ByteArray, width: Int, height: Int, faceResult: FaceResult
     ): String? {
-        val recognizer = faceRecognizer ?: return null
-        val store = faceStore ?: return null
-        if (store.count() == 0) return null
-
         val landmarks = faceAnalyzer?.lastLandmarks
 
         // No face detected — clear cache
@@ -433,12 +429,19 @@ class InCabinService : Service() {
         }
 
         lastFaceDetected = true
+
+        // Always post face crop for registration UI (even with no registered faces)
+        postFaceCrop(bgrData, width, height, landmarks)
+
+        // Skip recognition if no recognizer or no registered faces
+        val recognizer = faceRecognizer ?: return null
+        val store = faceStore ?: return null
+        if (store.count() == 0) return null
+
         recognitionFrameCounter++
 
         // Return cached result on non-recognition frames
         if (recognitionFrameCounter % Config.FACE_RECOGNITION_INTERVAL != 1 && cachedDriverName != null) {
-            // Post face crop for registration UI (best-effort)
-            postFaceCrop(bgrData, width, height, landmarks)
             return cachedDriverName
         }
 
@@ -451,9 +454,6 @@ class InCabinService : Service() {
         if (match != null) {
             Log.d(TAG, "Face recognized: ${match.first} (similarity: ${"%.3f".format(match.second)})")
         }
-
-        // Post face crop for registration UI (best-effort)
-        postFaceCrop(bgrData, width, height, landmarks)
 
         return cachedDriverName
     }

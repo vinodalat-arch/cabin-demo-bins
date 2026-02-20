@@ -63,7 +63,8 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     // H3: Store Handler so pending TTS retry can be cancelled in close()
     private val retryHandler = Handler(Looper.getMainLooper())
 
-    private val messageQueue = LinkedBlockingQueue<String?>()
+    private val messageQueue = LinkedBlockingQueue<String>()
+    private val STOP_SIGNAL = "\u0000" // sentinel for worker shutdown
 
     @Volatile
     private var ttsReady = false
@@ -105,7 +106,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             Log.i(TAG, "Worker thread started")
             while (true) {
                 val message = messageQueue.take() // blocks until available
-                if (message == null) {
+                if (message == STOP_SIGNAL) {
                     Log.i(TAG, "Worker received stop signal")
                     break
                 }
@@ -178,7 +179,6 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             return
         }
 
-        val prevRisk = prevState!!.riskLevel
         val prevDangers = prevState!!.dangers
         val parts = mutableListOf<String>()
 
@@ -191,12 +191,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             }
         }
 
-        // Step 2: Risk level change
-        if (currentRisk != prevRisk) {
-            parts.add("risk $currentRisk")
-        }
-
-        // Step 3: All-clear override
+        // Step 2: All-clear override
         val anyPrevDanger = prevDangers.values.any { it }
         val anyCurrDanger = currentDangers.values.any { it }
         if (anyPrevDanger && !anyCurrDanger) {
@@ -204,7 +199,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             parts.add("all clear")
         }
 
-        // Step 4: Distraction duration (only if no other message from Steps 1-3)
+        // Step 3: Distraction duration (only if no other message)
         if (parts.isEmpty()) {
             for (threshold in Config.DISTRACTION_ALERT_THRESHOLDS) {
                 if (duration >= threshold && threshold !in announcedDurations) {
@@ -327,7 +322,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     fun close() {
         // H3: Cancel pending TTS retry callback to prevent leak after service destroyed
         retryHandler.removeCallbacksAndMessages(null)
-        messageQueue.put(null) // stop signal to worker
+        messageQueue.put(STOP_SIGNAL) // stop signal to worker
         tts.stop()
         tts.shutdown()
         Log.i(TAG, "AudioAlerter closed")

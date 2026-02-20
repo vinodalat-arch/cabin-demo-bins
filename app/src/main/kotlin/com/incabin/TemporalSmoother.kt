@@ -19,6 +19,11 @@ class TemporalSmoother(
 ) {
     private val _buffer = ArrayDeque<OutputResult>()
     private var _eyesOpenStreak: Int = 0
+    private var _eyesClosedStreak: Int = 0
+    private var _distractedStreak: Int = 0
+    private var _eatingStreak: Int = 0
+    private var _postureStreak: Int = 0
+    private var _childSlouchStreak: Int = 0
 
     /** True when the buffer has accumulated at least [windowSize] frames. */
     val warm: Boolean
@@ -70,8 +75,8 @@ class TemporalSmoother(
             _eyesOpenStreak = 0
         }
 
-        // --- Smooth driver_eyes_closed (fast-clear + face-gated) ---
-        val smoothedEyesClosed: Boolean = if (_eyesOpenStreak >= Config.FAST_CLEAR_FRAMES) {
+        // --- Smooth driver_eyes_closed (fast-clear + face-gated + sustained) ---
+        val rawEyesClosed: Boolean = if (_eyesOpenStreak >= Config.FAST_CLEAR_FRAMES) {
             // Fast-clear: 2+ consecutive open-eye frames override buffer history
             false
         } else {
@@ -85,6 +90,14 @@ class TemporalSmoother(
             }
         }
 
+        // Require sustained detection for EYES_CLOSED_MIN_FRAMES (~3s) to filter blinks
+        if (rawEyesClosed) {
+            _eyesClosedStreak++
+        } else {
+            _eyesClosedStreak = 0
+        }
+        val smoothedEyesClosed = _eyesClosedStreak >= Config.EYES_CLOSED_MIN_FRAMES
+
         // --- Smooth driver_yawning (face-gated by mar_value) ---
         val smoothedYawning: Boolean = run {
             val gated = _buffer.filter { it.marValue != null }
@@ -96,8 +109,8 @@ class TemporalSmoother(
             }
         }
 
-        // --- Smooth driver_distracted (face-gated by head_yaw) ---
-        val smoothedDistracted: Boolean = run {
+        // --- Smooth driver_distracted (face-gated by head_yaw + sustained) ---
+        val rawDistracted: Boolean = run {
             val gated = _buffer.filter { it.headYaw != null }
             if (gated.isEmpty()) {
                 false
@@ -106,22 +119,33 @@ class TemporalSmoother(
                 (trueCount.toFloat() / gated.size) >= threshold
             }
         }
+        if (rawDistracted) _distractedStreak++ else _distractedStreak = 0
+        val smoothedDistracted = _distractedStreak >= Config.DISTRACTED_MIN_FRAMES
 
         // --- Smooth standard boolean fields ---
         val smoothedPhone: Boolean =
             (_buffer.count { it.driverUsingPhone }.toFloat() / n) >= threshold
 
-        val smoothedEating: Boolean =
+        // --- Eating/drinking (sustained) ---
+        val rawEating: Boolean =
             (_buffer.count { it.driverEatingDrinking }.toFloat() / n) >= threshold
+        if (rawEating) _eatingStreak++ else _eatingStreak = 0
+        val smoothedEating = _eatingStreak >= Config.EATING_MIN_FRAMES
 
-        val smoothedPosture: Boolean =
+        // --- Dangerous posture (sustained) ---
+        val rawPosture: Boolean =
             (_buffer.count { it.dangerousPosture }.toFloat() / n) >= threshold
+        if (rawPosture) _postureStreak++ else _postureStreak = 0
+        val smoothedPosture = _postureStreak >= Config.POSTURE_MIN_FRAMES
 
         val smoothedChildPresent: Boolean =
             (_buffer.count { it.childPresent }.toFloat() / n) >= threshold
 
-        val smoothedChildSlouching: Boolean =
+        // --- Child slouching (sustained) ---
+        val rawChildSlouching: Boolean =
             (_buffer.count { it.childSlouching }.toFloat() / n) >= threshold
+        if (rawChildSlouching) _childSlouchStreak++ else _childSlouchStreak = 0
+        val smoothedChildSlouching = _childSlouchStreak >= Config.CHILD_SLOUCH_MIN_FRAMES
 
         // --- Passenger count: mode (highest count wins on tie) ---
         val smoothedPassengerCount: Int = run {

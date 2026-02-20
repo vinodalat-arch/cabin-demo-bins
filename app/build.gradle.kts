@@ -72,7 +72,7 @@ android {
 tasks.register("verifyAssets") {
     description = "Verify required model assets exist before building"
     val assetsDir = file("src/main/assets")
-    val requiredFiles = listOf("yolov8n-pose-fp16.onnx", "yolov8n-fp16.onnx", "face_landmarker.task", "mobilefacenet-fp16.onnx")
+    val requiredFiles = listOf("yolov8n-pose.onnx", "yolov8n.onnx", "face_landmarker.task", "mobilefacenet-fp16.onnx")
     doLast {
         requiredFiles.forEach { name ->
             val f = File(assetsDir, name)

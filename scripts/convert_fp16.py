@@ -12,7 +12,7 @@ for name in MODELS:
     dst = f"{ASSETS_DIR}/{name}-fp16.onnx"
     print(f"Converting {src} -> {dst}")
     model = onnx.load(src)
-    model_fp16 = float16.convert_float_to_float16(model)
+    model_fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
     onnx.save(model_fp16, dst)
     print(f"  Done: {dst}")
 

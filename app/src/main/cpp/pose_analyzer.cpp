@@ -63,24 +63,58 @@ PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager, int num_threads,
         LOGI("Thread count set: %d (no core pinning)", num_threads);
     }
 
-    // Load pose model (FP16 — ORT handles FP16→FP32 cast at I/O boundary automatically)
-    auto pose_model_data = loadModelFromAssets(asset_manager, "yolov8n-pose-fp16.onnx");
+    // Load pose model — try FP32 first (reliable), fall back to FP16
+    auto pose_model_data = loadModelFromAssets(asset_manager, "yolov8n-pose.onnx");
     if (!pose_model_data.empty()) {
-        pose_session_ = std::make_unique<Ort::Session>(
-            env_, pose_model_data.data(), pose_model_data.size(), session_options_);
-        LOGI("YOLOv8n-pose FP16 session created");
-    } else {
-        LOGE("Failed to load yolov8n-pose-fp16.onnx");
+        try {
+            pose_session_ = std::make_unique<Ort::Session>(
+                env_, pose_model_data.data(), pose_model_data.size(), session_options_);
+            LOGI("YOLOv8n-pose FP32 session created");
+        } catch (const Ort::Exception& e) {
+            LOGE("FP32 pose session failed: %s", e.what());
+            pose_session_ = nullptr;
+        }
+    }
+    if (!pose_session_) {
+        auto fp16_data = loadModelFromAssets(asset_manager, "yolov8n-pose-fp16.onnx");
+        if (!fp16_data.empty()) {
+            try {
+                pose_session_ = std::make_unique<Ort::Session>(
+                    env_, fp16_data.data(), fp16_data.size(), session_options_);
+                LOGI("YOLOv8n-pose FP16 session created (fallback)");
+            } catch (const Ort::Exception& e) {
+                LOGE("FP16 pose session also failed: %s", e.what());
+            }
+        } else {
+            LOGE("No pose model found (tried FP32 and FP16)");
+        }
     }
 
-    // Load detection model (FP16)
-    auto detect_model_data = loadModelFromAssets(asset_manager, "yolov8n-fp16.onnx");
+    // Load detection model — try FP32 first, fall back to FP16
+    auto detect_model_data = loadModelFromAssets(asset_manager, "yolov8n.onnx");
     if (!detect_model_data.empty()) {
-        detect_session_ = std::make_unique<Ort::Session>(
-            env_, detect_model_data.data(), detect_model_data.size(), session_options_);
-        LOGI("YOLOv8n detection FP16 session created");
-    } else {
-        LOGE("Failed to load yolov8n-fp16.onnx");
+        try {
+            detect_session_ = std::make_unique<Ort::Session>(
+                env_, detect_model_data.data(), detect_model_data.size(), session_options_);
+            LOGI("YOLOv8n detection FP32 session created");
+        } catch (const Ort::Exception& e) {
+            LOGE("FP32 detect session failed: %s", e.what());
+            detect_session_ = nullptr;
+        }
+    }
+    if (!detect_session_) {
+        auto fp16_data = loadModelFromAssets(asset_manager, "yolov8n-fp16.onnx");
+        if (!fp16_data.empty()) {
+            try {
+                detect_session_ = std::make_unique<Ort::Session>(
+                    env_, fp16_data.data(), fp16_data.size(), session_options_);
+                LOGI("YOLOv8n detection FP16 session created (fallback)");
+            } catch (const Ort::Exception& e) {
+                LOGE("FP16 detect session also failed: %s", e.what());
+            }
+        } else {
+            LOGE("No detect model found (tried FP32 and FP16)");
+        }
     }
 }
 
