@@ -58,7 +58,11 @@ data class PoseResult(
  * Manages lifecycle of the native ONNX Runtime sessions for YOLOv8n-pose
  * and YOLOv8n detection models. Call [close] when done to free native resources.
  */
-class PoseAnalyzerBridge(assetManager: AssetManager) : Closeable {
+class PoseAnalyzerBridge(
+    assetManager: AssetManager,
+    threadCount: Int = 4,
+    threadAffinity: String = ""
+) : Closeable {
 
     companion object {
         private const val TAG = "PoseAnalyzerBridge"
@@ -81,11 +85,11 @@ class PoseAnalyzerBridge(assetManager: AssetManager) : Closeable {
 
     init {
         if (nativeLoaded) {
-            nativePtr = nativeCreatePoseAnalyzer(assetManager)
+            nativePtr = nativeCreatePoseAnalyzer(assetManager, threadCount, threadAffinity)
             if (nativePtr == 0L) {
                 Log.e(TAG, "Failed to create native PoseAnalyzer")
             } else {
-                Log.i(TAG, "Native PoseAnalyzer created")
+                Log.i(TAG, "Native PoseAnalyzer created (threads=$threadCount, affinity='$threadAffinity')")
             }
         } else {
             Log.e(TAG, "Skipping native PoseAnalyzer creation — library not loaded")
@@ -126,7 +130,9 @@ class PoseAnalyzerBridge(assetManager: AssetManager) : Closeable {
         }
     }
 
-    private external fun nativeCreatePoseAnalyzer(assetManager: AssetManager): Long
+    private external fun nativeCreatePoseAnalyzer(
+        assetManager: AssetManager, threadCount: Int, threadAffinity: String
+    ): Long
 
     private external fun nativeAnalyzePose(
         analyzerPtr: Long,

@@ -1,10 +1,10 @@
 # SA8155 Android Port — In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, UI polish, and face recognition. Build verified (`assembleDebug` + all 76 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, UI polish, face recognition, multi-platform support, automated camera setup, and runtime preview toggle. Build verified (`assembleDebug` + all 98 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
-Qualcomm SA8155P (Kryo 485 CPU-only). Android Automotive 14. Debug build. USB webcam.
+Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
 
 ## What it does
 Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 17 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
@@ -20,7 +20,7 @@ USB Webcam
   → YOLOv8n-pose (ONNX Runtime C++, CPU EP) → posture, child, passenger count
   → YOLOv8n detection (ONNX Runtime C++, CPU EP) → phone, food/drink in driver ROI
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
-  → MobileFaceNet (ONNX Runtime C++, CPU EP) → 128-dim face embedding   ← every 5th frame
+  → MobileFaceNet (ONNX Runtime C++, CPU EP) → 512-dim face embedding   ← every 5th frame
   → FaceStore (Kotlin) → cosine similarity matching → driver name        ← cached between runs
   → Merger (Kotlin) → risk scoring
   → Temporal Smoother (Kotlin) → 3-frame sliding window, 60% threshold
@@ -41,12 +41,42 @@ The inference → merge → smooth → audio alert → JSON log path is **safety
 5. **Activity crash safety**: MainActivity wraps all FrameHolder access in try-catch. An unhandled Activity exception would kill the shared process and the Service with it.
 6. **Notification isolation**: Notification posting/cancellation in AudioAlerter is wrapped in try-catch. TTS queue and alert state updates must complete regardless of notification API failures.
 
+### Multi-Platform Support
+Single APK supports SA8155, SA8295, and generic Android. `PlatformProfile.detect()` runs once at startup, reading `Build.MANUFACTURER`, `Build.HARDWARE`, and `Build.SOC_MODEL` to select the appropriate tuning profile:
+
+| Setting | SA8155 | SA8295 | Generic |
+|---|---|---|---|
+| Pose threads / affinity | 4 / cores 4-7 | 4 / OS-scheduled | 4 / OS-scheduled |
+| Face rec threads / affinity | 2 / core 5 | 2 / OS-scheduled | 2 / OS-scheduled |
+| Audio usage | ASSISTANCE_SONIFICATION | ALARM | ALARM |
+| Camera strategy | V4L2 first | V4L2 first | Camera2 first |
+| Automated setup (ODK, chmod, pm grant) | Yes | Yes | No |
+
 ### Camera Strategy
-The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Camera HAL, so Camera2 API cannot see USB webcams. The app uses **V4L2 direct ioctl access** as the primary camera path, with Camera2 as a fallback.
-- `V4l2CameraManager` (Kotlin) → `V4l2Camera` (C++/JNI) → `/dev/videoN`
-- Scans `/dev/video0-63`, skips Qualcomm internal devices (`cam-req-mgr`, `cam_sync`)
+Camera strategy is selected by `PlatformProfile.cameraStrategy`:
+- **V4L2_FIRST** (SA8155, SA8295): `V4l2CameraManager` → `V4l2Camera` (C++/JNI) → `/dev/videoN`. Falls back to Camera2 if no V4L2 device found.
+- **CAMERA2_FIRST** (generic): Goes straight to Camera2 API.
+- V4L2 path scans `/dev/video0-63`, skips Qualcomm internal devices (`cam-req-mgr`, `cam_sync`)
 - Configures YUYV capture, 2 mmap buffers (reduced from 4 for lower latency), converts YUYV→BGR in native code
-- If no V4L2 device found, falls back to `CameraManager` (Camera2 API)
+
+### Automated Camera Setup (DeviceSetup)
+On automotive BSPs (`isAutomotiveBsp`), the Start button triggers a multi-stage setup flow before monitoring:
+1. **ODK module unload**: `su -c rmmod odk_hook_module` (non-fatal if already removed)
+2. **Camera polling**: Polls for V4L2 device every 2s, up to 2 minutes
+3. **Permission setup**: `chmod 666 /dev/video*`, `pm grant` for CAMERA and POST_NOTIFICATIONS
+4. **Ready**: Transitions to standard monitoring start
+- Runs on background thread with cancellation support
+- Camera status indicator shows progress (Cam: None → ... → Ready → Active)
+- On app restart, skips setup if camera is already available
+- On failure, allows manual start (doesn't block the user)
+- On generic Android, skips entirely and goes straight to permission dialogs
+
+### Webcam Preview Toggle
+Runtime toggle button in the top row enables/disables camera preview:
+- **Off (default)**: No bitmap creation, no overlay rendering, no GC pressure. Core pipeline unaffected.
+- **On**: Full overlay (bboxes, skeleton, landmarks, metrics) rendered on camera frames and displayed in ImageView.
+- State persisted across app restarts via SharedPreferences.
+- `Config.ENABLE_PREVIEW` is `@Volatile var` for cross-thread visibility (UI thread writes, service thread reads).
 
 ## Tech Stack
 | Layer | Language | Purpose |
@@ -121,7 +151,8 @@ score >= 3 → high, >= 1 → medium, else → low
 - Priority: new dangers → risk change → all-clear (overrides) → distraction duration (only if no other)
 - Danger names: phone detected, eyes closed, yawning detected, driver distracted, eating or drinking, dangerous posture, child slouching
 - Duration thresholds: [5, 10, 20] seconds, one per cycle, reset when duration=0
-- **Loud beep at 20s**: 1kHz sine wave, 2 seconds, via AudioTrack on USAGE_ASSISTANCE_SONIFICATION (same audio path as TTS). Separate `beepPlayed` flag, resets when distraction clears
+- **Loud beep at 20s**: 1kHz sine wave, 2 seconds, via AudioTrack on platform-specific audio usage (same audio path as TTS). Separate `beepPlayed` flag, resets when distraction clears
+- **Audio routing**: Platform-specific — `USAGE_ASSISTANCE_SONIFICATION` on SA8155 (Honda BSP quirk), `USAGE_ALARM` on SA8295 and generic Android. Parameterized via `audioUsage` constructor parameter
 - First frame: store state only, no announcement
 - TTS retry: if init fails, schedules one retry after 3s via stored Handler; `ttsRetried` flag prevents loops; Handler callbacks cancelled in `close()` to prevent leak if service destroyed within 3s
 
@@ -143,7 +174,7 @@ score >= 3 → high, >= 1 → medium, else → low
 
 ### Detection Overlay (OverlayRenderer)
 - Renders in-place onto source bitmap (no 3.6MB copy per frame)
-- Controlled by `Config.ENABLE_PREVIEW` flag (currently disabled for performance)
+- Controlled by `Config.ENABLE_PREVIEW` flag (runtime toggle via UI button, persisted in SharedPreferences, default off)
 - **Person bounding boxes**: green=driver, blue=passengers, with "Driver 95%"/"Passenger 87%" labels (driver label replaced with recognized name when available)
 - **COCO skeleton**: 16 bone connections between keypoints (confidence > 0.5)
 - **Keypoint dots**: red circles at each confident keypoint
@@ -153,7 +184,7 @@ score >= 3 → high, >= 1 → medium, else → low
 
 ### Status Dashboard (MainActivity)
 - **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
-- Compact top row: status text + "Faces" button + start/stop button
+- Compact top row: status text + camera status + preview toggle + "Faces" button + start/stop button
 - AI status message bar with varied contextual messages
 - Score arc + distraction-free streak + session timer
 - Camera preview (ImageView, optional via ENABLE_PREVIEW)
@@ -203,19 +234,21 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager
 │   │   ├── FaceAnalyzer, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
+│   │   ├── PlatformProfile, DeviceSetup
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, notification icon, app icon)
-├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest)
+├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 76 unit tests (all passing):
+- 98 unit tests (all passing):
   - MergerTest: 19 tests (risk scoring + merge logic)
   - TemporalSmootherTest: 20 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
+  - PlatformProfileTest: 22 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
@@ -226,13 +259,13 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 - **SMOOTHER_WINDOW**: Reduced from 5 to 3 frames for faster detection response (need 2/3 majority instead of 3/5)
 - **HEAD_PITCH_THRESHOLD**: Increased from 25° to 35° to eliminate false `driver_distracted` from camera mounting angle
 - **V4L2 mmap buffers**: Reduced from 4 to 2 to minimize frame latency
-- **ENABLE_PREVIEW**: Flag to disable overlay rendering + bitmap posting. Preview rendering was causing ~10s perceived delay due to bitmap GC pressure on SA8155P. With preview disabled, audio alerts fire in ~2-3s
+- **ENABLE_PREVIEW**: Runtime-toggleable `@Volatile var` to disable overlay rendering + bitmap posting. Preview rendering was causing ~10s perceived delay due to bitmap GC pressure on SA8155P. With preview disabled, audio alerts fire in ~2-3s. Toggle state persisted across restarts via SharedPreferences
 - **Decoupled result delivery**: `FrameHolder.postResult()` delivers OutputResult to dashboard immediately, independent of bitmap rendering. Dashboard and audio alerts update at pipeline speed regardless of preview state
 - **In-place overlay rendering**: OverlayRenderer draws directly on source bitmap instead of creating 3.6MB ARGB_8888 copy per frame
 
 ### Performance Optimizations
 - **FP16 models**: ONNX models converted from FP32 to FP16 via `scripts/convert_fp16.py`. Halves model memory (~12MB → ~6.5MB each) and reduces memory bandwidth. SA8155P Kryo 485 has `asimdhp` (ARM FP16 hardware support). ORT handles FP16↔FP32 cast at I/O boundary automatically.
-- **Thread pinning to Gold+Prime cores**: ONNX Runtime intra-op threads pinned to cores 4-7 (2131-2419MHz) via `session.intra_op_thread_affinities`. Prevents inference threads from landing on Silver cores (1785MHz).
+- **Thread pinning to Gold+Prime cores**: ONNX Runtime intra-op threads pinned via `session.intra_op_thread_affinities` (parameterized per platform via `PlatformProfile`). SA8155: cores 4-7 (2131-2419MHz). SA8295/generic: OS-scheduled (conservative until profiled).
 - **BGR→Bitmap in C++/JNI**: Pixel conversion (BGR→ARGB, 921K pixels) moved from Kotlin loop to native C++ via `nativeBgrToArgbPixels()`. Pre-allocated `IntArray` buffer eliminates 3.5 MB allocation per frame. Saves ~15-25ms/frame.
 - **solvePnP Mat pre-allocation**: 7 OpenCV Mat objects (`cameraMat`, `distCoeffs`, `modelPoints3d`, `imagePoints2d`, `rvec`, `tvec`, `rotationMatrix`) are class members in FaceAnalyzer, initialized once and reused. Camera matrix set on first frame. Eliminates 14 JNI crossings and 7 native mallocs per frame. Saves ~1-2ms/frame.
 - **Parallel service init**: FaceAnalyzer (MediaPipe), PoseAnalyzerBridge (ONNX Runtime), and FaceRecognizerBridge (MobileFaceNet) model loading run concurrently via `CountDownLatch`. Startup is `max(face, pose, facerec)` instead of sequential. Saves ~2s on startup.
@@ -261,7 +294,14 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 
 ## Deployment
 
-### Honda SA8155P BSP Setup (one-time per boot)
+### Honda SA8155P BSP Setup
+The app automates most setup steps via `DeviceSetup` when running on an automotive BSP. Simply tap "Start Monitoring" and the app will:
+1. Remove ODK hook module (via `su -c rmmod`)
+2. Wait for USB webcam connection
+3. Fix device permissions (`chmod 666`)
+4. Grant app permissions (`pm grant`)
+
+**Manual fallback** (if automated setup fails or for adb-based workflows):
 ```bash
 # 1. Remove ODK hook that blocks UVC webcam binding
 adb shell rmmod odk_hook_module

@@ -10,7 +10,11 @@ import java.io.Closeable
  * Manages lifecycle of the native ONNX Runtime session for face embedding
  * computation. Call [close] when done to free native resources.
  */
-class FaceRecognizerBridge(assetManager: AssetManager) : Closeable {
+class FaceRecognizerBridge(
+    assetManager: AssetManager,
+    threadCount: Int = 2,
+    threadAffinity: String = ""
+) : Closeable {
 
     companion object {
         private const val TAG = "FaceRecognizerBridge"
@@ -25,11 +29,11 @@ class FaceRecognizerBridge(assetManager: AssetManager) : Closeable {
 
     init {
         if (nativeLoaded) {
-            nativePtr = nativeCreateFaceRecognizer(assetManager)
+            nativePtr = nativeCreateFaceRecognizer(assetManager, threadCount, threadAffinity)
             if (nativePtr == 0L) {
                 Log.e(TAG, "Failed to create native FaceRecognizer")
             } else {
-                Log.i(TAG, "Native FaceRecognizer created")
+                Log.i(TAG, "Native FaceRecognizer created (threads=$threadCount, affinity='$threadAffinity')")
             }
         } else {
             Log.e(TAG, "Skipping native FaceRecognizer creation — library not loaded")
@@ -37,7 +41,7 @@ class FaceRecognizerBridge(assetManager: AssetManager) : Closeable {
     }
 
     /**
-     * Compute a 128-dim face embedding from a BGR face crop.
+     * Compute a 512-dim face embedding from a BGR face crop.
      *
      * @param bgrCrop BGR pixel data (HWC uint8)
      * @param cropW   Crop width
@@ -63,7 +67,9 @@ class FaceRecognizerBridge(assetManager: AssetManager) : Closeable {
         }
     }
 
-    private external fun nativeCreateFaceRecognizer(assetManager: AssetManager): Long
+    private external fun nativeCreateFaceRecognizer(
+        assetManager: AssetManager, threadCount: Int, threadAffinity: String
+    ): Long
     private external fun nativeComputeEmbedding(
         recognizerPtr: Long, bgrCrop: ByteArray, cropW: Int, cropH: Int
     ): FloatArray?

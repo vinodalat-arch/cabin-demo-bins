@@ -2,6 +2,7 @@ package com.incabin
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -13,6 +14,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import android.app.Activity
 import android.util.Log
 import java.text.SimpleDateFormat
@@ -25,6 +27,8 @@ class MainActivity : Activity() {
         private const val TAG = "InCabin-Activity"
         private const val PERMISSION_REQUEST_CODE = 100
         private const val PREVIEW_POLL_MS = 500L
+        private const val PREFS_NAME = "incabin_prefs"
+        private const val PREF_PREVIEW_ENABLED = "preview_enabled"
 
         // Score tuning
         private const val SCORE_RECOVERY = 0.5f
@@ -102,6 +106,8 @@ class MainActivity : Activity() {
     // --- UI references ---
     private lateinit var toggleButton: Button
     private lateinit var registerButton: Button
+    private lateinit var previewToggle: Button
+    private lateinit var cameraStatusText: TextView
     private lateinit var driverNameText: TextView
     private lateinit var statusText: TextView
     private lateinit var previewImage: ImageView
@@ -123,6 +129,11 @@ class MainActivity : Activity() {
     private lateinit var tickerText: TextView
 
     private var isRunning = false
+    private var isSettingUp = false
+
+    // --- Platform & setup ---
+    private lateinit var platformProfile: PlatformProfile
+    private var deviceSetup: DeviceSetup? = null
 
     // --- Score & streak state ---
     private var drivingScore = 100f
@@ -167,10 +178,15 @@ class MainActivity : Activity() {
                 }
 
                 // 2. Camera preview from bitmap channel (only when preview enabled)
-                val frameData = FrameHolder.getLatest()
-                if (frameData != null && !frameData.bitmap.isRecycled) {
-                    previewImage.setImageBitmap(frameData.bitmap)
+                if (Config.ENABLE_PREVIEW) {
+                    val frameData = FrameHolder.getLatest()
+                    if (frameData != null && !frameData.bitmap.isRecycled) {
+                        previewImage.setImageBitmap(frameData.bitmap)
+                    }
                 }
+
+                // 3. Update camera status indicator
+                updateCameraStatus()
             } catch (e: Exception) {
                 Log.w(TAG, "Preview update failed", e)
             }
@@ -182,8 +198,13 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Detect platform once
+        platformProfile = PlatformProfile.detect()
+
         toggleButton = findViewById(R.id.toggleButton)
         registerButton = findViewById(R.id.registerButton)
+        previewToggle = findViewById(R.id.previewToggle)
+        cameraStatusText = findViewById(R.id.cameraStatusText)
         driverNameText = findViewById(R.id.driverNameText)
         statusText = findViewById(R.id.statusText)
         previewImage = findViewById(R.id.previewImage)
@@ -204,11 +225,17 @@ class MainActivity : Activity() {
         scorePanel = findViewById(R.id.scorePanel)
         tickerText = findViewById(R.id.tickerText)
 
+        // Restore preview toggle state
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        Config.ENABLE_PREVIEW = prefs.getBoolean(PREF_PREVIEW_ENABLED, false)
+        updatePreviewToggleUI()
+
         toggleButton.setOnClickListener {
+            if (isSettingUp) return@setOnClickListener
             if (isRunning) {
                 stopMonitoring()
             } else {
-                checkPermissionsAndStart()
+                onStartButtonTap()
             }
         }
 
@@ -219,6 +246,19 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to launch FaceRegistrationActivity", e)
             }
+        }
+
+        previewToggle.setOnClickListener {
+            Config.ENABLE_PREVIEW = !Config.ENABLE_PREVIEW
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_PREVIEW_ENABLED, Config.ENABLE_PREVIEW)
+                .apply()
+            updatePreviewToggleUI()
+            if (!Config.ENABLE_PREVIEW) {
+                previewImage.setImageBitmap(null)
+            }
+            Log.i(TAG, "Preview toggled: ${Config.ENABLE_PREVIEW}")
         }
     }
 
@@ -232,6 +272,116 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(previewPoller)
+    }
+
+    override fun onDestroy() {
+        deviceSetup?.cancel()
+        super.onDestroy()
+    }
+
+    // ---------------------------------------------------------------------
+    // Preview Toggle
+    // ---------------------------------------------------------------------
+
+    private fun updatePreviewToggleUI() {
+        if (Config.ENABLE_PREVIEW) {
+            previewToggle.text = "Preview ON"
+            previewToggle.alpha = 1.0f
+        } else {
+            previewToggle.text = "Preview"
+            previewToggle.alpha = 0.6f
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Camera Status Indicator
+    // ---------------------------------------------------------------------
+
+    private fun updateCameraStatus() {
+        val status = FrameHolder.getCameraStatus()
+        when (status) {
+            FrameHolder.CameraStatus.NOT_CONNECTED -> {
+                cameraStatusText.text = "Cam: None"
+                cameraStatusText.setTextColor(COLOR_RED)
+            }
+            FrameHolder.CameraStatus.CONNECTING -> {
+                cameraStatusText.text = "Cam: ..."
+                cameraStatusText.setTextColor(COLOR_ORANGE)
+            }
+            FrameHolder.CameraStatus.READY -> {
+                cameraStatusText.text = "Cam: Ready"
+                cameraStatusText.setTextColor(COLOR_GREEN)
+            }
+            FrameHolder.CameraStatus.ACTIVE -> {
+                cameraStatusText.text = "Cam: Active"
+                cameraStatusText.setTextColor(COLOR_GREEN)
+            }
+            FrameHolder.CameraStatus.LOST -> {
+                cameraStatusText.text = "Cam: Lost"
+                cameraStatusText.setTextColor(COLOR_RED)
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Setup Flow (Feature 1)
+    // ---------------------------------------------------------------------
+
+    private fun onStartButtonTap() {
+        if (platformProfile.isAutomotiveBsp) {
+            startAutomotiveSetup()
+        } else {
+            checkPermissionsAndStart()
+        }
+    }
+
+    private fun startAutomotiveSetup() {
+        // Check if camera is already available (app restart case)
+        val setup = DeviceSetup()
+        deviceSetup = setup
+
+        if (setup.isCameraAvailable()) {
+            Log.i(TAG, "Camera already available, skipping full setup")
+            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.READY)
+            checkPermissionsAndStart()
+            return
+        }
+
+        isSettingUp = true
+        toggleButton.isEnabled = false
+        toggleButton.text = "Setting up..."
+
+        FrameHolder.postCameraStatus(FrameHolder.CameraStatus.CONNECTING)
+
+        setup.startSetup(packageName, object : DeviceSetup.Callback {
+            override fun onStageChanged(stage: DeviceSetup.Stage, message: String) {
+                runOnUiThread {
+                    statusText.text = "Status: $message"
+                    Log.i(TAG, "Setup stage: $stage - $message")
+                }
+            }
+
+            override fun onSetupComplete() {
+                runOnUiThread {
+                    isSettingUp = false
+                    toggleButton.isEnabled = true
+                    FrameHolder.postCameraStatus(FrameHolder.CameraStatus.READY)
+                    checkPermissionsAndStart()
+                }
+            }
+
+            override fun onSetupFailed(message: String) {
+                runOnUiThread {
+                    isSettingUp = false
+                    toggleButton.isEnabled = true
+                    toggleButton.text = getString(R.string.start_service)
+                    statusText.text = "Status: Setup failed"
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                    // Allow manual start anyway — user might have done setup manually
+                    Log.w(TAG, "Setup failed: $message, user can still start manually")
+                }
+            }
+        })
     }
 
     private fun checkPermissionsAndStart() {
@@ -382,7 +532,7 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Feature 1: Safe Driving Score
+    // Safe Driving Score
     // ---------------------------------------------------------------------
 
     private fun updateScore(result: OutputResult) {
@@ -409,7 +559,7 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Feature 2: Distraction-Free Streak
+    // Distraction-Free Streak
     // ---------------------------------------------------------------------
 
     private fun updateStreak(result: OutputResult) {
@@ -447,7 +597,7 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Feature 3 + 6: AI Status with Varied Messages + Milestones
+    // AI Status with Varied Messages + Milestones
     // ---------------------------------------------------------------------
 
     private fun updateAiStatus(result: OutputResult) {
@@ -465,7 +615,7 @@ class MainActivity : Activity() {
             return
         }
 
-        // Check for streak milestones (Feature 6)
+        // Check for streak milestones
         val streakMs = System.currentTimeMillis() - lastDetectionMs
         for ((thresholdMs, milestoneMsg) in STREAK_MILESTONES) {
             if (streakMs >= thresholdMs && thresholdMs !in announcedMilestones) {
@@ -480,7 +630,7 @@ class MainActivity : Activity() {
         val color: Int
 
         when {
-            // Priority 1: Detection messages (varied — Feature 3)
+            // Priority 1: Detection messages (varied)
             result.driverUsingPhone -> {
                 message = PHONE_MESSAGES.random()
                 color = COLOR_RED
@@ -547,7 +697,7 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Feature 9: Detection History Ticker
+    // Detection History Ticker
     // ---------------------------------------------------------------------
 
     private fun updateTicker(result: OutputResult) {
@@ -582,7 +732,7 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Feature 4: Session Summary
+    // Session Summary
     // ---------------------------------------------------------------------
 
     private fun showSessionSummary() {

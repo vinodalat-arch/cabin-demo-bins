@@ -23,7 +23,12 @@ struct FaceEmbedding {
 
 class FaceRecognizer {
 public:
-    explicit FaceRecognizer(AAssetManager* asset_manager);
+    /**
+     * @param asset_manager    Android AAssetManager for reading model files
+     * @param num_threads      Number of ONNX Runtime intra-op threads
+     * @param thread_affinity  Thread affinity string (e.g. "5"), empty for no pinning
+     */
+    FaceRecognizer(AAssetManager* asset_manager, int num_threads, const std::string& thread_affinity);
     ~FaceRecognizer() = default;
 
     FaceRecognizer(const FaceRecognizer&) = delete;

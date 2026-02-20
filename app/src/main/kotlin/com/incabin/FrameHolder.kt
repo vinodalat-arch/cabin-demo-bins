@@ -54,10 +54,28 @@ object FrameHolder {
     /** Get the latest face crop (for registration). */
     fun getCaptureData(): CaptureData? = latestCapture.get()
 
+    // --- Camera status indicator ---
+    enum class CameraStatus {
+        NOT_CONNECTED,
+        CONNECTING,
+        READY,
+        ACTIVE,
+        LOST
+    }
+
+    private val cameraStatus = AtomicReference(CameraStatus.NOT_CONNECTED)
+
+    fun postCameraStatus(status: CameraStatus) {
+        cameraStatus.set(status)
+    }
+
+    fun getCameraStatus(): CameraStatus = cameraStatus.get()
+
     /** Clear the held frame. */
     fun clear() {
         latest.set(null)
         latestResult.set(null)
         latestCapture.set(null)
+        cameraStatus.set(CameraStatus.NOT_CONNECTED)
     }
 }

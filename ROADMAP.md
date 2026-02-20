@@ -70,7 +70,7 @@ Replace the single "Start Monitoring" button with a multi-stage setup flow that 
 - **No impact on InCabinService**: Service starts only after setup is complete. Setup flow lives entirely in the activity layer
 - **Core pipeline isolation**: Setup is a pre-condition, not a runtime concern. Once monitoring starts, the existing pipeline runs unchanged
 
-### Status: Proposed
+### Status: Implemented
 
 ---
 
@@ -103,7 +103,7 @@ Add a toggle button in the top row that enables/disables webcam preview renderin
 - **Thread safety**: Toggle is set from UI thread and read from service thread — ensure cross-thread visibility
 - **Core pipeline isolation**: Preview toggle must never block or interfere with inference → merge → smooth → alert → log
 
-### Status: Proposed
+### Status: Implemented
 
 ---
 
@@ -154,7 +154,7 @@ Auto-detect the platform at startup and load a platform-appropriate tuning profi
 - **Core pipeline unchanged**: The inference pipeline itself is identical across platforms. Only the ONNX session configuration and audio setup differ
 - **SA8295 tuning is provisional**: Optimal values for SA8295 require on-device profiling. Initial implementation should use conservative defaults for SA8295 until profiled
 
-### Status: Proposed
+### Status: Implemented
 
 ---
 

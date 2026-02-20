@@ -42,7 +42,8 @@ std::vector<uint8_t> PoseAnalyzer::loadModelFromAssets(AAssetManager* mgr, const
 
 // ---- Constructor ----
 
-PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager)
+PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager, int num_threads,
+                           const std::string& thread_affinity)
     : env_(ORT_LOGGING_LEVEL_WARNING, "InCabinPose"),
       letterbox_buf_(YOLO_INPUT_SIZE * YOLO_INPUT_SIZE * 3),
       input_tensor_buf_(3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE),
@@ -50,13 +51,17 @@ PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager)
       detect_tensor_buf_(3 * YOLO_INPUT_SIZE * YOLO_INPUT_SIZE),
       crop_buf_(1280 * 720 * 3) {
 
-    // Configure session options
-    session_options_.SetIntraOpNumThreads(4);
+    // Configure session options with platform-specific thread count
+    session_options_.SetIntraOpNumThreads(num_threads);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-    // Pin intra-op threads to Gold+Prime cores (4-7) for higher clock speeds (2131-2419MHz vs 1785MHz).
-    // API requires intra_op_num_threads - 1 affinity specs (main thread excluded per ORT docs).
-    session_options_.AddConfigEntry("session.intra_op_thread_affinities", "4;5;6");
+    // Pin threads to specific cores if affinity is provided (empty = let OS schedule)
+    if (!thread_affinity.empty()) {
+        session_options_.AddConfigEntry("session.intra_op_thread_affinities", thread_affinity.c_str());
+        LOGI("Thread affinity set: threads=%d, affinity=%s", num_threads, thread_affinity.c_str());
+    } else {
+        LOGI("Thread count set: %d (no core pinning)", num_threads);
+    }
 
     // Load pose model (FP16 — ORT handles FP16→FP32 cast at I/O boundary automatically)
     auto pose_model_data = loadModelFromAssets(asset_manager, "yolov8n-pose-fp16.onnx");

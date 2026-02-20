@@ -23,7 +23,7 @@ import java.util.concurrent.LinkedBlockingQueue
  * via Android TextToSpeech. Messages are queued to a background worker thread
  * and spoken sequentially. At most one message is enqueued per inference cycle.
  */
-class AudioAlerter(context: Context) {
+class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttributes.USAGE_ASSISTANCE_SONIFICATION) {
 
     companion object {
         private const val TAG = "AudioAlerter"
@@ -127,12 +127,12 @@ class AudioAlerter(context: Context) {
             tts.language = Locale.US
             tts.setSpeechRate(0.8f)
             val audioAttrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setUsage(audioUsage)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build()
             tts.setAudioAttributes(audioAttrs)
             ttsReady = true
-            Log.i(TAG, "TTS initialized successfully")
+            Log.i(TAG, "TTS initialized successfully (audioUsage=$audioUsage)")
         } else {
             Log.e(TAG, "TTS initialization failed with status: $status")
             if (!ttsRetried) {
@@ -146,7 +146,7 @@ class AudioAlerter(context: Context) {
                             tts.language = Locale.US
                             tts.setSpeechRate(0.8f)
                             val audioAttrs = AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                                .setUsage(audioUsage)
                                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                                 .build()
                             tts.setAudioAttributes(audioAttrs)
@@ -228,7 +228,7 @@ class AudioAlerter(context: Context) {
             Thread({
                 try {
                     val attrs = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setUsage(audioUsage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
                     val track = AudioTrack.Builder()

@@ -35,8 +35,8 @@ object Config {
     val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
     const val DISTRACTION_BEEP_THRESHOLD_S = 20
 
-    // Preview (set false to test pipeline without rendering overhead)
-    const val ENABLE_PREVIEW = false
+    // Preview (toggleable at runtime via UI; persisted in SharedPreferences)
+    @JvmStatic @Volatile var ENABLE_PREVIEW = false
 
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2

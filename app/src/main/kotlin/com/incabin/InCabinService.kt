@@ -42,6 +42,9 @@ class InCabinService : Service() {
         )
     }
 
+    // --- Platform profile (detected once at startup) ---
+    private lateinit var platformProfile: PlatformProfile
+
     // --- Core components ---
     private val nativeLib = NativeLib()
     private var v4l2Camera: V4l2CameraManager? = null
@@ -135,6 +138,10 @@ class InCabinService : Service() {
     // -------------------------------------------------------------------------
 
     private fun initializeComponents() {
+        // --- Platform Detection ---
+        platformProfile = PlatformProfile.detect()
+        Log.i(TAG, "=== Platform: ${platformProfile.platform} ===")
+
         // --- Device Info ---
         Log.i(TAG, "=== Device Info ===")
         Log.i(TAG, "Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}, SDK ${Build.VERSION.SDK_INT}")
@@ -173,7 +180,11 @@ class InCabinService : Service() {
         Thread({
             try {
                 val t0 = System.currentTimeMillis()
-                poseAnalyzer = PoseAnalyzerBridge(assets)
+                poseAnalyzer = PoseAnalyzerBridge(
+                    assets,
+                    platformProfile.poseThreadCount,
+                    platformProfile.poseThreadAffinity
+                )
                 Log.i(TAG, "PoseAnalyzerBridge initialized (${System.currentTimeMillis() - t0}ms)")
             } catch (e: Exception) {
                 Log.e(TAG, "PoseAnalyzerBridge initialization failed", e)
@@ -185,7 +196,11 @@ class InCabinService : Service() {
         Thread({
             try {
                 val t0 = System.currentTimeMillis()
-                faceRecognizer = FaceRecognizerBridge(assets)
+                faceRecognizer = FaceRecognizerBridge(
+                    assets,
+                    platformProfile.faceRecThreadCount,
+                    platformProfile.faceRecThreadAffinity
+                )
                 Log.i(TAG, "FaceRecognizerBridge initialized (${System.currentTimeMillis() - t0}ms)")
             } catch (e: Exception) {
                 Log.e(TAG, "FaceRecognizerBridge initialization failed", e)
@@ -218,10 +233,10 @@ class InCabinService : Service() {
         smoother = TemporalSmoother()
         Log.i(TAG, "TemporalSmoother initialized")
 
-        // AudioAlerter (TextToSpeech)
+        // AudioAlerter (TextToSpeech with platform-specific audio routing)
         try {
-            audioAlerter = AudioAlerter(this)
-            Log.i(TAG, "AudioAlerter initialized")
+            audioAlerter = AudioAlerter(this, platformProfile.audioUsage)
+            Log.i(TAG, "AudioAlerter initialized (audioUsage=${platformProfile.audioUsage})")
         } catch (e: Exception) {
             Log.e(TAG, "AudioAlerter initialization failed", e)
         }
@@ -244,18 +259,24 @@ class InCabinService : Service() {
     // -------------------------------------------------------------------------
 
     private fun startCamera() {
-        // Try V4L2 first (for USB webcam on Honda BSP where Camera2 is unavailable)
-        val v4l2 = V4l2CameraManager(nativeLib, ::onBgrFrame)
-        if (v4l2.start()) {
-            v4l2Camera = v4l2
-            Log.i(TAG, "Using V4L2 camera")
-            return
-        }
-        Log.w(TAG, "V4L2 not available, falling back to Camera2")
+        val tryV4l2First = platformProfile.cameraStrategy == PlatformProfile.CameraStrategy.V4L2_FIRST
 
-        // Fallback to Camera2
+        if (tryV4l2First) {
+            val v4l2 = V4l2CameraManager(nativeLib, ::onBgrFrame)
+            if (v4l2.start()) {
+                v4l2Camera = v4l2
+                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.ACTIVE)
+                Log.i(TAG, "Using V4L2 camera (strategy: V4L2_FIRST)")
+                return
+            }
+            Log.w(TAG, "V4L2 not available, falling back to Camera2")
+        }
+
+        // Camera2 path (primary for generic Android, fallback for automotive)
         cameraManager = CameraManager(this, ::onFrame)
         cameraManager?.start()
+        FrameHolder.postCameraStatus(FrameHolder.CameraStatus.ACTIVE)
+        Log.i(TAG, "Using Camera2 (strategy: ${platformProfile.cameraStrategy})")
     }
 
     // -------------------------------------------------------------------------

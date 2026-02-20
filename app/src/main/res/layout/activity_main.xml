@@ -23,6 +23,24 @@
             android:textSize="14sp"
             android:textColor="#FFFFFFFF" />
 
+        <TextView
+            android:id="@+id/cameraStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Cam: --"
+            android:textSize="11sp"
+            android:textColor="#FFFF5252"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/previewToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Preview"
+            android:textSize="11sp"
+            android:minWidth="60dp"
+            android:layout_marginEnd="4dp" />
+
         <Button
             android:id="@+id/registerButton"
             android:layout_width="wrap_content"
@@ -30,7 +48,7 @@
             android:text="Faces"
             android:textSize="12sp"
             android:minWidth="70dp"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="4dp" />
 
         <Button
             android:id="@+id/toggleButton"

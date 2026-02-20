@@ -49,16 +49,22 @@ std::vector<uint8_t> FaceRecognizer::loadModelFromAssets(AAssetManager* mgr, con
 
 // ---- Constructor ----
 
-FaceRecognizer::FaceRecognizer(AAssetManager* asset_manager)
+FaceRecognizer::FaceRecognizer(AAssetManager* asset_manager, int num_threads,
+                               const std::string& thread_affinity)
     : env_(ORT_LOGGING_LEVEL_WARNING, "InCabinFaceRec"),
       resize_buf_(FACE_INPUT_SIZE * FACE_INPUT_SIZE * 3),
       input_tensor_buf_(3 * FACE_INPUT_SIZE * FACE_INPUT_SIZE) {
 
-    session_options_.SetIntraOpNumThreads(2);
+    session_options_.SetIntraOpNumThreads(num_threads);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-    // Pin to Gold core 5 to avoid contention with PoseAnalyzer on cores 4-7
-    session_options_.AddConfigEntry("session.intra_op_thread_affinities", "5");
+    // Pin threads to specific cores if affinity is provided (empty = let OS schedule)
+    if (!thread_affinity.empty()) {
+        session_options_.AddConfigEntry("session.intra_op_thread_affinities", thread_affinity.c_str());
+        LOGI("Thread affinity set: threads=%d, affinity=%s", num_threads, thread_affinity.c_str());
+    } else {
+        LOGI("Thread count set: %d (no core pinning)", num_threads);
+    }
 
     auto model_data = loadModelFromAssets(asset_manager, "mobilefacenet-fp16.onnx");
     if (!model_data.empty()) {

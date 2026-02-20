@@ -46,9 +46,11 @@ public:
     /**
      * Construct PoseAnalyzer, loading ONNX models from Android assets.
      *
-     * @param asset_manager  Android AAssetManager for reading model files
+     * @param asset_manager    Android AAssetManager for reading model files
+     * @param num_threads      Number of ONNX Runtime intra-op threads
+     * @param thread_affinity  Thread affinity string (e.g. "4;5;6"), empty for no pinning
      */
-    explicit PoseAnalyzer(AAssetManager* asset_manager);
+    PoseAnalyzer(AAssetManager* asset_manager, int num_threads, const std::string& thread_affinity);
 
     ~PoseAnalyzer() = default;
 

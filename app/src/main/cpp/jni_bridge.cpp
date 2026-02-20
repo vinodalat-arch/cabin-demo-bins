@@ -110,7 +110,9 @@ JNIEXPORT jlong JNICALL
 Java_com_incabin_PoseAnalyzerBridge_nativeCreatePoseAnalyzer(
     JNIEnv* env,
     jobject /* this */,
-    jobject asset_manager_obj
+    jobject asset_manager_obj,
+    jint num_threads,
+    jstring thread_affinity_str
 ) {
     AAssetManager* asset_manager = AAssetManager_fromJava(env, asset_manager_obj);
     if (!asset_manager) {
@@ -118,9 +120,19 @@ Java_com_incabin_PoseAnalyzerBridge_nativeCreatePoseAnalyzer(
         return 0;
     }
 
+    std::string thread_affinity;
+    if (thread_affinity_str) {
+        const char* str = env->GetStringUTFChars(thread_affinity_str, nullptr);
+        if (str) {
+            thread_affinity = str;
+            env->ReleaseStringUTFChars(thread_affinity_str, str);
+        }
+    }
+
     try {
-        auto* analyzer = new incabin::PoseAnalyzer(asset_manager);
-        LOGI("PoseAnalyzer created at %p", analyzer);
+        auto* analyzer = new incabin::PoseAnalyzer(asset_manager, num_threads, thread_affinity);
+        LOGI("PoseAnalyzer created at %p (threads=%d, affinity=%s)",
+             analyzer, num_threads, thread_affinity.c_str());
         return reinterpret_cast<jlong>(analyzer);
     } catch (const std::exception& e) {
         LOGE("Failed to create PoseAnalyzer: %s", e.what());
@@ -276,7 +288,9 @@ JNIEXPORT jlong JNICALL
 Java_com_incabin_FaceRecognizerBridge_nativeCreateFaceRecognizer(
     JNIEnv* env,
     jobject /* this */,
-    jobject asset_manager_obj
+    jobject asset_manager_obj,
+    jint num_threads,
+    jstring thread_affinity_str
 ) {
     AAssetManager* asset_manager = AAssetManager_fromJava(env, asset_manager_obj);
     if (!asset_manager) {
@@ -284,9 +298,19 @@ Java_com_incabin_FaceRecognizerBridge_nativeCreateFaceRecognizer(
         return 0;
     }
 
+    std::string thread_affinity;
+    if (thread_affinity_str) {
+        const char* str = env->GetStringUTFChars(thread_affinity_str, nullptr);
+        if (str) {
+            thread_affinity = str;
+            env->ReleaseStringUTFChars(thread_affinity_str, str);
+        }
+    }
+
     try {
-        auto* recognizer = new incabin::FaceRecognizer(asset_manager);
-        LOGI("FaceRecognizer created at %p", recognizer);
+        auto* recognizer = new incabin::FaceRecognizer(asset_manager, num_threads, thread_affinity);
+        LOGI("FaceRecognizer created at %p (threads=%d, affinity=%s)",
+             recognizer, num_threads, thread_affinity.c_str());
         return reinterpret_cast<jlong>(recognizer);
     } catch (const std::exception& e) {
         LOGE("Failed to create FaceRecognizer: %s", e.what());
