@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, UI polish, face recognition, multi-platform support, automated camera setup, and runtime preview toggle. Build verified (`assembleDebug` + all 98 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, and runtime preview toggle. Build verified (`assembleDebug` + all 99 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
@@ -10,7 +10,7 @@ Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug
 Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 17 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
 ## Full Specification
-**See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and all 98 unit test specifications. That document is the single source of truth for this project.
+**See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and all 99 unit test specifications. That document is the single source of truth for this project.
 
 ## Architecture
 ```
@@ -182,19 +182,26 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Metric labels**: EAR, MAR, Yaw, Pitch in top-left corner with dark background
 - Pre-allocated Paint objects; ~3-5ms overhead on 1280x720
 
-### Status Dashboard (MainActivity)
+### Status Dashboard (MainActivity) — Premium Three-Zone Layout
 - **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
-- Compact top row: status text + camera status + preview toggle + "Faces" button + start/stop button
-- AI status message bar with varied contextual messages
-- Score arc + distraction-free streak + session timer
-- Camera preview (ImageView, optional via ENABLE_PREVIEW)
-- Dashboard panel (visible when monitoring):
-  - Risk banner: color-coded (red=HIGH 32sp, orange=MEDIUM, green=LOW)
-  - Driver name: "Driver: Name" (22sp bold, blue, hidden when unknown)
-  - Info row: Passengers | Distraction timer (26sp bold)
-  - Active detections: pipe-separated labels (Phone | Eyes Closed | Yawning | etc.)
-  - EAR/MAR/Yaw/Pitch metrics: hidden (engineering data, still in layout as `gone`)
-- Detection history ticker (marquee)
+- **Three-zone horizontal layout** optimized for 1920x720 automotive landscape display:
+  - **Left panel (280dp)**: Score arc (120dp, animated), streak/session timers, camera status (dot + text), preview toggle, Faces button, Start/Stop button
+  - **Center (flexible)**: Camera preview (or idle branding when not monitoring), AI status message overlay with gradient scrim at bottom
+  - **Right panel (360dp)**: Risk pill, driver name, passenger count, distraction timer, detection labels, ticker (visible during monitoring only)
+- **Design system**: Centralized color palette (`res/values/colors.xml`), typography styles (`res/values/styles.xml`), spacing system (`res/values/dimens.xml`)
+- **Color palette**: `#0A0A0F` background, `#12131A` surface, `#E8E9ED` text, `#5B8DEF` accent, `#2ECC71` safe, `#F39C12` caution, `#E74C3C` danger, `#F1C40F` gold
+- **Typography**: 6 styles from TextDisplay (48sp bold) to TextMicro (11sp), system Roboto
+- **Animations** (framework only, no libraries):
+  - Score arc: `ValueAnimator` 400ms decelerate with glow via `BlurMaskFilter`
+  - Risk pill: `ValueAnimator.ofArgb()` 500ms color transitions between states
+  - Detection labels: fade in 200ms / fade out 300ms (vertical stack with colored dots)
+  - AI status: crossfade 150ms (alpha out → set text → alpha in)
+  - Panel show/hide: alpha animate 300ms/200ms
+- Risk pill: compact rounded-corner pill (12dp radius), states: LOW/MEDIUM/HIGH/NO OCCUPANTS
+- Detection labels: vertical stack, `● Phone Detected` with danger/caution colored dot, "All Clear" in safe color when empty
+- Ticker: static last 3 events on separate lines (replaces marquee)
+- Footer: 11sp `text_muted`, "KPIT Technologies, India"
+- Idle state: left controls visible, center shows "Honda Smart Cabin" branding, right panel hidden
 - Session summary dialog on stop
 - Polls FrameHolder every 500ms
 - Custom app icon: dark blue background (#1A237E) with white eye/monitoring symbol
@@ -237,15 +244,15 @@ in_cabin_poc-sa8155/
 │   │   ├── PlatformProfile, DeviceSetup
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
-│   └── res/             (layout, strings, notification icon, app icon)
+│   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
 ├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 98 unit tests (all passing):
+- 99 unit tests (all passing):
   - MergerTest: 19 tests (risk scoring + merge logic)
-  - TemporalSmootherTest: 20 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
+  - TemporalSmootherTest: 21 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
   - PlatformProfileTest: 22 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
