@@ -20,6 +20,7 @@ class TemporalSmoother(
     private val _buffer = ArrayDeque<OutputResult>()
     private var _eyesOpenStreak: Int = 0
     private var _eyesClosedStreak: Int = 0
+    private var _yawningStreak: Int = 0
     private var _distractedStreak: Int = 0
     private var _eatingStreak: Int = 0
     private var _postureStreak: Int = 0
@@ -109,9 +110,11 @@ class TemporalSmoother(
         if (rawEyesClosed) _eyesClosedStreak++ else _eyesClosedStreak = 0
         val smoothedEyesClosed = _eyesClosedStreak >= Config.EYES_CLOSED_MIN_FRAMES
 
-        // --- Smooth driver_yawning (face-gated by mar_value) ---
-        val smoothedYawning = if (marValidCount == 0) false
+        // --- Smooth driver_yawning (face-gated by mar_value + sustained) ---
+        val rawYawning = if (marValidCount == 0) false
             else (yawningCount.toFloat() / marValidCount) >= threshold
+        if (rawYawning) _yawningStreak++ else _yawningStreak = 0
+        val smoothedYawning = _yawningStreak >= Config.YAWNING_MIN_FRAMES
 
         // --- Smooth driver_distracted (face-gated by head_yaw + sustained) ---
         val rawDistracted = if (yawValidCount == 0) false

@@ -14,9 +14,13 @@ object Config {
 
     // Face analysis (EAR and HEAD_PITCH are overridable per platform at service startup)
     @JvmStatic var EAR_THRESHOLD = 0.21f
+    const val EAR_BASELINE_RATIO = 0.65f        // closed = ear < baseline * ratio
     const val MAR_THRESHOLD = 0.5f
     const val HEAD_YAW_THRESHOLD = 30.0f
     @JvmStatic var HEAD_PITCH_THRESHOLD = 35.0f
+    const val PITCH_BASELINE_DEVIATION = 25.0f   // distracted = |pitch - baseline| > deviation
+    const val BASELINE_FRAMES = 10               // frames to accumulate for auto-baseline
+    const val ANGLE_SMOOTH_WINDOW = 3            // moving average window for yaw/pitch
 
     // Pose analysis
     const val POSTURE_LEAN_THRESHOLD = 30.0f
@@ -34,6 +38,7 @@ object Config {
     const val DISTRACTED_MIN_FRAMES = 3       // ~3s — allow quick mirror/blind-spot glances
     const val EATING_MIN_FRAMES = 3           // ~3s — allow quick sips
     const val POSTURE_MIN_FRAMES = 3          // ~3s — allow brief adjustments
+    const val YAWNING_MIN_FRAMES = 2           // ~2s — filter single-frame mouth-open
     const val CHILD_SLOUCH_MIN_FRAMES = 5     // ~5s — kids shift constantly
 
     // Audio — escalation ladder

@@ -135,6 +135,16 @@ class FaceAnalyzer(context: Context) {
     // Pre-allocated list for solvePnP 2D points (avoids .map{} allocation per frame)
     private val pnpPointsList = ArrayList<Point>(PNP_LANDMARK_INDICES.size)
 
+    // --- Auto-baseline calibration ---
+    private val earBaselineSamples = mutableListOf<Double>()
+    private val pitchBaselineSamples = mutableListOf<Double>()
+    private var earBaseline: Double? = null
+    private var pitchBaseline: Double? = null
+
+    // --- Angle smoothing (moving average) ---
+    private val yawHistory = ArrayDeque<Double>(Config.ANGLE_SMOOTH_WINDOW)
+    private val pitchHistory = ArrayDeque<Double>(Config.ANGLE_SMOOTH_WINDOW)
+
 
     init {
         val baseOptions = BaseOptions.builder()
@@ -191,16 +201,55 @@ class FaceAnalyzer(context: Context) {
         val rightEar = computeEar(landmarks, RIGHT_EYE_INDICES, w, h)
         val leftEar = computeEar(landmarks, LEFT_EYE_INDICES, w, h)
         val avgEar = (leftEar + rightEar) / 2.0
-        val eyesClosed = avgEar < Config.EAR_THRESHOLD
+
+        // EAR auto-baseline: accumulate first N frames, then use relative threshold
+        val eyesClosed = if (earBaseline != null) {
+            avgEar < earBaseline!! * Config.EAR_BASELINE_RATIO
+        } else {
+            // Still calibrating — collect samples and use fixed threshold as fallback
+            if (earBaselineSamples.size < Config.BASELINE_FRAMES) {
+                earBaselineSamples.add(avgEar)
+                if (earBaselineSamples.size == Config.BASELINE_FRAMES) {
+                    earBaseline = earBaselineSamples.average()
+                    Log.i(TAG, "EAR baseline calibrated: %.4f (threshold: %.4f)".format(
+                        earBaseline, earBaseline!! * Config.EAR_BASELINE_RATIO))
+                }
+            }
+            avgEar < Config.EAR_THRESHOLD
+        }
 
         // --- MAR ---
         val mar = computeMar(landmarks, w, h)
         val yawning = mar > Config.MAR_THRESHOLD
 
         // --- Head Pose ---
-        val (yawDeg, pitchDeg) = estimateHeadPose(landmarks, w, h)
-        val distracted = abs(yawDeg) > Config.HEAD_YAW_THRESHOLD ||
-                abs(pitchDeg) > Config.HEAD_PITCH_THRESHOLD
+        val (rawYawDeg, rawPitchDeg) = estimateHeadPose(landmarks, w, h)
+
+        // Angle smoothing: 3-frame moving average before thresholding
+        yawHistory.addLast(rawYawDeg)
+        if (yawHistory.size > Config.ANGLE_SMOOTH_WINDOW) yawHistory.removeFirst()
+        pitchHistory.addLast(rawPitchDeg)
+        if (pitchHistory.size > Config.ANGLE_SMOOTH_WINDOW) pitchHistory.removeFirst()
+        val yawDeg = yawHistory.average()
+        val pitchDeg = pitchHistory.average()
+
+        // Pitch auto-baseline: accumulate first N frames, then use deviation-based threshold
+        val pitchDistracted = if (pitchBaseline != null) {
+            abs(pitchDeg - pitchBaseline!!) > Config.PITCH_BASELINE_DEVIATION
+        } else {
+            // Still calibrating — collect samples and use fixed threshold as fallback
+            if (pitchBaselineSamples.size < Config.BASELINE_FRAMES) {
+                pitchBaselineSamples.add(pitchDeg)
+                if (pitchBaselineSamples.size == Config.BASELINE_FRAMES) {
+                    pitchBaseline = pitchBaselineSamples.average()
+                    Log.i(TAG, "Pitch baseline calibrated: %.1f° (threshold: ±%.1f°)".format(
+                        pitchBaseline, Config.PITCH_BASELINE_DEVIATION))
+                }
+            }
+            abs(pitchDeg) > Config.HEAD_PITCH_THRESHOLD
+        }
+
+        val distracted = abs(yawDeg) > Config.HEAD_YAW_THRESHOLD || pitchDistracted
 
         // --- Build Face Overlay (only when preview is enabled — avoids 4 list allocations per frame) ---
         val faceOverlay = if (!Config.ENABLE_PREVIEW) null else try {

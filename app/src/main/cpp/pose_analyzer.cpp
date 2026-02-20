@@ -22,6 +22,10 @@ static constexpr int WRIST_CROP_SIZE = 200;
 static constexpr int YOLO_PHONE_CLASS = 67;
 static const std::vector<int> FOOD_DRINK_CLASSES = {39, 40, 41, 42, 43, 44, 45, 46, 47, 48};
 
+// Per-class confidence thresholds (higher than default 0.35 to reduce false positives)
+static constexpr float PHONE_CONFIDENCE = 0.45f;
+static constexpr float FOOD_CONFIDENCE = 0.50f;
+
 // ---- Model Loading ----
 
 std::vector<uint8_t> PoseAnalyzer::loadModelFromAssets(AAssetManager* mgr, const char* filename) {
@@ -190,7 +194,8 @@ std::vector<Detection> PoseAnalyzer::runPoseModel(const uint8_t* bgr_data,
 // ---- Run Detection Model ----
 
 std::vector<Detection> PoseAnalyzer::runDetectModel(const uint8_t* crop_bgr,
-                                                    int crop_w, int crop_h) {
+                                                    int crop_w, int crop_h,
+                                                    float conf_thresh) {
     if (!detect_session_) return {};
 
     // C6: Use pre-allocated detect buffers instead of allocating per call
@@ -203,7 +208,7 @@ std::vector<Detection> PoseAnalyzer::runDetectModel(const uint8_t* crop_bgr,
     auto output = runInference(detect_session_.get(), detect_tensor_buf_.data(), input_shape, detect_output_size);
     if (output.empty()) return {};
 
-    return parseDetectOutput(output.data(), info);
+    return parseDetectOutput(output.data(), info, conf_thresh);
 }
 
 // ---- Posture Check ----
@@ -283,7 +288,8 @@ bool PoseAnalyzer::checkPosture(const std::array<Keypoint, NUM_KEYPOINTS>& kps,
 bool PoseAnalyzer::detectObjectsInCrop(const uint8_t* frame_bgr, int frame_w, int frame_h,
                                        const Detection& box,
                                        const std::vector<int>& target_classes,
-                                       float pad_ratio) {
+                                       float pad_ratio,
+                                       float conf_thresh) {
     float pad_x = (box.x2 - box.x1) * pad_ratio;
     float pad_y = (box.y2 - box.y1) * pad_ratio;
 
@@ -293,12 +299,13 @@ bool PoseAnalyzer::detectObjectsInCrop(const uint8_t* frame_bgr, int frame_w, in
     int cy2 = std::min(frame_h, static_cast<int>(box.y2 + pad_y));
 
     return detectObjectsInRegion(frame_bgr, frame_w, frame_h,
-                                 cx1, cy1, cx2, cy2, target_classes);
+                                 cx1, cy1, cx2, cy2, target_classes, conf_thresh);
 }
 
 bool PoseAnalyzer::detectObjectsInRegion(const uint8_t* frame_bgr, int frame_w, int frame_h,
                                          int cx1, int cy1, int cx2, int cy2,
-                                         const std::vector<int>& target_classes) {
+                                         const std::vector<int>& target_classes,
+                                         float conf_thresh) {
     int crop_w = cx2 - cx1;
     int crop_h = cy2 - cy1;
     if (crop_w <= 0 || crop_h <= 0) return false;
@@ -315,8 +322,8 @@ bool PoseAnalyzer::detectObjectsInRegion(const uint8_t* frame_bgr, int frame_w, 
         std::memcpy(dst, src, row_bytes);
     }
 
-    // Run detection on crop
-    auto detections = runDetectModel(crop_buf_.data(), crop_w, crop_h);
+    // Run detection on crop with per-class confidence threshold
+    auto detections = runDetectModel(crop_buf_.data(), crop_w, crop_h, conf_thresh);
 
     // Check if any detection matches target classes
     for (const auto& det : detections) {
@@ -393,10 +400,10 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
         }
     }
 
-    // 5. Phone detection (two-strategy)
+    // 5. Phone detection (two-strategy, higher confidence threshold)
     // Strategy 1: driver ROI with 20% padding
     static const std::vector<int> phone_classes = {YOLO_PHONE_CLASS};
-    if (detectObjectsInCrop(bgr_data, width, height, driver, phone_classes, 0.2f)) {
+    if (detectObjectsInCrop(bgr_data, width, height, driver, phone_classes, 0.2f, PHONE_CONFIDENCE)) {
         result.driver_using_phone = true;
     } else {
         // Strategy 2: wrist crops (200x200px, no padding)
@@ -417,16 +424,16 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
             if (cx2 <= cx1 || cy2 <= cy1) continue;
 
             if (detectObjectsInRegion(bgr_data, width, height,
-                                      cx1, cy1, cx2, cy2, phone_classes)) {
+                                      cx1, cy1, cx2, cy2, phone_classes, PHONE_CONFIDENCE)) {
                 result.driver_using_phone = true;
                 break;
             }
         }
     }
 
-    // 6. Food/drink detection (driver ROI with 20% padding)
+    // 6. Food/drink detection (driver ROI with 20% padding, higher confidence threshold)
     result.driver_eating_drinking = detectObjectsInCrop(
-        bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f);
+        bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f, FOOD_CONFIDENCE);
 
     LOGI("PoseAnalyzer: passengers=%d, phone=%d, posture=%d, child=%d, slouch=%d, eating=%d",
          result.passenger_count, result.driver_using_phone,

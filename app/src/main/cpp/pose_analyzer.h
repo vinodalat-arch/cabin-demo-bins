@@ -103,12 +103,14 @@ private:
 
     /**
      * Run the detection model on a crop (ROI).
-     * @param crop_bgr  BGR crop data
-     * @param crop_w    Crop width
-     * @param crop_h    Crop height
+     * @param crop_bgr     BGR crop data
+     * @param crop_w       Crop width
+     * @param crop_h       Crop height
+     * @param conf_thresh  Confidence threshold (default YOLO_CONFIDENCE)
      * @return Vector of object detections
      */
-    std::vector<Detection> runDetectModel(const uint8_t* crop_bgr, int crop_w, int crop_h);
+    std::vector<Detection> runDetectModel(const uint8_t* crop_bgr, int crop_w, int crop_h,
+                                          float conf_thresh = YOLO_CONFIDENCE);
 
     /**
      * Check posture: torso lean, head droop, head turn, face visibility.
@@ -132,7 +134,8 @@ private:
     bool detectObjectsInCrop(const uint8_t* frame_bgr, int frame_w, int frame_h,
                              const Detection& box,
                              const std::vector<int>& target_classes,
-                             float pad_ratio);
+                             float pad_ratio,
+                             float conf_thresh = YOLO_CONFIDENCE);
 
     /**
      * Detect objects in an arbitrary crop region.
@@ -141,11 +144,13 @@ private:
      * @param frame_h    Frame height
      * @param cx1,cy1,cx2,cy2  Crop coordinates (already clamped)
      * @param target_classes   Classes to look for
+     * @param conf_thresh      Confidence threshold
      * @return true if any target class found
      */
     bool detectObjectsInRegion(const uint8_t* frame_bgr, int frame_w, int frame_h,
                                int cx1, int cy1, int cx2, int cy2,
-                               const std::vector<int>& target_classes);
+                               const std::vector<int>& target_classes,
+                               float conf_thresh = YOLO_CONFIDENCE);
 
     /**
      * Run inference on input tensor and return raw output.

@@ -136,13 +136,14 @@ class TemporalSmootherTest {
 
     @Test
     fun test_no_face_frames_skipped_for_yawning() {
-        // face_frames=3, true_count=3, 3/3=1.0 >= 0.6 -> yawning = true
+        // face_frames=3, true_count=3, 3/3=1.0 >= 0.6 -> majority true, but need 2 consecutive for sustained
         val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
         s.smooth(makeResult(yawn = true, mar = 0.6f))
-        s.smooth(makeResult(yawn = false, mar = null))
+        s.smooth(makeResult(yawn = false, mar = null))   // no face, but streak resets since majority flips
         s.smooth(makeResult(yawn = true, mar = 0.7f))
         s.smooth(makeResult(yawn = false, mar = null))
         val result = s.smooth(makeResult(yawn = true, mar = 0.8f))
+        // 3 face frames all true -> majority true, streak=2 (frame 4 and 5) >= YAWNING_MIN_FRAMES(2) -> true
         assertTrue(result.driverYawning)
     }
 
@@ -152,6 +153,23 @@ class TemporalSmootherTest {
         var result: OutputResult? = null
         repeat(3) { result = s.smooth(makeResult(yawn = true, mar = null)) }
         assertFalse(result!!.driverYawning)
+    }
+
+    @Test
+    fun test_yawning_single_frame_below_sustained_threshold() {
+        // 1 frame of yawning: majority says true (1/1 = 100% >= 60%), but sustained counter < 2 → false
+        val s = TemporalSmoother(windowSize = 3, threshold = 0.6f)
+        val result = s.smooth(makeResult(yawn = true, mar = 0.6f))
+        assertFalse(result.driverYawning)
+    }
+
+    @Test
+    fun test_yawning_sustained_threshold_reached() {
+        // 2 consecutive frames with majority yawning → sustained counter reaches 2 → true
+        val s = TemporalSmoother(windowSize = 3, threshold = 0.6f)
+        s.smooth(makeResult(yawn = true, mar = 0.6f))
+        val result = s.smooth(makeResult(yawn = true, mar = 0.7f))
+        assertTrue(result.driverYawning)
     }
 
     @Test
