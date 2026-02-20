@@ -18,10 +18,15 @@ import org.opencv.core.Point
 import org.opencv.core.Point3
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /** Single face landmark in pixel coordinates. */
 data class OverlayLandmark(val x: Float, val y: Float)
+
+/** BGR face crop for recognition. */
+data class FaceCropResult(val bgrData: ByteArray, val width: Int, val height: Int)
 
 /** Face overlay data for drawing eye contours, mouth outline, and nose. */
 data class FaceOverlayData(
@@ -113,6 +118,10 @@ class FaceAnalyzer(context: Context) {
     private val landmarker: FaceLandmarker
     private var frameTsMs: Long = 0L
 
+    /** Last detected face landmarks (normalized coords), or null if no face. */
+    var lastLandmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>? = null
+        private set
+
     // Pre-allocated OpenCV Mats for solvePnP (avoids 7 Mat alloc+release per frame)
     private val modelPoints3d = MatOfPoint3f().apply { fromList(MODEL_3D_POINTS.toList()) }
     private val cameraMat = Mat(3, 3, CvType.CV_64F)
@@ -165,10 +174,12 @@ class FaceAnalyzer(context: Context) {
 
         // No face detected
         if (result.faceLandmarks().isEmpty()) {
+            lastLandmarks = null
             return FaceResult.NO_FACE
         }
 
         val landmarks = result.faceLandmarks()[0]
+        lastLandmarks = landmarks
         val w = frameWidth.toDouble()
         val h = frameHeight.toDouble()
 
@@ -220,6 +231,66 @@ class FaceAnalyzer(context: Context) {
             headPitch = roundTo1(pitchDeg),
             faceOverlay = faceOverlay
         )
+    }
+
+    /**
+     * Extract a BGR face crop from the source frame using landmark bounding box.
+     *
+     * @param bgrData      Full frame BGR data
+     * @param frameWidth   Frame width
+     * @param frameHeight  Frame height
+     * @param landmarks    Face landmarks (normalized coordinates)
+     * @return FaceCropResult with BGR crop data, or null if crop is invalid
+     */
+    fun extractFaceCrop(
+        bgrData: ByteArray,
+        frameWidth: Int,
+        frameHeight: Int,
+        landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>
+    ): FaceCropResult? {
+        // Compute bounding box from all landmarks
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var maxX = Float.MIN_VALUE
+        var maxY = Float.MIN_VALUE
+
+        for (lm in landmarks) {
+            minX = min(minX, lm.x())
+            minY = min(minY, lm.y())
+            maxX = max(maxX, lm.x())
+            maxY = max(maxY, lm.y())
+        }
+
+        // Convert to pixel coordinates
+        val px1 = (minX * frameWidth).toInt()
+        val py1 = (minY * frameHeight).toInt()
+        val px2 = (maxX * frameWidth).toInt()
+        val py2 = (maxY * frameHeight).toInt()
+
+        // Add 20% padding
+        val pw = px2 - px1
+        val ph = py2 - py1
+        val padX = (pw * 0.2f).toInt()
+        val padY = (ph * 0.2f).toInt()
+
+        val cx1 = max(0, px1 - padX)
+        val cy1 = max(0, py1 - padY)
+        val cx2 = min(frameWidth, px2 + padX)
+        val cy2 = min(frameHeight, py2 + padY)
+
+        val cropW = cx2 - cx1
+        val cropH = cy2 - cy1
+        if (cropW <= 0 || cropH <= 0) return null
+
+        // Row-by-row BGR copy
+        val cropData = ByteArray(cropW * cropH * 3)
+        for (row in 0 until cropH) {
+            val srcOffset = ((cy1 + row) * frameWidth + cx1) * 3
+            val dstOffset = row * cropW * 3
+            System.arraycopy(bgrData, srcOffset, cropData, dstOffset, cropW * 3)
+        }
+
+        return FaceCropResult(cropData, cropW, cropH)
     }
 
     /**

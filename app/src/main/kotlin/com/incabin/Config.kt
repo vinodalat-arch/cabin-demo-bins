@@ -44,6 +44,11 @@ object Config {
     const val V4L2_RECONNECT_INITIAL_DELAY_MS = 2000L
     const val V4L2_RECONNECT_MAX_DELAY_MS = 30000L
 
+    // Face recognition
+    const val FACE_RECOGNITION_THRESHOLD = 0.5f
+    const val FACE_RECOGNITION_INTERVAL = 5
+    const val FACE_EMBEDDING_DIM = 512
+
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3
     const val RISK_WEIGHT_EYES = 3

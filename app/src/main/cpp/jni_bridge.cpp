@@ -4,6 +4,7 @@
 #include <android/asset_manager_jni.h>
 #include "image_utils.h"
 #include "pose_analyzer.h"
+#include "face_recognizer.h"
 #include "v4l2_camera.h"
 
 #define TAG "InCabin-JNI"
@@ -266,6 +267,94 @@ Java_com_incabin_NativeLib_nativeDestroyV4l2Camera(
         auto* camera = reinterpret_cast<incabin::V4l2Camera*>(cameraPtr);
         LOGI("V4L2: Destroying camera at %p", camera);
         delete camera;
+    }
+}
+
+// ---- FaceRecognizer JNI: Create ----
+
+JNIEXPORT jlong JNICALL
+Java_com_incabin_FaceRecognizerBridge_nativeCreateFaceRecognizer(
+    JNIEnv* env,
+    jobject /* this */,
+    jobject asset_manager_obj
+) {
+    AAssetManager* asset_manager = AAssetManager_fromJava(env, asset_manager_obj);
+    if (!asset_manager) {
+        LOGE("FaceRecognizer: Failed to get AAssetManager");
+        return 0;
+    }
+
+    try {
+        auto* recognizer = new incabin::FaceRecognizer(asset_manager);
+        LOGI("FaceRecognizer created at %p", recognizer);
+        return reinterpret_cast<jlong>(recognizer);
+    } catch (const std::exception& e) {
+        LOGE("Failed to create FaceRecognizer: %s", e.what());
+        return 0;
+    }
+}
+
+// ---- FaceRecognizer JNI: Compute Embedding ----
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_incabin_FaceRecognizerBridge_nativeComputeEmbedding(
+    JNIEnv* env,
+    jobject /* this */,
+    jlong recognizer_ptr,
+    jbyteArray bgr_crop_array,
+    jint crop_w,
+    jint crop_h
+) {
+    if (recognizer_ptr == 0) {
+        LOGE("nativeComputeEmbedding: null recognizer pointer");
+        return nullptr;
+    }
+
+    auto* recognizer = reinterpret_cast<incabin::FaceRecognizer*>(recognizer_ptr);
+
+    jbyte* bgr_data = env->GetByteArrayElements(bgr_crop_array, nullptr);
+    if (!bgr_data) {
+        LOGE("nativeComputeEmbedding: failed to get byte array");
+        return nullptr;
+    }
+
+    incabin::FaceEmbedding embedding;
+    bool success = false;
+
+    try {
+        success = recognizer->computeEmbedding(
+            reinterpret_cast<const uint8_t*>(bgr_data), crop_w, crop_h, embedding);
+    } catch (const std::exception& e) {
+        LOGE("nativeComputeEmbedding exception: %s", e.what());
+    }
+
+    env->ReleaseByteArrayElements(bgr_crop_array, bgr_data, JNI_ABORT);
+
+    if (!success) {
+        return nullptr;
+    }
+
+    jfloatArray result = env->NewFloatArray(incabin::FACE_EMBEDDING_DIM);
+    if (!result) {
+        LOGE("NewFloatArray returned null (OOM) for embedding");
+        return nullptr;
+    }
+    env->SetFloatArrayRegion(result, 0, incabin::FACE_EMBEDDING_DIM, embedding.data.data());
+    return result;
+}
+
+// ---- FaceRecognizer JNI: Destroy ----
+
+JNIEXPORT void JNICALL
+Java_com_incabin_FaceRecognizerBridge_nativeDestroyFaceRecognizer(
+    JNIEnv* /* env */,
+    jobject /* this */,
+    jlong recognizer_ptr
+) {
+    if (recognizer_ptr != 0) {
+        auto* recognizer = reinterpret_cast<incabin::FaceRecognizer*>(recognizer_ptr);
+        LOGI("Destroying FaceRecognizer at %p", recognizer);
+        delete recognizer;
     }
 }
 

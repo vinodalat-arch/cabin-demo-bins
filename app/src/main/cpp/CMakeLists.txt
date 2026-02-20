@@ -19,6 +19,7 @@ add_library(incabin SHARED
     image_utils.cpp
     yolo_utils.cpp
     pose_analyzer.cpp
+    face_recognizer.cpp
     v4l2_camera.cpp
     jni_bridge.cpp
 )

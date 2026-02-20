@@ -24,6 +24,15 @@
             android:textColor="#FFFFFFFF" />
 
         <Button
+            android:id="@+id/registerButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Faces"
+            android:textSize="12sp"
+            android:minWidth="70dp"
+            android:layout_marginEnd="8dp" />
+
+        <Button
             android:id="@+id/toggleButton"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
@@ -130,6 +139,19 @@
             android:background="#FF4CAF50"
             android:gravity="center"
             android:padding="6dp" />
+
+        <!-- Driver name display -->
+        <TextView
+            android:id="@+id/driverNameText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="#FF64B5F6"
+            android:gravity="center"
+            android:layout_marginTop="4dp"
+            android:visibility="gone" />
 
         <!-- Metrics row (hidden - engineering data) -->
         <LinearLayout

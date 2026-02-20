@@ -101,6 +101,8 @@ class MainActivity : Activity() {
 
     // --- UI references ---
     private lateinit var toggleButton: Button
+    private lateinit var registerButton: Button
+    private lateinit var driverNameText: TextView
     private lateinit var statusText: TextView
     private lateinit var previewImage: ImageView
     private lateinit var dashboardPanel: LinearLayout
@@ -181,6 +183,8 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
 
         toggleButton = findViewById(R.id.toggleButton)
+        registerButton = findViewById(R.id.registerButton)
+        driverNameText = findViewById(R.id.driverNameText)
         statusText = findViewById(R.id.statusText)
         previewImage = findViewById(R.id.previewImage)
         dashboardPanel = findViewById(R.id.dashboardPanel)
@@ -205,6 +209,15 @@ class MainActivity : Activity() {
                 stopMonitoring()
             } else {
                 checkPermissionsAndStart()
+            }
+        }
+
+        registerButton.setOnClickListener {
+            try {
+                val intent = Intent(this, FaceRegistrationActivity::class.java)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to launch FaceRegistrationActivity", e)
             }
         }
     }
@@ -338,6 +351,15 @@ class MainActivity : Activity() {
                 riskBanner.setBackgroundColor(COLOR_GREEN)
                 riskBanner.setTextColor(Color.BLACK)
             }
+        }
+
+        // Driver name
+        val name = result.driverName
+        if (name != null) {
+            driverNameText.text = "Driver: $name"
+            driverNameText.visibility = TextView.VISIBLE
+        } else {
+            driverNameText.visibility = TextView.GONE
         }
 
         earText.text = "EAR: ${result.earValue?.let { "%.3f".format(it) } ?: "--"}"

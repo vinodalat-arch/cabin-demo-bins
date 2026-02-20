@@ -29,7 +29,8 @@ class OutputResultTest {
             "mar_value" to 0.2f,
             "head_yaw" to 5.0f,
             "head_pitch" to 3.0f,
-            "distraction_duration_s" to 0
+            "distraction_duration_s" to 0,
+            "driver_name" to null
         )
         base.putAll(overrides)
         return base
@@ -233,5 +234,38 @@ class OutputResultTest {
         val data = validResult(mapOf("mar_value" to "0.5"))
         val errors = OutputResult.validate(data)
         assertTrue("Expected 1+ errors for string mar_value", errors.isNotEmpty())
+    }
+
+    // -------------------------------------------------------------------------
+    // Driver Name Tests (4 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_valid_with_driver_name() {
+        val data = validResult(mapOf("driver_name" to "John"))
+        val errors = OutputResult.validate(data)
+        assertEquals(0, errors.size)
+    }
+
+    @Test
+    fun test_valid_with_driver_name_null() {
+        val data = validResult(mapOf("driver_name" to null))
+        val errors = OutputResult.validate(data)
+        assertEquals(0, errors.size)
+    }
+
+    @Test
+    fun test_driver_name_as_number_rejected() {
+        val data = validResult(mapOf("driver_name" to 123))
+        val errors = OutputResult.validate(data)
+        assertTrue("Expected 1+ errors for numeric driver_name", errors.isNotEmpty())
+    }
+
+    @Test
+    fun test_valid_without_driver_name() {
+        val data = validResult()
+        data.remove("driver_name")
+        val errors = OutputResult.validate(data)
+        assertEquals(0, errors.size)
     }
 }

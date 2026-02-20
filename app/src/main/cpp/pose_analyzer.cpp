@@ -54,24 +54,28 @@ PoseAnalyzer::PoseAnalyzer(AAssetManager* asset_manager)
     session_options_.SetIntraOpNumThreads(4);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-    // Load pose model
-    auto pose_model_data = loadModelFromAssets(asset_manager, "yolov8n-pose.onnx");
+    // Pin intra-op threads to Gold+Prime cores (4-7) for higher clock speeds (2131-2419MHz vs 1785MHz).
+    // API requires intra_op_num_threads - 1 affinity specs (main thread excluded per ORT docs).
+    session_options_.AddConfigEntry("session.intra_op_thread_affinities", "4;5;6");
+
+    // Load pose model (FP16 — ORT handles FP16→FP32 cast at I/O boundary automatically)
+    auto pose_model_data = loadModelFromAssets(asset_manager, "yolov8n-pose-fp16.onnx");
     if (!pose_model_data.empty()) {
         pose_session_ = std::make_unique<Ort::Session>(
             env_, pose_model_data.data(), pose_model_data.size(), session_options_);
-        LOGI("YOLOv8n-pose session created");
+        LOGI("YOLOv8n-pose FP16 session created");
     } else {
-        LOGE("Failed to load yolov8n-pose.onnx");
+        LOGE("Failed to load yolov8n-pose-fp16.onnx");
     }
 
-    // Load detection model
-    auto detect_model_data = loadModelFromAssets(asset_manager, "yolov8n.onnx");
+    // Load detection model (FP16)
+    auto detect_model_data = loadModelFromAssets(asset_manager, "yolov8n-fp16.onnx");
     if (!detect_model_data.empty()) {
         detect_session_ = std::make_unique<Ort::Session>(
             env_, detect_model_data.data(), detect_model_data.size(), session_options_);
-        LOGI("YOLOv8n detection session created");
+        LOGI("YOLOv8n detection FP16 session created");
     } else {
-        LOGE("Failed to load yolov8n.onnx");
+        LOGE("Failed to load yolov8n-fp16.onnx");
     }
 }
 

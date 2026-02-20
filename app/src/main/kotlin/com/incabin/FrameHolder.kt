@@ -23,6 +23,10 @@ object FrameHolder {
     /** Result-only channel: delivers OutputResult to UI without waiting for bitmap. */
     private val latestResult = AtomicReference<OutputResult?>(null)
 
+    /** BGR face crop for registration UI. */
+    data class CaptureData(val bgrCrop: ByteArray, val cropWidth: Int, val cropHeight: Int)
+    private val latestCapture = AtomicReference<CaptureData?>(null)
+
     /** Store a new frame + result. Caller transfers bitmap ownership. */
     fun postFrame(bitmap: Bitmap, result: OutputResult) {
         latest.set(FrameData(bitmap, result))
@@ -42,9 +46,18 @@ object FrameHolder {
     /** Get the latest frame bitmap only. Caller must NOT recycle the returned Bitmap. */
     fun getLatestFrame(): Bitmap? = latest.get()?.bitmap
 
+    /** Post a face crop for registration UI. */
+    fun postCaptureData(data: CaptureData) {
+        latestCapture.set(data)
+    }
+
+    /** Get the latest face crop (for registration). */
+    fun getCaptureData(): CaptureData? = latestCapture.get()
+
     /** Clear the held frame. */
     fun clear() {
         latest.set(null)
         latestResult.set(null)
+        latestCapture.set(null)
     }
 }

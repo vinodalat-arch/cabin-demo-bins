@@ -151,11 +151,11 @@ fun validateOutput(data: Map<String, Any?>): List<String> {
 
 | Model | Source | Format | Size |
 |---|---|---|---|
-| `yolov8n-pose.onnx` | `yolo export model=yolov8n-pose.pt format=onnx opset=17` | ONNX FP32 | 12.9 MB |
-| `yolov8n.onnx` | `yolo export model=yolov8n.pt format=onnx opset=17` | ONNX FP32 | 12.3 MB |
+| `yolov8n-pose-fp16.onnx` | FP32 export → `scripts/convert_fp16.py` | ONNX FP16 | ~6.5 MB |
+| `yolov8n-fp16.onnx` | FP32 export → `scripts/convert_fp16.py` | ONNX FP16 | ~6.5 MB |
 | `face_landmarker.task` | Google AI Edge MediaPipe models (float16) | TFLite bundle | 3.6 MB |
 
-**Note:** Model files are gitignored (large binaries). Download/export them before building. The Gradle `verifyAssets` task will fail the build if any model file is missing from `app/src/main/assets/`.
+**Note:** Model files are gitignored (large binaries). Export FP32 models first, then run `python scripts/convert_fp16.py` to generate FP16 variants. The Gradle `verifyAssets` task will fail the build if any model file is missing from `app/src/main/assets/`.
 
 ### Build System
 
@@ -198,8 +198,8 @@ Android Studio / Gradle 8.9 (Kotlin DSL)
 │   ├── TemporalSmootherTest.kt (20 tests)
 │   └── OutputResultTest.kt    (25 tests)
 └── app/src/main/assets/
-    ├── yolov8n-pose.onnx      (12.9 MB, gitignored)
-    ├── yolov8n.onnx           (12.3 MB, gitignored)
+    ├── yolov8n-pose-fp16.onnx (~6.5 MB, gitignored)
+    ├── yolov8n-fp16.onnx     (~6.5 MB, gitignored)
     └── face_landmarker.task   (3.6 MB, gitignored)
 ```
 
@@ -486,24 +486,28 @@ class FaceAnalyzer:
 Run on development machine before building the APK:
 
 ```bash
-pip install ultralytics
+pip install ultralytics onnx onnxconverter-common
 yolo export model=yolov8n-pose.pt format=onnx opset=17
 yolo export model=yolov8n.pt format=onnx opset=17
+python scripts/convert_fp16.py
 ```
 
-Place `yolov8n-pose.onnx` and `yolov8n.onnx` in `app/src/main/assets/`.
+Place `yolov8n-pose-fp16.onnx` and `yolov8n-fp16.onnx` in `app/src/main/assets/`. FP32 originals can remain as fallback but are not used at runtime.
 
 ### ONNX Runtime Setup (C++)
 
 ```cpp
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "InCabinPose");
 Ort::SessionOptions opts;
-opts.SetIntraOpNumThreads(4);  // use 4 Gold cores
+opts.SetIntraOpNumThreads(4);
 opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-// Load from AAssetManager or extracted file path
-Ort::Session pose_session(env, "yolov8n-pose.onnx", opts);
-Ort::Session detect_session(env, "yolov8n.onnx", opts);
+// Pin intra-op threads to Gold+Prime cores (4-7) for higher clock speeds
+opts.AddConfigEntry("session.intra_op_thread_affinities", "4;5;6");
+
+// Load FP16 models — ORT handles FP16→FP32 cast at I/O boundary automatically
+Ort::Session pose_session(env, "yolov8n-pose-fp16.onnx", opts);
+Ort::Session detect_session(env, "yolov8n-fp16.onnx", opts);
 ```
 
 ### YOLOv8 Input Preprocessing
@@ -734,8 +738,8 @@ Serialized in `toJson()` as a `"persons"` array. On the Kotlin side, parsed auto
 ```
 class PoseAnalyzer:
     state:
-        _pose_model: ONNX Runtime session (yolov8n-pose.onnx)
-        _detect_model: ONNX Runtime session (yolov8n.onnx)
+        _pose_model: ONNX Runtime session (yolov8n-pose-fp16.onnx)
+        _detect_model: ONNX Runtime session (yolov8n-fp16.onnx)
 
     analyze(frame: BGR image) -> PoseResult:
         result = {
@@ -1452,8 +1456,8 @@ in_cabin_poc-sa8155/
 │   │   ├── main/
 │   │   │   ├── AndroidManifest.xml
 │   │   │   ├── assets/
-│   │   │   │   ├── yolov8n-pose.onnx    (12.9 MB, gitignored)
-│   │   │   │   ├── yolov8n.onnx         (12.3 MB, gitignored)
+│   │   │   │   ├── yolov8n-pose-fp16.onnx (~6.5 MB, gitignored)
+│   │   │   │   ├── yolov8n-fp16.onnx    (~6.5 MB, gitignored)
 │   │   │   │   └── face_landmarker.task  (3.6 MB, gitignored)
 │   │   │   ├── cpp/
 │   │   │   │   ├── CMakeLists.txt

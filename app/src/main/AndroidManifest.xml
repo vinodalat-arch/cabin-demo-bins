@@ -25,6 +25,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".FaceRegistrationActivity"
+            android:exported="false" />
+
         <service
             android:name=".InCabinService"
             android:foregroundServiceType="camera"

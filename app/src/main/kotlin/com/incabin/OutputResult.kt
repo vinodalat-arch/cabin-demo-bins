@@ -50,7 +50,10 @@ data class OutputResult(
     val headPitch: Float?,
 
     @SerializedName("distraction_duration_s")
-    val distractionDurationS: Int
+    val distractionDurationS: Int,
+
+    @SerializedName("driver_name")
+    val driverName: String? = null
 ) {
     fun toJson(): String = gson.toJson(this)
 
@@ -70,7 +73,8 @@ data class OutputResult(
         "mar_value" to marValue,
         "head_yaw" to headYaw,
         "head_pitch" to headPitch,
-        "distraction_duration_s" to distractionDurationS
+        "distraction_duration_s" to distractionDurationS,
+        "driver_name" to driverName
     )
 
     companion object {
@@ -86,7 +90,7 @@ data class OutputResult(
         )
 
         private val ALL_FIELDS = REQUIRED_FIELDS + listOf(
-            "ear_value", "mar_value", "head_yaw", "head_pitch"
+            "ear_value", "mar_value", "head_yaw", "head_pitch", "driver_name"
         )
 
         fun fromJson(json: String): OutputResult = gson.fromJson(json, OutputResult::class.java)
@@ -163,6 +167,14 @@ data class OutputResult(
                 }
             }
 
+            // Optional nullable string field
+            if ("driver_name" in data) {
+                val v = data["driver_name"]
+                if (v != null && v !is String) {
+                    errors.add("driver_name must be a string or null")
+                }
+            }
+
             return errors
         }
 
@@ -182,7 +194,8 @@ data class OutputResult(
             marValue = null,
             headYaw = null,
             headPitch = null,
-            distractionDurationS = 0
+            distractionDurationS = 0,
+            driverName = null
         )
     }
 }

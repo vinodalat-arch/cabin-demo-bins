@@ -37,7 +37,8 @@ class InCabinService : Service() {
         private val ASSET_FILES = listOf(
             "yolov8n-pose.onnx",
             "yolov8n.onnx",
-            "face_landmarker.task"
+            "face_landmarker.task",
+            "mobilefacenet-fp16.onnx"
         )
     }
 
@@ -50,6 +51,13 @@ class InCabinService : Service() {
     private var smoother: TemporalSmoother? = null
     private var audioAlerter: AudioAlerter? = null
     private val overlayRenderer = OverlayRenderer()
+
+    // --- Face recognition ---
+    private var faceRecognizer: FaceRecognizerBridge? = null
+    private var faceStore: FaceStore? = null
+    private var recognitionFrameCounter = 0
+    private var cachedDriverName: String? = null
+    private var lastFaceDetected = false
 
     // --- Thread safety: guards processFrame() vs onDestroy() (C1, H6) ---
     private val pipelineLock = ReentrantLock()
@@ -101,6 +109,11 @@ class InCabinService : Service() {
 
             poseAnalyzer?.close()
             poseAnalyzer = null
+
+            faceRecognizer?.close()
+            faceRecognizer = null
+            faceStore = null
+            cachedDriverName = null
 
             audioAlerter?.close()
             audioAlerter = null
@@ -154,8 +167,8 @@ class InCabinService : Service() {
             Log.i(TAG, "OpenCV ${org.opencv.core.Core.VERSION} initialized")
         }
 
-        // PoseAnalyzerBridge and FaceAnalyzer are independent — init in parallel
-        val latch = CountDownLatch(1)
+        // PoseAnalyzerBridge, FaceRecognizerBridge are independent — init in parallel
+        val latch = CountDownLatch(2)
 
         Thread({
             try {
@@ -169,6 +182,18 @@ class InCabinService : Service() {
             }
         }, "PoseAnalyzer-Init").start()
 
+        Thread({
+            try {
+                val t0 = System.currentTimeMillis()
+                faceRecognizer = FaceRecognizerBridge(assets)
+                Log.i(TAG, "FaceRecognizerBridge initialized (${System.currentTimeMillis() - t0}ms)")
+            } catch (e: Exception) {
+                Log.e(TAG, "FaceRecognizerBridge initialization failed", e)
+            } finally {
+                latch.countDown()
+            }
+        }, "FaceRecognizer-Init").start()
+
         // FaceAnalyzer on current thread (needs Context, already on service thread)
         try {
             val t0 = System.currentTimeMillis()
@@ -178,8 +203,16 @@ class InCabinService : Service() {
             Log.e(TAG, "FaceAnalyzer initialization failed", e)
         }
 
-        // Wait for PoseAnalyzerBridge to finish
+        // Wait for parallel inits to finish
         latch.await()
+
+        // FaceStore (fast disk I/O, init on main thread)
+        try {
+            faceStore = FaceStore(this)
+            Log.i(TAG, "FaceStore initialized (${faceStore?.count() ?: 0} faces)")
+        } catch (e: Exception) {
+            Log.e(TAG, "FaceStore initialization failed", e)
+        }
 
         // TemporalSmoother (uses Config defaults: window=5, threshold=0.6)
         smoother = TemporalSmoother()
@@ -199,6 +232,9 @@ class InCabinService : Service() {
         distractionDurationS.set(0)
         frameCount = 0
         recentFrameTimes.clear()
+        recognitionFrameCounter = 0
+        cachedDriverName = null
+        lastFaceDetected = false
 
         Log.i(TAG, "=== Service Ready ===")
     }
@@ -267,6 +303,14 @@ class InCabinService : Service() {
             val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
             val faceElapsed = System.currentTimeMillis() - faceStartMs
 
+            // Step 2.5: Face recognition (try-catch isolated, never blocks core pipeline)
+            val recognizedName: String? = try {
+                recognizeDriver(bgrData, width, height, faceResult)
+            } catch (e: Exception) {
+                Log.w(TAG, "Face recognition failed", e)
+                cachedDriverName
+            }
+
             // Step 3: Merge results
             val merged = mergeResults(faceResult, poseResult)
 
@@ -281,8 +325,11 @@ class InCabinService : Service() {
                 0
             }
 
-            // Step 6: Inject distraction_duration_s into result
-            val finalResult = smoothed.copy(distractionDurationS = durationVal)
+            // Step 6: Inject distraction_duration_s and driver name into result
+            val finalResult = smoothed.copy(
+                distractionDurationS = durationVal,
+                driverName = recognizedName
+            )
 
             // Step 7: Audio alerter (core — must run even if overlay fails)
             audioAlerter?.checkAndAnnounce(finalResult)
@@ -334,6 +381,73 @@ class InCabinService : Service() {
             Log.e(TAG, "Inference pipeline error", e)
         } finally {
             pipelineLock.unlock()
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Face Recognition
+    // -------------------------------------------------------------------------
+
+    /**
+     * Recognize the driver's face, running every Nth frame or returning cached result.
+     * Isolated from core pipeline — callers wrap in try-catch.
+     */
+    private fun recognizeDriver(
+        bgrData: ByteArray, width: Int, height: Int, faceResult: FaceResult
+    ): String? {
+        val recognizer = faceRecognizer ?: return null
+        val store = faceStore ?: return null
+        if (store.count() == 0) return null
+
+        val landmarks = faceAnalyzer?.lastLandmarks
+
+        // No face detected — clear cache
+        if (landmarks == null) {
+            if (lastFaceDetected) {
+                cachedDriverName = null
+                lastFaceDetected = false
+            }
+            recognitionFrameCounter = 0
+            return null
+        }
+
+        lastFaceDetected = true
+        recognitionFrameCounter++
+
+        // Return cached result on non-recognition frames
+        if (recognitionFrameCounter % Config.FACE_RECOGNITION_INTERVAL != 1 && cachedDriverName != null) {
+            // Post face crop for registration UI (best-effort)
+            postFaceCrop(bgrData, width, height, landmarks)
+            return cachedDriverName
+        }
+
+        // Run recognition
+        val crop = faceAnalyzer?.extractFaceCrop(bgrData, width, height, landmarks) ?: return cachedDriverName
+        val embedding = recognizer.computeEmbedding(crop.bgrData, crop.width, crop.height) ?: return cachedDriverName
+        val match = store.findBestMatch(embedding, Config.FACE_RECOGNITION_THRESHOLD)
+
+        cachedDriverName = match?.first
+        if (match != null) {
+            Log.d(TAG, "Face recognized: ${match.first} (similarity: ${"%.3f".format(match.second)})")
+        }
+
+        // Post face crop for registration UI (best-effort)
+        postFaceCrop(bgrData, width, height, landmarks)
+
+        return cachedDriverName
+    }
+
+    private fun postFaceCrop(
+        bgrData: ByteArray, width: Int, height: Int,
+        landmarks: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>
+    ) {
+        try {
+            val crop = faceAnalyzer?.extractFaceCrop(bgrData, width, height, landmarks) ?: return
+            FrameHolder.postCaptureData(
+                FrameHolder.CaptureData(crop.bgrData, crop.width, crop.height)
+            )
+        } catch (e: Exception) {
+            // Non-critical — ignore
         }
     }
 

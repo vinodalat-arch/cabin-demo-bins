@@ -1,13 +1,13 @@
 # SA8155 Android Port — In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, and UI polish. Build verified (`assembleDebug` + all 64 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 64 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, UI polish, and face recognition. Build verified (`assembleDebug` + all 76 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P (Kryo 485 CPU-only). Android Automotive 14. Debug build. USB webcam.
 
 ## What it does
-Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 16 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, timestamp.
+Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 17 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
 ## Full Specification
 **See `SA8155_PORT_SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and all 64 unit test specifications. That document is the single source of truth for this port.
@@ -20,6 +20,8 @@ USB Webcam
   → YOLOv8n-pose (ONNX Runtime C++, CPU EP) → posture, child, passenger count
   → YOLOv8n detection (ONNX Runtime C++, CPU EP) → phone, food/drink in driver ROI
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
+  → MobileFaceNet (ONNX Runtime C++, CPU EP) → 128-dim face embedding   ← every 5th frame
+  → FaceStore (Kotlin) → cosine similarity matching → driver name        ← cached between runs
   → Merger (Kotlin) → risk scoring
   → Temporal Smoother (Kotlin) → 3-frame sliding window, 60% threshold
   → Audio Alerter (Android TextToSpeech + AudioTrack beep at 20s)     ← core path
@@ -65,9 +67,10 @@ The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Ca
 ## Models (in `app/src/main/assets/`, gitignored)
 | Model | Format | Size | Source |
 |---|---|---|---|
-| `yolov8n-pose.onnx` | ONNX FP32 | 12.9 MB | `yolo export model=yolov8n-pose.pt format=onnx opset=17` |
-| `yolov8n.onnx` | ONNX FP32 | 12.3 MB | `yolo export model=yolov8n.pt format=onnx opset=17` |
+| `yolov8n-pose-fp16.onnx` | ONNX FP16 | ~6.5 MB | FP32 export → `scripts/convert_fp16.py` |
+| `yolov8n-fp16.onnx` | ONNX FP16 | ~6.5 MB | FP32 export → `scripts/convert_fp16.py` |
 | `face_landmarker.task` | TFLite bundle | 3.6 MB | Google AI Edge (float16) |
+| `mobilefacenet-fp16.onnx` | ONNX FP16 | ~6.5 MB | InsightFace buffalo_sc w600k_mbf → FP16 convert |
 
 ## Key Thresholds
 - EAR < 0.21 → eyes closed
@@ -82,6 +85,7 @@ The Honda SA8155P BSP has `config.disable_cameraservice=true` and no External Ca
 - Wrist crop: 200x200px
 - Smoother: 3-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
+- Face recognition: cosine similarity > 0.5, every 5th frame, 512-dim embedding
 
 ## Risk Scoring
 ```
@@ -121,6 +125,17 @@ score >= 3 → high, >= 1 → medium, else → low
 - First frame: store state only, no announcement
 - TTS retry: if init fails, schedules one retry after 3s via stored Handler; `ttsRetried` flag prevents loops; Handler callbacks cancelled in `close()` to prevent leak if service destroyed within 3s
 
+### Face Recognition (C++ ONNX Runtime + Kotlin)
+- **Model**: MobileFaceNet (w600k_mbf) FP16, 112x112 input, 512-dim embedding output, ~6.5 MB
+- **Pipeline**: face landmarks → bbox with 20% padding → BGR crop → bilinear resize to 112x112 → BGR→RGB + CHW + normalize (pixel/127.5 - 1.0) → ONNX inference → L2-normalize 512-dim → cosine similarity scan
+- **Frequency**: Every 5th inference frame (~5s at 1fps webcam cadence), cached between runs
+- **Threshold**: cosine similarity ≥ 0.5 for positive match
+- **Thread pinning**: 2 intra-op threads pinned to Gold core 5 (avoids PoseAnalyzer contention on 4-7)
+- **Storage**: `faces.json` flat file in app internal storage, Gson serialization
+- **Registration**: `FaceRegistrationActivity` — captures BGR crop from `FrameHolder.getCaptureData()`, computes embedding via temporary `FaceRecognizerBridge`, saves name+embedding to `FaceStore`
+- **Pipeline isolation**: Recognition wrapped in try-catch; failure returns cached name. Core path never blocked.
+- **Graceful degradation**: If model file missing, `FaceRecognizerBridge.nativePtr=0`, all calls return null, `driverName` stays null
+
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
 - Increment +1 per frame if any active, reset to 0 when all clear
@@ -129,7 +144,7 @@ score >= 3 → high, >= 1 → medium, else → low
 ### Detection Overlay (OverlayRenderer)
 - Renders in-place onto source bitmap (no 3.6MB copy per frame)
 - Controlled by `Config.ENABLE_PREVIEW` flag (currently disabled for performance)
-- **Person bounding boxes**: green=driver, blue=passengers, with "Driver 95%"/"Passenger 87%" labels
+- **Person bounding boxes**: green=driver, blue=passengers, with "Driver 95%"/"Passenger 87%" labels (driver label replaced with recognized name when available)
 - **COCO skeleton**: 16 bone connections between keypoints (confidence > 0.5)
 - **Keypoint dots**: red circles at each confident keypoint
 - **Face landmarks**: eye contours (green=open, red=closed), mouth outline (green=normal, orange=yawning), cyan nose tip
@@ -138,12 +153,13 @@ score >= 3 → high, >= 1 → medium, else → low
 
 ### Status Dashboard (MainActivity)
 - **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
-- Compact top row: status text + start/stop button
+- Compact top row: status text + "Faces" button + start/stop button
 - AI status message bar with varied contextual messages
 - Score arc + distraction-free streak + session timer
 - Camera preview (ImageView, optional via ENABLE_PREVIEW)
 - Dashboard panel (visible when monitoring):
   - Risk banner: color-coded (red=HIGH 32sp, orange=MEDIUM, green=LOW)
+  - Driver name: "Driver: Name" (22sp bold, blue, hidden when unknown)
   - Info row: Passengers | Distraction timer (26sp bold)
   - Active detections: pipe-separated labels (Phone | Eyes Closed | Yawning | etc.)
   - EAR/MAR/Yaw/Pitch metrics: hidden (engineering data, still in layout as `gone`)
@@ -181,23 +197,25 @@ in_cabin_poc-sa8155/
 │   ├── assets/          (ONNX models + face_landmarker.task, gitignored)
 │   ├── cpp/
 │   │   ├── onnxruntime/ (extracted headers + arm64-v8a lib from AAR)
-│   │   ├── v4l2_camera, pose_analyzer, yolo_utils, image_utils, jni_bridge
+│   │   ├── v4l2_camera, pose_analyzer, face_recognizer, yolo_utils, image_utils, jni_bridge
 │   │   └── CMakeLists.txt
 │   ├── kotlin/com/incabin/
 │   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager
-│   │   ├── FaceAnalyzer, PoseAnalyzerBridge, Merger, TemporalSmoother
-│   │   ├── AudioAlerter, OutputResult, NativeLib, MainActivity
+│   │   ├── FaceAnalyzer, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
+│   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
+│   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, notification icon, app icon)
-├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest)
+├── app/src/test/kotlin/  (MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 64 unit tests (all passing):
+- 76 unit tests (all passing):
   - MergerTest: 19 tests (risk scoring + merge logic)
   - TemporalSmootherTest: 20 tests (voting, face-gating, fast-clear, passenger mode, risk recomputation)
-  - OutputResultTest: 25 tests (schema validation — valid and invalid payloads)
+  - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
+  - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
@@ -213,9 +231,11 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 - **In-place overlay rendering**: OverlayRenderer draws directly on source bitmap instead of creating 3.6MB ARGB_8888 copy per frame
 
 ### Performance Optimizations
+- **FP16 models**: ONNX models converted from FP32 to FP16 via `scripts/convert_fp16.py`. Halves model memory (~12MB → ~6.5MB each) and reduces memory bandwidth. SA8155P Kryo 485 has `asimdhp` (ARM FP16 hardware support). ORT handles FP16↔FP32 cast at I/O boundary automatically.
+- **Thread pinning to Gold+Prime cores**: ONNX Runtime intra-op threads pinned to cores 4-7 (2131-2419MHz) via `session.intra_op_thread_affinities`. Prevents inference threads from landing on Silver cores (1785MHz).
 - **BGR→Bitmap in C++/JNI**: Pixel conversion (BGR→ARGB, 921K pixels) moved from Kotlin loop to native C++ via `nativeBgrToArgbPixels()`. Pre-allocated `IntArray` buffer eliminates 3.5 MB allocation per frame. Saves ~15-25ms/frame.
 - **solvePnP Mat pre-allocation**: 7 OpenCV Mat objects (`cameraMat`, `distCoeffs`, `modelPoints3d`, `imagePoints2d`, `rvec`, `tvec`, `rotationMatrix`) are class members in FaceAnalyzer, initialized once and reused. Camera matrix set on first frame. Eliminates 14 JNI crossings and 7 native mallocs per frame. Saves ~1-2ms/frame.
-- **Parallel service init**: FaceAnalyzer (MediaPipe) and PoseAnalyzerBridge (ONNX Runtime) model loading run concurrently via `CountDownLatch`. Startup is `max(face, pose)` instead of `face + pose`. Saves ~2s on startup.
+- **Parallel service init**: FaceAnalyzer (MediaPipe), PoseAnalyzerBridge (ONNX Runtime), and FaceRecognizerBridge (MobileFaceNet) model loading run concurrently via `CountDownLatch`. Startup is `max(face, pose, facerec)` instead of sequential. Saves ~2s on startup.
 
 ## Pre-Deployment Hardening
 - **TTS retry**: One-time retry after 3s if TextToSpeech init fails (AudioAlerter); stored Handler cancelled in `close()` to prevent TTS leak if service destroyed within 3s
@@ -237,6 +257,7 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 - **Notification isolation**: `postAlertNotification()` and `notificationManager.cancel()` in AudioAlerter wrapped in try-catch; TTS message queue and `prevState` update always complete regardless of notification API failures
 - **FrameHolder crash safety**: Old bitmaps are not recycled in `postFrame()` — left for GC finalizer to avoid TOCTOU race where Activity reads a bitmap recycled by the service thread (recycled-bitmap exception on UI thread would kill the entire process including InCabinService)
 - **Activity preview safety**: `previewPoller` in MainActivity wraps all FrameHolder access and bitmap operations in try-catch to prevent UI exceptions from crashing the shared process
+- **Face recognition isolation**: `recognizeDriver()` wrapped in try-catch in `processFrame()`; failure returns cached name. Recognition uses raw BGR bytes (no bitmap lifecycle risk). `FaceStore` is `@Synchronized`. `FaceRegistrationActivity` creates its own `FaceRecognizerBridge` instance; activity crash doesn't affect service
 
 ## Deployment
 

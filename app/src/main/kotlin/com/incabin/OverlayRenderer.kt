@@ -70,12 +70,16 @@ class OverlayRenderer {
      * Render detection overlays directly onto the source bitmap (in-place).
      * Avoids 3.6 MB bitmap copy per frame. Source must be mutable.
      */
+    /** Current driver name for overlay label (set before render). */
+    var driverName: String? = null
+
     fun render(
         source: Bitmap,
         poseResult: PoseResult,
         faceResult: FaceResult,
         outputResult: OutputResult
     ): Bitmap {
+        driverName = outputResult.driverName
         try {
             val canvas = Canvas(source)
             drawPersons(canvas, poseResult.persons)
@@ -95,7 +99,7 @@ class OverlayRenderer {
             canvas.drawRect(person.x1, person.y1, person.x2, person.y2, boxPaint)
 
             // Label
-            val label = if (person.isDriver) "Driver" else "Passenger"
+            val label = if (person.isDriver) (driverName ?: "Driver") else "Passenger"
             val conf = "%.0f%%".format(person.confidence * 100)
             val text = "$label $conf"
             val textWidth = labelTextPaint.measureText(text)
