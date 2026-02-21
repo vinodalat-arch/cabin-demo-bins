@@ -32,9 +32,22 @@ adb shell pm grant --user 10 com.incabin android.permission.CAMERA
 
 ---
 
-## Per-Boot Setup
+## Boot Auto-Start (SA8155/SA8295)
 
-These steps must be repeated each time the device boots.
+On automotive BSPs, the app auto-starts on boot via `BootReceiver`. After the device boots:
+1. `BootReceiver` receives `ACTION_BOOT_COMPLETED`
+2. Detects automotive platform → calls `startForegroundService()`
+3. Service initializes and begins monitoring automatically
+
+**Note**: Boot auto-start requires the ODK module to already be removed and camera permissions set. If these are not in place (e.g., fresh boot on unmodified BSP), the service will start but camera will fail until manual setup is done. See BSP-TODO.md for permanent BSP-level fixes.
+
+To disable auto-start, uninstall the APK or revoke `RECEIVE_BOOT_COMPLETED` permission.
+
+---
+
+## Per-Boot Setup (Manual)
+
+These steps must be repeated each time the device boots (unless BSP is modified per BSP-TODO.md).
 
 ### 1. Remove ODK Hook Module
 The `odk_hook_module` kernel module blocks the UVC driver from binding to USB webcams:
@@ -97,6 +110,7 @@ I/InCabin:  FaceAnalyzer initialized (~160ms)
 I/InCabin:  PoseAnalyzerBridge initialized (~710ms)
 I/InCabin:  TemporalSmoother initialized
 I/InCabin:  AudioAlerter initialized
+I/PipelineWatchdog: Watchdog started (timeout=30000ms, interval=5000ms)
 I/InCabin:  === Service Ready ===
 I/InCabin-JNI: V4L2: Scanning /dev/video*...
 I/InCabin-JNI: V4L2: Found capture device: /dev/video2 (C270 HD WEBCAM)
@@ -141,6 +155,18 @@ adb shell am force-stop com.incabin
 ### V4L2 not available, falling back to Camera2 / No camera found
 - Both V4L2 and Camera2 failed. Camera2 will always fail on this BSP (`config.disable_cameraservice=true`)
 - Follow the per-boot setup steps above to enable V4L2
+
+### Dashboard shows "Stalled" camera status
+- Service heartbeat hasn't been received in 15+ seconds
+- Pipeline watchdog will auto-restart camera after 30s stall
+- Check crash log: `adb shell cat /data/data/com.incabin/files/crash_log.txt`
+- If persistent, check for inference errors or camera hardware issues
+
+### Viewing the persistent crash log
+```bash
+adb shell cat /data/data/com.incabin/files/crash_log.txt
+adb shell cat /data/data/com.incabin/files/crash_log_prev.txt  # rotated log
+```
 
 ### Frame timing exceeds 1000ms
 - Typical: 180-770ms per frame on Kryo 485

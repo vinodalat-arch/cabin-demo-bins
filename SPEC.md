@@ -1580,7 +1580,7 @@ in_cabin_poc-sa8155/
 
 ## 14. Implementation Status
 
-All phases are complete. The project builds successfully (`assembleDebug` produces an 84 MB APK) and all 98 unit tests pass.
+All phases are complete. The project builds successfully (`assembleDebug` produces an 84 MB APK) and all 218 unit tests pass.
 
 ### Phase 1 — Skeleton + Camera (Complete)
 - Android project with Gradle 8.9, NDK r26, CMake 3.22.1
@@ -1650,16 +1650,39 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 - Persisted across restarts via SharedPreferences
 - Zero overhead when disabled; same GC pressure behavior when enabled
 
+### Phase 12 — IVI Deployment Robustness (Complete)
+- Boot auto-start: `BootReceiver` for SA8155/SA8255/SA8295 (4 BootReceiverTest tests)
+- Pipeline watchdog: `PipelineWatchdog` with 30s stall detection + camera restart (6 PipelineWatchdogTest tests)
+- Memory pressure: `MemoryPolicy.decideAction()` + `onTrimMemory` override (5 MemoryPolicyTest tests)
+- Persistent crash log: `CrashLog` singleton, 500KB rotation, uncaught exception handler (7 CrashLogTest tests)
+- Bounded init timeout: `CountDownLatch.await(30s)` with partial init fallback
+- MJPEG auto-reconnect: exponential backoff 2s→30s in reconnect loop (3 MjpegReconnectTest tests)
+- Service alive check: `FrameHolder` heartbeat + UI stall indicator (3 ServiceHealthTest tests)
+- Inference error tracking: reinitialize after 10 consecutive errors (2 InferenceErrorTest tests)
+
 ---
 
 ## 15. Testing Strategy
 
-### Unit Tests (JVM, no device needed)
-- **MergerTest**: Risk scoring all weight combinations (19 tests)
-- **TemporalSmootherTest**: Voting, face-gated filtering, fast-clear, passenger mode (20 tests)
+### Unit Tests (218 total, JVM, no device needed)
+- **AudioAlerterTest**: Onset, priority, cooldown, escalation, Japanese locale (35 tests)
 - **OutputResultTest**: JSON serialization, field validation, driver_name field (29 tests)
-- **PlatformProfileTest**: Platform detection, tuning profiles, edge cases (22 tests)
+- **PlatformProfileTest**: Platform detection, tuning profiles, edge cases (28 tests)
+- **TemporalSmootherTest**: Voting, face-gated filtering, fast-clear, sustained thresholds (23 tests)
+- **MergerTest**: Risk scoring all weight combinations (19 tests)
+- **FlowMonitoringTest**: Full pipeline chain integration tests (12 tests)
+- **FlowEscalationTest**: Escalation ladder, cooldown, multi-danger flows (12 tests)
+- **FlowConfigToggleTest**: Config defaults, toggle state, language effects (8 tests)
+- **FlowFaceRecognitionTest**: Driver name schema, cosine matching, pipeline survival (8 tests)
 - **FaceStoreTest**: Cosine similarity, matching, edge cases (8 tests)
+- **CrashLogTest**: formatLine format, shouldRotate boundary cases (7 tests)
+- **PipelineWatchdogTest**: isStalled logic, heartbeat reset (6 tests)
+- **FlowWifiCameraTest**: WiFi camera URL state management, priority logic (6 tests)
+- **MemoryPolicyTest**: decideAction at various trim levels (5 tests)
+- **BootReceiverTest**: shouldAutoStart per platform (4 tests)
+- **ServiceHealthTest**: Heartbeat age, clear reset, isServiceRunning (3 tests)
+- **MjpegReconnectTest**: nextBackoffDelay doubling, cap, max (3 tests)
+- **InferenceErrorTest**: shouldReinitialize threshold check (2 tests)
 
 ### Instrumented Tests (on SA8155 device)
 - Camera opens and captures frames
@@ -1682,7 +1705,7 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 
 ## 16. Complete Unit Test Specifications
 
-All 98 tests are specified below with exact inputs, logic, and expected outputs. These are the tests to implement in the Android project.
+The original 98 tests are specified below with exact inputs, logic, and expected outputs. Additional tests (218 total) cover flow integration, audio alerter, face recognition, WiFi camera, and IVI robustness features — see CLAUDE.md for the full listing.
 
 ### 16a. MergerTest (19 tests)
 

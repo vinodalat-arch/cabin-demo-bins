@@ -33,7 +33,7 @@ This document describes the 5 primary user flows, each with preconditions, step-
 
 ### Edge Cases
 - **No face detected**: `FaceResult.NO_FACE` → EAR/MAR/yaw/pitch are null. Smoother face-gates these fields (won't trigger false eyes_closed/yawning/distracted)
-- **Camera disconnect**: After 3 consecutive null frames, V4L2 enters reconnect mode with exponential backoff (2s → 30s max). Core pipeline pauses, dashboard shows stale data
+- **Camera disconnect**: After 3 consecutive null frames, V4L2 enters reconnect mode with exponential backoff (2s → 30s max). Pipeline watchdog detects stall after 30s and triggers camera restart. Dashboard shows "Stalled" status with danger dot if service heartbeat exceeds 15s
 - **Baseline calibration**: First 10 face-detected frames build EAR and pitch baselines. Before calibration completes, fallback thresholds apply (EAR < 0.21, |pitch| > 35°)
 - **UI crash safety**: If overlay rendering fails, core pipeline (detection + audio alerts + JSON) continues unaffected
 
@@ -97,8 +97,8 @@ This document describes the 5 primary user flows, each with preconditions, step-
 - HTTPS URLs are accepted
 
 ### Edge Cases
-- **Invalid URL**: Camera connection fails; service falls back or shows error
-- **Network loss**: Stream disconnects; reconnect logic applies
+- **Invalid URL**: Camera connection fails; MJPEG auto-reconnect retries with exponential backoff (2s → 30s)
+- **Network loss**: Stream disconnects; auto-reconnect loop activates. Camera status transitions to LOST, then ACTIVE on reconnect. Backoff resets on successful connection
 - **Empty URL treated as disabled**: `isNotBlank()` check ensures empty string doesn't activate WiFi camera mode
 
 ---
@@ -170,3 +170,53 @@ This document describes the 5 primary user flows, each with preconditions, step-
 - **Bounded priority queue**: Queue capacity is 3. When full, drain → sort by priority → keep top messages, drop lower priority
 - **Staleness check**: Worker thread drops messages older than 4s or whose danger already resolved (reads `FrameHolder.getLatestResult()`)
 - **First frame**: `AudioAlerter` stores state only on first frame, no announcement (avoids false onset on startup)
+
+---
+
+## Flow 6: IVI Deployment Robustness
+
+### Preconditions
+- APK installed on automotive BSP (SA8155/SA8255/SA8295)
+
+### Boot Auto-Start
+1. Device boots. `BootReceiver` receives `ACTION_BOOT_COMPLETED`.
+2. `BootReceiver.shouldAutoStart()` checks platform — returns true for automotive BSPs.
+3. Calls `startForegroundService()` with `ACTION_START`. Service initializes and begins monitoring automatically.
+4. On generic Android: `shouldAutoStart()` returns false — no auto-start.
+
+### Pipeline Watchdog
+1. `PipelineWatchdog` starts after component init, checks every 5s.
+2. Each successful `processFrame()` records a heartbeat via `watchdog.recordHeartbeat()`.
+3. If no heartbeat for 30s (e.g., camera hung, inference deadlock), watchdog fires `restartCamera()`.
+4. `restartCamera()` stops all camera managers, then calls `startCamera()` to reconnect.
+5. CrashLog records the stall event to `crash_log.txt`.
+
+### Memory Pressure Handling
+1. Android calls `onTrimMemory(level)` when system is under memory pressure.
+2. `MemoryPolicy.decideAction(level)` returns actions based on severity:
+   - Level >= 10 (RUNNING_LOW): disables camera preview (`Config.ENABLE_PREVIEW = false`), clears FrameHolder buffers.
+   - Level >= 15 (RUNNING_CRITICAL): same + requests GC.
+3. Core inference pipeline continues unaffected — only UI features degrade.
+
+### Persistent Crash Log
+1. `CrashLog.init(filesDir)` runs in `Service.onCreate()`. Uncaught exception handler installed.
+2. Pipeline errors, watchdog stalls, memory events, and uncaught exceptions all write to `crash_log.txt`.
+3. File capped at 500KB; rotates to `crash_log_prev.txt` when exceeded.
+4. View via: `adb shell cat /data/data/com.incabin/files/crash_log.txt`
+
+### Service Stall Indicator
+1. Each `processFrame()` calls `FrameHolder.postHeartbeat()`.
+2. `MainActivity.updateCameraStatus()` checks `FrameHolder.getHeartbeatAgeMs()`.
+3. If heartbeat age > 15s while monitoring is active, camera status shows "Stalled" with danger-colored dot.
+4. Resumes to "Active" once heartbeat resumes.
+
+### Inference Error Recovery
+1. Each successful frame resets `consecutiveInferenceErrors` to 0.
+2. Each pipeline exception increments the counter and logs to CrashLog.
+3. At 10 consecutive errors: `reinitializeInference()` closes and recreates PoseAnalyzer, FaceAnalyzer, and TemporalSmoother. Counter resets.
+
+### Edge Cases
+- **Boot without camera**: Service starts but camera connection fails. Watchdog monitors for stalls. Manual camera connection triggers reconnect
+- **Model file corruption**: Inference errors trigger reinitialize after 10 failures. CrashLog captures stack traces for post-mortem analysis
+- **Low memory kill**: Android kills service due to memory pressure. `START_STICKY` flag requests restart. Boot receiver re-starts on next reboot
+- **CrashLog full**: Rotation to `crash_log_prev.txt` ensures at most ~1MB disk usage
