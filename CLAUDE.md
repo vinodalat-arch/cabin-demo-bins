@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, and detection accuracy fine-tuning. Build verified (`assembleDebug` + all 142 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, and user flow documentation. Build verified (`assembleDebug` + all 188 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
@@ -14,9 +14,11 @@ Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 1
 
 ## Architecture
 ```
-USB Webcam
+USB Webcam (default)
   → V4L2 ioctl (/dev/videoN, YUYV 1280x720, mmap) → YUYV→BGR (C++ via JNI)
     [fallback: Camera2 ImageReader → YUV_420_888 → BT.601 YUV→BGR]
+WiFi Camera (optional, via Settings)
+  → MjpegCameraManager → HTTP GET → multipart/x-mixed-replace → JPEG decode → ARGB→BGR
   → YOLOv8n-pose (ONNX Runtime C++, CPU EP) → posture, child, passenger count
   → YOLOv8n detection (ONNX Runtime C++, CPU EP) → phone, food/drink in driver ROI
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
@@ -56,8 +58,10 @@ Single APK supports SA8155, SA8295, and generic Android. `PlatformProfile.detect
 Camera strategy is selected by `PlatformProfile.cameraStrategy`:
 - **V4L2_FIRST** (SA8155, SA8295): `V4l2CameraManager` → `V4l2Camera` (C++/JNI) → `/dev/videoN`. Falls back to Camera2 if no V4L2 device found.
 - **CAMERA2_FIRST** (generic): Goes straight to Camera2 API.
+- **WiFi Camera (MJPEG)**: When `Config.WIFI_CAMERA_URL` is set (non-blank), overrides USB camera. `MjpegCameraManager` connects via HTTP, parses `multipart/x-mixed-replace` boundary stream, decodes JPEG frames, converts ARGB→BGR. Status posted to `FrameHolder.CameraStatus`. Falls back to NOT_CONNECTED on connection failure.
 - V4L2 path scans `/dev/video0-63`, skips Qualcomm internal devices (`cam-req-mgr`, `cam_sync`)
 - Configures YUYV capture, 2 mmap buffers (reduced from 4 for lower latency), converts YUYV→BGR in native code
+- USB camera is the default; WiFi camera is opt-in via UI settings
 
 ### Automated Camera Setup (DeviceSetup)
 On automotive BSPs (`isAutomotiveBsp`), the Start button triggers a multi-stage setup flow before monitoring:
@@ -254,25 +258,30 @@ in_cabin_poc-sa8155/
 │   │   ├── v4l2_camera, pose_analyzer, face_recognizer, yolo_utils, image_utils, jni_bridge
 │   │   └── CMakeLists.txt
 │   ├── kotlin/com/incabin/
-│   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager
+│   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
 │   │   ├── FaceAnalyzer, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
 │   │   ├── PlatformProfile, DeviceSetup
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 142 unit tests (all passing):
+- 188 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
   - TemporalSmootherTest: 23 tests (voting, face-gating, fast-clear, sustained thresholds incl. yawning min_frames, passenger mode, risk recomputation)
   - MergerTest: 19 tests (risk scoring + merge logic)
   - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
+  - FlowMonitoringTest: 12 tests (full pipeline chain — mergeResults → smooth → validate for detection sequences)
+  - FlowEscalationTest: 12 tests (escalation ladder timing, cooldown, multi-danger, all-clear reset, Japanese messages)
+  - FlowConfigToggleTest: 8 tests (Config defaults, toggle state, language effects on alerts, smoother/risk config)
+  - FlowFaceRecognitionTest: 8 tests (driver name schema, cosine similarity matching, pipeline survival, JSON round-trip)
+  - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority logic)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
