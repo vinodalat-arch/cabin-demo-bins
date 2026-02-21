@@ -89,6 +89,9 @@ class MjpegCameraManager(
                 connection?.disconnect()
                 if (wasConnected) {
                     FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
+                } else if (running) {
+                    // Connection failed before any frames arrived — signal failure to UI
+                    FrameHolder.postCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
                 }
                 Log.i(TAG, "MJPEG stream disconnected")
             }

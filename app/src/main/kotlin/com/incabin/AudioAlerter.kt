@@ -528,6 +528,18 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         Log.i(TAG, "Posted notification: $message")
     }
 
+    /**
+     * Reset alert state so the next frame is treated as "first frame" (store-only).
+     * Call when re-enabling audio alerts after a period of silence to avoid
+     * false onset/all-clear from stale prevDangers.
+     */
+    fun resetState() {
+        prevDangers = null
+        prevDuration = 0
+        cooldownMap.clear()
+        escalationMap.clear()
+    }
+
     fun close() {
         retryHandler.removeCallbacksAndMessages(null)
         // Use offer to avoid blocking if queue is full; worst case worker exits on thread interrupt

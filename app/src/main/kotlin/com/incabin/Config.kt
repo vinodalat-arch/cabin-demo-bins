@@ -13,11 +13,11 @@ object Config {
     val FOOD_DRINK_CLASSES = intArrayOf(39, 40, 41, 42, 43, 44, 45, 46, 47, 48)
 
     // Face analysis (EAR and HEAD_PITCH are overridable per platform at service startup)
-    @JvmStatic var EAR_THRESHOLD = 0.21f
+    @JvmStatic @Volatile var EAR_THRESHOLD = 0.21f
     const val EAR_BASELINE_RATIO = 0.65f        // closed = ear < baseline * ratio
     const val MAR_THRESHOLD = 0.5f
     const val HEAD_YAW_THRESHOLD = 30.0f
-    @JvmStatic var HEAD_PITCH_THRESHOLD = 35.0f
+    @JvmStatic @Volatile var HEAD_PITCH_THRESHOLD = 35.0f
     const val PITCH_BASELINE_DEVIATION = 25.0f   // distracted = |pitch - baseline| > deviation
     const val BASELINE_FRAMES = 10               // frames to accumulate for auto-baseline
     const val ANGLE_SMOOTH_WINDOW = 3            // moving average window for yaw/pitch

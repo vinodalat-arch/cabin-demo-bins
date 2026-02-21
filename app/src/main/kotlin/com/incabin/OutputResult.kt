@@ -74,7 +74,20 @@ data class OutputResult(
         sb.append(",\"head_pitch\":").append(headPitch ?: "null")
         sb.append(",\"distraction_duration_s\":").append(distractionDurationS)
         sb.append(",\"driver_name\":")
-        if (driverName != null) sb.append('"').append(driverName).append('"') else sb.append("null")
+        if (driverName != null) {
+            sb.append('"')
+            for (ch in driverName) {
+                when (ch) {
+                    '"' -> sb.append("\\\"")
+                    '\\' -> sb.append("\\\\")
+                    '\n' -> sb.append("\\n")
+                    '\r' -> sb.append("\\r")
+                    '\t' -> sb.append("\\t")
+                    else -> sb.append(ch)
+                }
+            }
+            sb.append('"')
+        } else sb.append("null")
         sb.append('}')
         return sb.toString()
     }

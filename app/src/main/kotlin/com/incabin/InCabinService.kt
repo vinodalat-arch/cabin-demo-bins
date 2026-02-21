@@ -71,6 +71,9 @@ class InCabinService : Service() {
     // Grace period: consecutive clean frames before resetting distraction counter
     @Volatile private var cleanFrameCount = 0
 
+    // --- Audio toggle transition tracker ---
+    @Volatile private var prevAudioEnabled = true
+
     // --- Pre-allocated pixel buffer for BGR→Bitmap conversion ---
     private val pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
 
@@ -267,6 +270,7 @@ class InCabinService : Service() {
         recognitionFrameCounter = 0
         cachedDriverName = null
         lastFaceDetected = false
+        prevAudioEnabled = Config.ENABLE_AUDIO_ALERTS
 
         Log.i(TAG, "=== Service Ready ===")
     }
@@ -392,9 +396,15 @@ class InCabinService : Service() {
             )
 
             // Step 7: Audio alerter (core — must run even if overlay fails)
-            if (Config.ENABLE_AUDIO_ALERTS) {
+            val audioEnabled = Config.ENABLE_AUDIO_ALERTS
+            if (audioEnabled) {
+                // Reset alert state on false→true transition to avoid stale prevDangers
+                if (!prevAudioEnabled) {
+                    audioAlerter?.resetState()
+                }
                 audioAlerter?.checkAndAnnounce(finalResult)
             }
+            prevAudioEnabled = audioEnabled
 
             // Step 8: Log JSON output (core — must run even if overlay fails)
             Log.i(TAG, finalResult.toJson())
