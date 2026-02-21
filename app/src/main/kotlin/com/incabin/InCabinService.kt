@@ -8,6 +8,7 @@ import android.os.Debug
 import android.os.IBinder
 import android.util.Log
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import org.opencv.android.OpenCVLoader
@@ -40,6 +41,11 @@ class InCabinService : Service() {
             "face_landmarker.task",
             "mobilefacenet-fp16.onnx"
         )
+
+        /** Pure threshold check: should we reinitialize after N consecutive errors? */
+        fun shouldReinitialize(errorCount: Int, threshold: Int): Boolean {
+            return errorCount >= threshold
+        }
     }
 
     // --- Platform profile (detected once at startup) ---
@@ -55,6 +61,9 @@ class InCabinService : Service() {
     private var smoother: TemporalSmoother? = null
     private var audioAlerter: AudioAlerter? = null
     private val overlayRenderer = OverlayRenderer()
+
+    // --- Pipeline watchdog ---
+    private var watchdog: PipelineWatchdog? = null
 
     // --- Face recognition ---
     private var faceRecognizer: FaceRecognizerBridge? = null
@@ -77,6 +86,9 @@ class InCabinService : Service() {
     // --- Pre-allocated pixel buffer for BGR→Bitmap conversion ---
     private val pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
 
+    // --- Inference error tracking ---
+    private var consecutiveInferenceErrors = 0
+
     // --- Performance stats ---
     private var frameCount: Int = 0
     private val recentFrameTimes = mutableListOf<Long>()
@@ -84,6 +96,16 @@ class InCabinService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+
+        // Initialize persistent crash log
+        CrashLog.init(filesDir)
+
+        // Install uncaught exception handler to capture crashes to persistent log
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            CrashLog.logException(TAG, "Uncaught exception on thread ${thread.name}", throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -103,6 +125,9 @@ class InCabinService : Service() {
     }
 
     override fun onDestroy() {
+        watchdog?.stop()
+        watchdog = null
+
         pipelineLock.lock()
         try {
             FrameHolder.clear()
@@ -138,6 +163,25 @@ class InCabinService : Service() {
 
         Log.i(TAG, "Service destroyed")
         super.onDestroy()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val action = MemoryPolicy.decideAction(level)
+        if (action.disablePreview || action.clearBuffers || action.requestGc) {
+            Log.w(TAG, "Memory pressure (level=$level): preview=${action.disablePreview}, " +
+                "clearBuffers=${action.clearBuffers}, gc=${action.requestGc}")
+            CrashLog.warn(TAG, "Memory pressure level=$level")
+        }
+        if (action.disablePreview) {
+            Config.ENABLE_PREVIEW = false
+        }
+        if (action.clearBuffers) {
+            FrameHolder.clear()
+        }
+        if (action.requestGc) {
+            System.gc()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -237,8 +281,12 @@ class InCabinService : Service() {
             Log.e(TAG, "FaceAnalyzer initialization failed", e)
         }
 
-        // Wait for parallel inits to finish
-        latch.await()
+        // Wait for parallel inits to finish (bounded to prevent hang on init failure)
+        val initCompleted = latch.await(Config.INIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        if (!initCompleted) {
+            Log.e(TAG, "Component init timed out after ${Config.INIT_TIMEOUT_MS}ms — continuing with partial init")
+            CrashLog.error(TAG, "Component init timed out after ${Config.INIT_TIMEOUT_MS}ms")
+        }
 
         // FaceStore (fast disk I/O, init on main thread)
         try {
@@ -265,6 +313,7 @@ class InCabinService : Service() {
         // Reset counters
         distractionDurationS.set(0)
         cleanFrameCount = 0
+        consecutiveInferenceErrors = 0
         frameCount = 0
         recentFrameTimes.clear()
         recognitionFrameCounter = 0
@@ -272,7 +321,12 @@ class InCabinService : Service() {
         lastFaceDetected = false
         prevAudioEnabled = Config.ENABLE_AUDIO_ALERTS
 
+        // Start pipeline watchdog
+        watchdog = PipelineWatchdog(onTimeout = ::restartCamera)
+        watchdog?.start()
+
         Log.i(TAG, "=== Service Ready ===")
+        CrashLog.info(TAG, "Service initialized (${System.currentTimeMillis() - initStartMs}ms)")
     }
 
     // -------------------------------------------------------------------------
@@ -311,6 +365,47 @@ class InCabinService : Service() {
         cameraManager?.start()
         FrameHolder.postCameraStatus(FrameHolder.CameraStatus.ACTIVE)
         Log.i(TAG, "Using Camera2 (strategy: ${platformProfile.cameraStrategy})")
+    }
+
+    /** Reinitialize inference components after repeated errors. */
+    private fun reinitializeInference() {
+        try {
+            poseAnalyzer?.close()
+            poseAnalyzer = PoseAnalyzerBridge(
+                assets,
+                platformProfile.poseThreadCount,
+                platformProfile.poseThreadAffinity
+            )
+            Log.i(TAG, "PoseAnalyzer reinitialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to reinitialize PoseAnalyzer", e)
+        }
+        try {
+            faceAnalyzer?.close()
+            faceAnalyzer = FaceAnalyzer(this)
+            Log.i(TAG, "FaceAnalyzer reinitialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to reinitialize FaceAnalyzer", e)
+        }
+        smoother = TemporalSmoother()
+        consecutiveInferenceErrors = 0
+    }
+
+    /** Restart camera after watchdog timeout or error. Stops all cameras, then re-starts. */
+    private fun restartCamera() {
+        Log.w(TAG, "Restarting camera (watchdog trigger)")
+        CrashLog.warn(TAG, "Camera restart triggered by watchdog")
+        try {
+            v4l2Camera?.stop()
+            v4l2Camera = null
+            mjpegCamera?.stop()
+            mjpegCamera = null
+            cameraManager?.stop()
+            cameraManager = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping cameras during restart", e)
+        }
+        startCamera()
     }
 
     // -------------------------------------------------------------------------
@@ -432,6 +527,13 @@ class InCabinService : Service() {
                     "Face=${faceElapsed}ms, Total=${totalElapsed}ms"
             )
 
+            // Successful frame — reset error counter
+            consecutiveInferenceErrors = 0
+
+            // Record heartbeats (pipeline is alive)
+            watchdog?.recordHeartbeat()
+            FrameHolder.postHeartbeat()
+
             // Periodic performance stats
             frameCount++
             recentFrameTimes.add(totalElapsed)
@@ -451,6 +553,13 @@ class InCabinService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Inference pipeline error", e)
+            CrashLog.logException(TAG, "Inference pipeline error", e)
+            consecutiveInferenceErrors++
+            if (shouldReinitialize(consecutiveInferenceErrors, Config.MAX_CONSECUTIVE_INFERENCE_ERRORS)) {
+                Log.e(TAG, "Consecutive inference errors reached ${Config.MAX_CONSECUTIVE_INFERENCE_ERRORS} — reinitializing")
+                CrashLog.error(TAG, "Reinitializing inference after $consecutiveInferenceErrors consecutive errors")
+                reinitializeInference()
+            }
         } finally {
             pipelineLock.unlock()
         }

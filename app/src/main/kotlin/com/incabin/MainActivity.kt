@@ -589,6 +589,14 @@ class MainActivity : Activity() {
     }
 
     private fun updateCameraStatus() {
+        // Check for service stall (heartbeat older than threshold)
+        if (isRunning && FrameHolder.isServiceRunning() &&
+            FrameHolder.getHeartbeatAgeMs() > Config.SERVICE_STALL_THRESHOLD_MS) {
+            cameraStatusText.text = "Stalled"
+            setCameraStatusDotColor(colorDanger)
+            return
+        }
+
         val status = FrameHolder.getCameraStatus()
         when (status) {
             FrameHolder.CameraStatus.NOT_CONNECTED -> {

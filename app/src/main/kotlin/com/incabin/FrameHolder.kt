@@ -1,6 +1,8 @@
 package com.incabin
 
 import android.graphics.Bitmap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -71,11 +73,33 @@ object FrameHolder {
 
     fun getCameraStatus(): CameraStatus = cameraStatus.get()
 
+    // --- Service heartbeat (for UI stall detection) ---
+    private val serviceHeartbeatMs = AtomicLong(0L)
+    private val serviceRunning = AtomicBoolean(false)
+
+    /** Record a heartbeat from the service pipeline. */
+    fun postHeartbeat() {
+        serviceHeartbeatMs.set(System.currentTimeMillis())
+        serviceRunning.set(true)
+    }
+
+    /** Get age of last heartbeat in ms. Returns Long.MAX_VALUE if never posted. */
+    fun getHeartbeatAgeMs(): Long {
+        val last = serviceHeartbeatMs.get()
+        if (last == 0L) return Long.MAX_VALUE
+        return System.currentTimeMillis() - last
+    }
+
+    /** Whether the service has ever posted a heartbeat. */
+    fun isServiceRunning(): Boolean = serviceRunning.get()
+
     /** Clear the held frame. */
     fun clear() {
         latest.set(null)
         latestResult.set(null)
         latestCapture.set(null)
         cameraStatus.set(CameraStatus.NOT_CONNECTED)
+        serviceHeartbeatMs.set(0L)
+        serviceRunning.set(false)
     }
 }

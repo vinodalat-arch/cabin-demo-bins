@@ -26,6 +26,12 @@ class MjpegCameraManager(
         private const val BUFFER_SIZE = 65536
         private const val MAX_JPEG_SIZE = 10 * 1024 * 1024  // 10MB max per frame
         private const val MAX_LINE_LENGTH = 4096  // Max header line length to prevent OOM
+
+        /** Compute next backoff delay (doubles, capped at max). Pure function. */
+        fun nextBackoffDelay(currentDelayMs: Long, maxDelayMs: Long): Long {
+            val next = currentDelayMs * 2
+            return if (next > maxDelayMs) maxDelayMs else next
+        }
     }
 
     @Volatile private var running = false
@@ -48,53 +54,74 @@ class MjpegCameraManager(
         wasConnected = false
 
         streamThread = Thread({
-            Log.i(TAG, "Connecting to MJPEG stream: $streamUrl")
-            var connection: HttpURLConnection? = null
+            var reconnectDelayMs = Config.V4L2_RECONNECT_INITIAL_DELAY_MS
 
-            try {
-                val url = URL(streamUrl)
-                connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = CONNECT_TIMEOUT_MS
-                connection.readTimeout = READ_TIMEOUT_MS
-                connection.requestMethod = "GET"
-                connection.connect()
+            // Outer reconnect loop: retries connection with exponential backoff
+            while (running) {
+                Log.i(TAG, "Connecting to MJPEG stream: $streamUrl")
+                var connection: HttpURLConnection? = null
 
-                val responseCode = connection.responseCode
-                if (responseCode != HttpURLConnection.HTTP_OK) {
-                    Log.e(TAG, "HTTP error: $responseCode")
-                    return@Thread
+                try {
+                    val url = URL(streamUrl)
+                    connection = url.openConnection() as HttpURLConnection
+                    connection.connectTimeout = CONNECT_TIMEOUT_MS
+                    connection.readTimeout = READ_TIMEOUT_MS
+                    connection.requestMethod = "GET"
+                    connection.connect()
+
+                    val responseCode = connection.responseCode
+                    if (responseCode != HttpURLConnection.HTTP_OK) {
+                        Log.e(TAG, "HTTP error: $responseCode")
+                        handleConnectionFailure(reconnectDelayMs)
+                        reconnectDelayMs = nextBackoffDelay(reconnectDelayMs, Config.V4L2_RECONNECT_MAX_DELAY_MS)
+                        continue
+                    }
+
+                    val contentType = connection.contentType ?: ""
+                    Log.i(TAG, "Stream content-type: $contentType")
+
+                    // Extract boundary from content-type
+                    val boundary = extractBoundary(contentType)
+                    if (boundary == null) {
+                        Log.e(TAG, "No MJPEG boundary found in content-type: $contentType")
+                        handleConnectionFailure(reconnectDelayMs)
+                        reconnectDelayMs = nextBackoffDelay(reconnectDelayMs, Config.V4L2_RECONNECT_MAX_DELAY_MS)
+                        continue
+                    }
+
+                    Log.i(TAG, "MJPEG stream connected, boundary: $boundary")
+                    wasConnected = true
+                    reconnectDelayMs = Config.V4L2_RECONNECT_INITIAL_DELAY_MS  // Reset backoff on success
+                    FrameHolder.postCameraStatus(FrameHolder.CameraStatus.ACTIVE)
+                    val input = BufferedInputStream(connection.inputStream, BUFFER_SIZE)
+                    readMjpegStream(input, boundary)
+
+                    // Stream ended (EOF or error in readMjpegStream) — attempt reconnect
+                    if (running) {
+                        Log.w(TAG, "MJPEG stream ended, will reconnect")
+                        FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
+                    }
+
+                } catch (e: Exception) {
+                    if (running) {
+                        Log.e(TAG, "MJPEG stream error", e)
+                    }
+                } finally {
+                    connection?.disconnect()
                 }
 
-                val contentType = connection.contentType ?: ""
-                Log.i(TAG, "Stream content-type: $contentType")
+                if (!running) break
 
-                // Extract boundary from content-type
-                val boundary = extractBoundary(contentType)
-                if (boundary == null) {
-                    Log.e(TAG, "No MJPEG boundary found in content-type: $contentType")
-                    return@Thread
-                }
-
-                Log.i(TAG, "MJPEG stream connected, boundary: $boundary")
-                wasConnected = true
-                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.ACTIVE)
-                val input = BufferedInputStream(connection.inputStream, BUFFER_SIZE)
-                readMjpegStream(input, boundary)
-
-            } catch (e: Exception) {
-                if (running) {
-                    Log.e(TAG, "MJPEG stream error", e)
-                }
-            } finally {
-                connection?.disconnect()
-                if (wasConnected) {
-                    FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
-                } else if (running) {
-                    // Connection failed before any frames arrived — signal failure to UI
-                    FrameHolder.postCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
-                }
-                Log.i(TAG, "MJPEG stream disconnected")
+                // Backoff before reconnect attempt
+                handleConnectionFailure(reconnectDelayMs)
+                reconnectDelayMs = nextBackoffDelay(reconnectDelayMs, Config.V4L2_RECONNECT_MAX_DELAY_MS)
             }
+
+            // Final status when fully stopped
+            if (!wasConnected) {
+                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
+            }
+            Log.i(TAG, "MJPEG stream disconnected")
         }, "MJPEG-Reader")
         streamThread?.isDaemon = true
         streamThread?.start()
@@ -113,6 +140,20 @@ class MjpegCameraManager(
         val idx = contentType.indexOf("boundary=")
         if (idx < 0) return null
         return contentType.substring(idx + 9).trim()
+    }
+
+    private fun handleConnectionFailure(delayMs: Long) {
+        if (!wasConnected) {
+            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
+        } else {
+            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
+        }
+        Log.i(TAG, "Reconnecting in ${delayMs}ms...")
+        try {
+            Thread.sleep(delayMs)
+        } catch (_: InterruptedException) {
+            // stop() interrupted us
+        }
     }
 
     private fun readMjpegStream(input: BufferedInputStream, boundary: String) {

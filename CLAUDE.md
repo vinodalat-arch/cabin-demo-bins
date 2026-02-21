@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, and user flow documentation. Build verified (`assembleDebug` + all 188 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, and IVI deployment robustness hardening. Build verified (`assembleDebug` + all 218 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
@@ -53,6 +53,7 @@ Single APK supports SA8155, SA8295, and generic Android. `PlatformProfile.detect
 | Audio usage | ASSISTANCE_SONIFICATION | ALARM | ALARM |
 | Camera strategy | V4L2 first | V4L2 first | Camera2 first |
 | Automated setup (ODK, chmod, pm grant) | Yes | Yes | No |
+| Boot auto-start | Yes | Yes | No |
 
 ### Camera Strategy
 Camera strategy is selected by `PlatformProfile.cameraStrategy`:
@@ -261,16 +262,17 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
 │   │   ├── FaceAnalyzer, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
-│   │   ├── PlatformProfile, DeviceSetup
+│   │   ├── PlatformProfile, DeviceSetup, BootReceiver
+│   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 188 unit tests (all passing):
+- 218 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
@@ -282,6 +284,13 @@ in_cabin_poc-sa8155/
   - FlowConfigToggleTest: 8 tests (Config defaults, toggle state, language effects on alerts, smoother/risk config)
   - FlowFaceRecognitionTest: 8 tests (driver name schema, cosine similarity matching, pipeline survival, JSON round-trip)
   - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority logic)
+  - CrashLogTest: 7 tests (formatLine format, field inclusion, shouldRotate boundary cases)
+  - PipelineWatchdogTest: 6 tests (isStalled logic — not started, within timeout, beyond timeout, boundary, heartbeat reset)
+  - MemoryPolicyTest: 5 tests (decideAction at various trim levels — no action, low, critical, high, zero)
+  - BootReceiverTest: 4 tests (shouldAutoStart for SA8155, SA8255, SA8295, GENERIC)
+  - ServiceHealthTest: 3 tests (heartbeat age default, clear reset, isServiceRunning default)
+  - MjpegReconnectTest: 3 tests (nextBackoffDelay doubling, cap at max, stays at max)
+  - InferenceErrorTest: 2 tests (shouldReinitialize at threshold, below threshold)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
@@ -324,6 +333,18 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 - **FrameHolder crash safety**: Old bitmaps are not recycled in `postFrame()` — left for GC finalizer to avoid TOCTOU race where Activity reads a bitmap recycled by the service thread (recycled-bitmap exception on UI thread would kill the entire process including InCabinService)
 - **Activity preview safety**: `previewPoller` in MainActivity wraps all FrameHolder access and bitmap operations in try-catch to prevent UI exceptions from crashing the shared process
 - **Face recognition isolation**: `recognizeDriver()` wrapped in try-catch in `processFrame()`; failure returns cached name. Recognition uses raw BGR bytes (no bitmap lifecycle risk). `FaceStore` is `@Synchronized`. `FaceRegistrationActivity` creates its own `FaceRecognizerBridge` instance; activity crash doesn't affect service
+
+## IVI Deployment Robustness
+System-level hardening for unattended automotive IVI deployment:
+
+- **Boot auto-start** (`BootReceiver`): `ACTION_BOOT_COMPLETED` receiver auto-starts `InCabinService` on SA8155/SA8255/SA8295. Disabled on generic Android. Pure `shouldAutoStart(platform)` companion for testability
+- **Pipeline watchdog** (`PipelineWatchdog`): `HandlerThread`-based monitor checks `@Volatile lastHeartbeatMs` every 5s. If no heartbeat for 30s (`WATCHDOG_TIMEOUT_MS`), invokes `restartCamera()` callback. Pure `isStalled()` companion. Heartbeat recorded at end of each `processFrame()`
+- **Memory pressure handling** (`MemoryPolicy`): `onTrimMemory(level)` override in `InCabinService` calls pure `MemoryPolicy.decideAction(trimLevel)`. Level >= 10 (RUNNING_LOW): disables preview + clears FrameHolder buffers. Level >= 15 (RUNNING_CRITICAL): also requests GC. Zero per-frame cost
+- **Persistent crash log** (`CrashLog`): Singleton writes to `crash_log.txt` in app internal storage. `@Synchronized` thread-safe writes. 500KB cap with rotation to `crash_log_prev.txt`. Uncaught exception handler installed in `onCreate()`. Pipeline errors, watchdog stalls, and memory events logged. Pure `formatLine()` and `shouldRotate()` functions for testability
+- **Bounded init timeout**: `CountDownLatch.await()` replaced with `await(30s, TimeUnit.MILLISECONDS)`. Logs error + continues with partial init on timeout. Null checks downstream already handle missing components
+- **MJPEG auto-reconnect**: Outer `while(running)` reconnect loop in `MjpegCameraManager` with exponential backoff (2s→30s, reusing V4L2 constants). Pure `nextBackoffDelay(current, max)` companion. Posts `LOST` on disconnect, `ACTIVE` on reconnect. Backoff resets on successful connection
+- **Service alive check from UI**: `FrameHolder` adds `serviceHeartbeatMs: AtomicLong` + `serviceRunning: AtomicBoolean`. `postHeartbeat()` called at end of `processFrame()`. `MainActivity.updateCameraStatus()` checks `getHeartbeatAgeMs() > 15s` → shows "Stalled" with danger dot
+- **Inference error tracking**: `consecutiveInferenceErrors` counter in `InCabinService`. Reset to 0 on successful frame. On error: increment + log to CrashLog. At threshold (10): close+recreate PoseAnalyzer, FaceAnalyzer, and TemporalSmoother. Pure `shouldReinitialize(count, threshold)` companion
 
 ## Deployment
 

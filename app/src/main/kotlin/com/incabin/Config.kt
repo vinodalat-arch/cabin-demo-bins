@@ -77,6 +77,19 @@ object Config {
     const val FACE_RECOGNITION_INTERVAL = 5
     const val FACE_EMBEDDING_DIM = 512
 
+    // Pipeline watchdog
+    const val WATCHDOG_TIMEOUT_MS = 30_000L
+    const val WATCHDOG_CHECK_INTERVAL_MS = 5_000L
+
+    // Init timeout (bounded latch.await)
+    const val INIT_TIMEOUT_MS = 30_000L
+
+    // Service alive check (UI stall indicator)
+    const val SERVICE_STALL_THRESHOLD_MS = 15_000L
+
+    // Inference error tracking
+    const val MAX_CONSECUTIVE_INFERENCE_ERRORS = 10
+
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3
     const val RISK_WEIGHT_EYES = 3
