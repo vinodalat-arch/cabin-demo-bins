@@ -17,6 +17,8 @@ class TemporalSmootherTest {
         distracted: Boolean = false,
         eating: Boolean = false,
         passengers: Int = 1,
+        childCount: Int = 0,
+        adultCount: Int = 0,
         ear: Float? = 0.25f,
         mar: Float? = 0.2f,
         headYaw: Float? = 0.0f,
@@ -24,6 +26,8 @@ class TemporalSmootherTest {
     ): OutputResult = OutputResult(
         timestamp = "2026-01-01T00:00:00+00:00",
         passengerCount = passengers,
+        childCount = childCount,
+        adultCount = adultCount,
         driverUsingPhone = phone,
         driverEyesClosed = eyes,
         driverYawning = yawn,
@@ -297,5 +301,33 @@ class TemporalSmootherTest {
         var result: OutputResult? = null
         repeat(3) { result = s.smooth(makeResult(yawn = true, mar = 0.6f)) }
         assertEquals("medium", result!!.riskLevel)
+    }
+
+    // -------------------------------------------------------------------------
+    // Child/Adult Count Smoothing (2 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_child_count_mode() {
+        // mode: childCount=1 appears 3 times, childCount=0 appears 2 times -> 1
+        val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
+        s.smooth(makeResult(childCount = 0))
+        s.smooth(makeResult(childCount = 1))
+        s.smooth(makeResult(childCount = 1))
+        s.smooth(makeResult(childCount = 0))
+        val result = s.smooth(makeResult(childCount = 1))
+        assertEquals(1, result.childCount)
+    }
+
+    @Test
+    fun test_adult_count_mode() {
+        // mode: adultCount=2 appears 3 times, adultCount=1 appears 2 times -> 2
+        val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
+        s.smooth(makeResult(adultCount = 1))
+        s.smooth(makeResult(adultCount = 2))
+        s.smooth(makeResult(adultCount = 2))
+        s.smooth(makeResult(adultCount = 1))
+        val result = s.smooth(makeResult(adultCount = 2))
+        assertEquals(2, result.adultCount)
     }
 }

@@ -22,6 +22,7 @@ class FlowConfigToggleTest {
     private var origLanguage = "en"
     private var origWifiUrl = ""
     private var origSeatSide = "left"
+    private var origPaxDetail = "minimal"
 
     @Before
     fun saveConfig() {
@@ -30,6 +31,7 @@ class FlowConfigToggleTest {
         origLanguage = Config.LANGUAGE
         origWifiUrl = Config.WIFI_CAMERA_URL
         origSeatSide = Config.DRIVER_SEAT_SIDE
+        origPaxDetail = Config.PASSENGER_INFO_DETAIL
     }
 
     @After
@@ -39,6 +41,7 @@ class FlowConfigToggleTest {
         Config.LANGUAGE = origLanguage
         Config.WIFI_CAMERA_URL = origWifiUrl
         Config.DRIVER_SEAT_SIDE = origSeatSide
+        Config.PASSENGER_INFO_DETAIL = origPaxDetail
     }
 
     // -------------------------------------------------------------------------
@@ -116,6 +119,7 @@ class FlowConfigToggleTest {
         val s = TemporalSmoother()
         val clean = OutputResult(
             timestamp = "2026-01-01T00:00:00Z", passengerCount = 1,
+            childCount = 0, adultCount = 0,
             driverUsingPhone = false, driverEyesClosed = false, driverYawning = false,
             driverDistracted = false, driverEatingDrinking = false, dangerousPosture = false,
             childPresent = false, childSlouching = false, riskLevel = "low",
@@ -153,5 +157,18 @@ class FlowConfigToggleTest {
         assertEquals("left", Config.DRIVER_SEAT_SIDE)
         Config.DRIVER_SEAT_SIDE = "right"
         assertEquals("right", Config.DRIVER_SEAT_SIDE)
+    }
+
+    // -------------------------------------------------------------------------
+    // Passenger Info Detail Toggle (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_passenger_info_detail_toggle() {
+        assertEquals("minimal", Config.PASSENGER_INFO_DETAIL)
+        Config.PASSENGER_INFO_DETAIL = "detailed"
+        assertEquals("detailed", Config.PASSENGER_INFO_DETAIL)
+        Config.PASSENGER_INFO_DETAIL = "minimal"
+        assertEquals("minimal", Config.PASSENGER_INFO_DETAIL)
     }
 }

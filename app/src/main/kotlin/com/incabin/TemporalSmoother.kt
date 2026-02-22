@@ -82,9 +82,13 @@ class TemporalSmoother(
         var yawValidCount = 0; var distractedCount = 0
         var phoneCount = 0; var eatingCount = 0; var postureCount = 0
         var childPresentCount = 0; var childSlouchCount = 0
-        // Passenger count mode via small frequency array (max ~10 passengers)
+        // Passenger/child/adult count mode via small frequency arrays (max ~10)
         val passengerFreq = IntArray(16)  // index = passenger count, value = frequency
+        val childCountFreq = IntArray(16)
+        val adultCountFreq = IntArray(16)
         var maxPassengerCount = 0
+        var maxChildCount = 0
+        var maxAdultCount = 0
 
         for (frame in _buffer) {
             if (frame.earValue != null) { earValidCount++; if (frame.driverEyesClosed) eyesClosedCount++ }
@@ -98,6 +102,12 @@ class TemporalSmoother(
             val pc = frame.passengerCount.coerceIn(0, passengerFreq.size - 1)
             passengerFreq[pc]++
             if (pc > maxPassengerCount) maxPassengerCount = pc
+            val cc = frame.childCount.coerceIn(0, childCountFreq.size - 1)
+            childCountFreq[cc]++
+            if (cc > maxChildCount) maxChildCount = cc
+            val ac = frame.adultCount.coerceIn(0, adultCountFreq.size - 1)
+            adultCountFreq[ac]++
+            if (ac > maxAdultCount) maxAdultCount = ac
         }
 
         // --- Smooth driver_eyes_closed (fast-clear + face-gated + sustained) ---
@@ -151,6 +161,30 @@ class TemporalSmoother(
             bestCount
         }
 
+        // --- Child count mode (highest count wins on tie) ---
+        val smoothedChildCount: Int = run {
+            if (n == 0) return@run 0
+            var bestCount = 0; var bestFreq = 0
+            for (i in 0..maxChildCount) {
+                if (childCountFreq[i] > bestFreq || (childCountFreq[i] == bestFreq && i > bestCount)) {
+                    bestFreq = childCountFreq[i]; bestCount = i
+                }
+            }
+            bestCount
+        }
+
+        // --- Adult count mode (highest count wins on tie) ---
+        val smoothedAdultCount: Int = run {
+            if (n == 0) return@run 0
+            var bestCount = 0; var bestFreq = 0
+            for (i in 0..maxAdultCount) {
+                if (adultCountFreq[i] > bestFreq || (adultCountFreq[i] == bestFreq && i > bestCount)) {
+                    bestFreq = adultCountFreq[i]; bestCount = i
+                }
+            }
+            bestCount
+        }
+
         // --- Recompute risk from smoothed booleans ---
         val smoothedRisk = computeRisk(
             driverUsingPhone = smoothedPhone,
@@ -167,6 +201,8 @@ class TemporalSmoother(
         // Keep distraction_duration_s as-is (managed by main loop).
         return result.copy(
             passengerCount = smoothedPassengerCount,
+            childCount = smoothedChildCount,
+            adultCount = smoothedAdultCount,
             driverUsingPhone = smoothedPhone,
             driverEyesClosed = smoothedEyesClosed,
             driverYawning = smoothedYawning,

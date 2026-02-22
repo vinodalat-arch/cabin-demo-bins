@@ -402,6 +402,7 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     result.dangerous_posture = checkPosture(driver.keypoints, POSTURE_LEAN_THRESHOLD);
 
     // 4. Check for children
+    int child_count = 0;
     for (int i = 0; i < static_cast<int>(persons.size()); i++) {
         if (i == driver_idx) continue;
 
@@ -410,12 +411,14 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
 
         float ratio = person_height / driver_height;
         if (ratio < CHILD_BBOX_RATIO) {
+            child_count++;
             result.child_present = true;
             if (checkPosture(persons[i].keypoints, CHILD_SLOUCH_THRESHOLD)) {
                 result.child_slouching = true;
             }
         }
     }
+    result.child_count = child_count;
 
     // 5. Phone detection (two-strategy, higher confidence threshold)
     // Strategy 1: driver ROI with 20% padding
@@ -469,6 +472,8 @@ std::string PoseResult::toJson() const {
 
     json += "{\"passenger_count\":";
     json += std::to_string(passenger_count);
+    json += ",\"child_count\":";
+    json += std::to_string(child_count);
     json += ",\"driver_detected\":";
     json += driver_detected ? "true" : "false";
     json += ",\"driver_using_phone\":";

@@ -54,9 +54,15 @@ fun mergeResults(faceResult: FaceResult, poseResult: PoseResult): OutputResult {
         poseResult.driverEatingDrinking
     )
 
+    // Derive adult_count: total persons - driver (if detected) - children
+    val adultCount = maxOf(0, poseResult.passengerCount -
+        (if (poseResult.driverDetected) 1 else 0) - poseResult.childCount)
+
     return OutputResult(
         timestamp = Instant.now().toString(),
         passengerCount = poseResult.passengerCount,
+        childCount = poseResult.childCount,
+        adultCount = adultCount,
         driverUsingPhone = poseResult.driverUsingPhone,
         driverEyesClosed = faceResult.driverEyesClosed,
         driverYawning = faceResult.driverYawning,

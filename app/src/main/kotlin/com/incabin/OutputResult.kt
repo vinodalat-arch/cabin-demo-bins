@@ -10,6 +10,12 @@ data class OutputResult(
     @SerializedName("passenger_count")
     val passengerCount: Int,
 
+    @SerializedName("child_count")
+    val childCount: Int = 0,
+
+    @SerializedName("adult_count")
+    val adultCount: Int = 0,
+
     @SerializedName("driver_using_phone")
     val driverUsingPhone: Boolean,
 
@@ -62,6 +68,8 @@ data class OutputResult(
         val sb = StringBuilder(384)
         sb.append("{\"timestamp\":\"").append(timestamp)
         sb.append("\",\"passenger_count\":").append(passengerCount)
+        sb.append(",\"child_count\":").append(childCount)
+        sb.append(",\"adult_count\":").append(adultCount)
         sb.append(",\"driver_using_phone\":").append(driverUsingPhone)
         sb.append(",\"driver_eyes_closed\":").append(driverEyesClosed)
         sb.append(",\"driver_yawning\":").append(driverYawning)
@@ -99,6 +107,8 @@ data class OutputResult(
     fun toMap(): Map<String, Any?> = mapOf(
         "timestamp" to timestamp,
         "passenger_count" to passengerCount,
+        "child_count" to childCount,
+        "adult_count" to adultCount,
         "driver_using_phone" to driverUsingPhone,
         "driver_eyes_closed" to driverEyesClosed,
         "driver_yawning" to driverYawning,
@@ -123,7 +133,7 @@ data class OutputResult(
         private val VALID_RISK_LEVELS = setOf("low", "medium", "high")
 
         private val REQUIRED_FIELDS = listOf(
-            "timestamp", "passenger_count",
+            "timestamp", "passenger_count", "child_count", "adult_count",
             "driver_using_phone", "driver_eyes_closed", "driver_yawning",
             "driver_distracted", "driver_eating_drinking", "dangerous_posture",
             "child_present", "child_slouching", "risk_level", "distraction_duration_s",
@@ -162,6 +172,18 @@ data class OutputResult(
                 val v = (it as? Number)?.toInt()
                 if (v == null) errors.add("passenger_count must be an integer")
                 else if (v < 0) errors.add("passenger_count must be >= 0")
+            }
+
+            data["child_count"]?.let {
+                val v = (it as? Number)?.toInt()
+                if (v == null) errors.add("child_count must be an integer")
+                else if (v < 0) errors.add("child_count must be >= 0")
+            }
+
+            data["adult_count"]?.let {
+                val v = (it as? Number)?.toInt()
+                if (v == null) errors.add("adult_count must be an integer")
+                else if (v < 0) errors.add("adult_count must be >= 0")
             }
 
             val boolFields = listOf(
@@ -222,6 +244,8 @@ data class OutputResult(
         fun default(): OutputResult = OutputResult(
             timestamp = java.time.Instant.now().toString(),
             passengerCount = 0,
+            childCount = 0,
+            adultCount = 0,
             driverUsingPhone = false,
             driverEyesClosed = false,
             driverYawning = false,

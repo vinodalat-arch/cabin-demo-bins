@@ -26,6 +26,8 @@ class FlowDriverIdentificationTest {
         child: Boolean = false,
         slouch: Boolean = false,
         passengers: Int = 1,
+        childCount: Int = 0,
+        adultCount: Int = 0,
         ear: Float? = 0.25f,
         mar: Float? = 0.2f,
         headYaw: Float? = 0.0f,
@@ -33,6 +35,8 @@ class FlowDriverIdentificationTest {
     ): OutputResult = OutputResult(
         timestamp = "2026-01-01T00:00:00Z",
         passengerCount = passengers,
+        childCount = childCount,
+        adultCount = adultCount,
         driverUsingPhone = phone,
         driverEyesClosed = eyes,
         driverYawning = yawn,

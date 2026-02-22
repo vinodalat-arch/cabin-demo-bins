@@ -2,6 +2,7 @@ package com.incabin
 
 import android.app.*
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Debug
@@ -116,7 +117,11 @@ class InCabinService : Service() {
             }
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
         initializeComponents()
         startCamera()
         Log.i(TAG, "Service started")

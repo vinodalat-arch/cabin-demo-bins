@@ -28,6 +28,7 @@ struct OverlayPerson {
 
 struct PoseResult {
     int passenger_count = 0;
+    int child_count = 0;
     bool driver_detected = true;
     bool driver_using_phone = false;
     bool dangerous_posture = false;

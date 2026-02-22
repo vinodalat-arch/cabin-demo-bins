@@ -16,6 +16,8 @@ class OutputResultTest {
         val base = mutableMapOf<String, Any?>(
             "timestamp" to "2026-01-01T00:00:00+00:00",
             "passenger_count" to 1,
+            "child_count" to 0,
+            "adult_count" to 0,
             "driver_using_phone" to false,
             "driver_eyes_closed" to false,
             "driver_yawning" to false,
@@ -235,6 +237,54 @@ class OutputResultTest {
         val data = validResult(mapOf("mar_value" to "0.5"))
         val errors = OutputResult.validate(data)
         assertTrue("Expected 1+ errors for string mar_value", errors.isNotEmpty())
+    }
+
+    // -------------------------------------------------------------------------
+    // Child/Adult Count Tests (6 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_valid_child_count() {
+        val data = validResult(mapOf("child_count" to 2, "child_present" to true))
+        val errors = OutputResult.validate(data)
+        assertEquals(0, errors.size)
+    }
+
+    @Test
+    fun test_valid_adult_count() {
+        val data = validResult(mapOf("adult_count" to 3))
+        val errors = OutputResult.validate(data)
+        assertEquals(0, errors.size)
+    }
+
+    @Test
+    fun test_negative_child_count() {
+        val data = validResult(mapOf("child_count" to -1))
+        val errors = OutputResult.validate(data)
+        assertTrue("Expected 1+ errors for negative child_count", errors.isNotEmpty())
+    }
+
+    @Test
+    fun test_negative_adult_count() {
+        val data = validResult(mapOf("adult_count" to -1))
+        val errors = OutputResult.validate(data)
+        assertTrue("Expected 1+ errors for negative adult_count", errors.isNotEmpty())
+    }
+
+    @Test
+    fun test_missing_child_count() {
+        val data = validResult()
+        data.remove("child_count")
+        val errors = OutputResult.validate(data)
+        assertTrue("Expected 1+ errors for missing child_count", errors.isNotEmpty())
+    }
+
+    @Test
+    fun test_missing_adult_count() {
+        val data = validResult()
+        data.remove("adult_count")
+        val errors = OutputResult.validate(data)
+        assertTrue("Expected 1+ errors for missing adult_count", errors.isNotEmpty())
     }
 
     // -------------------------------------------------------------------------

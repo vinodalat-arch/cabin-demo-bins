@@ -42,6 +42,7 @@ class MainActivity : Activity() {
         private const val PREF_LANGUAGE = "language"
         private const val PREF_SEAT_SIDE = "seat_side"
         private const val PREF_WIFI_URL = "wifi_camera_url"
+        private const val PREF_PASSENGER_DETAIL = "passenger_info_detail"
 
         // 5-tap gesture
         private const val TAP_WINDOW_MS = 3000L
@@ -189,7 +190,7 @@ class MainActivity : Activity() {
 
     // --- UI references ---
     private lateinit var rootLayout: FrameLayout
-    private lateinit var toggleButton: Button
+    private lateinit var toggleButton: TextView
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
     private lateinit var audioToggle: Button
@@ -230,6 +231,8 @@ class MainActivity : Activity() {
     private lateinit var seatRightBtn: TextView
     private lateinit var langEnBtn: TextView
     private lateinit var langJaBtn: TextView
+    private lateinit var paxMinimalBtn: TextView
+    private lateinit var paxDetailedBtn: TextView
     private var settingsVisible = false
 
     // --- 5-tap gesture ---
@@ -391,6 +394,8 @@ class MainActivity : Activity() {
         seatRightBtn = findViewById(R.id.seatRightBtn)
         langEnBtn = findViewById(R.id.langEnBtn)
         langJaBtn = findViewById(R.id.langJaBtn)
+        paxMinimalBtn = findViewById(R.id.paxMinimalBtn)
+        paxDetailedBtn = findViewById(R.id.paxDetailedBtn)
         registerButton = findViewById(R.id.registerButton)
         previewToggle = findViewById(R.id.previewToggle)
         audioToggle = findViewById(R.id.audioToggle)
@@ -405,11 +410,13 @@ class MainActivity : Activity() {
         Config.LANGUAGE = prefs.getString(PREF_LANGUAGE, "en") ?: "en"
         Config.DRIVER_SEAT_SIDE = prefs.getString(PREF_SEAT_SIDE, "left") ?: "left"
         Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
+        Config.PASSENGER_INFO_DETAIL = prefs.getString(PREF_PASSENGER_DETAIL, "minimal") ?: "minimal"
         updatePreviewToggleUI()
         updateAudioToggleUI()
         updateSeatSegmentUI()
         updateLangSegmentUI()
         updateWifiCamButtonUI()
+        updatePaxDetailSegmentUI()
 
         // --- Main controls ---
         toggleButton.setOnClickListener {
@@ -459,6 +466,19 @@ class MainActivity : Activity() {
             prefs.edit().putString(PREF_LANGUAGE, "ja").apply()
             updateLangSegmentUI()
             Log.i(TAG, "Language: ja")
+        }
+
+        paxMinimalBtn.setOnClickListener {
+            Config.PASSENGER_INFO_DETAIL = "minimal"
+            prefs.edit().putString(PREF_PASSENGER_DETAIL, "minimal").apply()
+            updatePaxDetailSegmentUI()
+            Log.i(TAG, "Passenger info: minimal")
+        }
+        paxDetailedBtn.setOnClickListener {
+            Config.PASSENGER_INFO_DETAIL = "detailed"
+            prefs.edit().putString(PREF_PASSENGER_DETAIL, "detailed").apply()
+            updatePaxDetailSegmentUI()
+            Log.i(TAG, "Passenger info: detailed")
         }
 
         audioToggle.setOnClickListener {
@@ -648,6 +668,20 @@ class MainActivity : Activity() {
             langJaBtn.setTextColor(Color.WHITE)
             langEnBtn.setBackgroundColor(Color.TRANSPARENT)
             langEnBtn.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun updatePaxDetailSegmentUI() {
+        if (Config.PASSENGER_INFO_DETAIL == "minimal") {
+            paxMinimalBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            paxMinimalBtn.setTextColor(Color.WHITE)
+            paxDetailedBtn.setBackgroundColor(Color.TRANSPARENT)
+            paxDetailedBtn.setTextColor(colorTextSecondary)
+        } else {
+            paxDetailedBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            paxDetailedBtn.setTextColor(Color.WHITE)
+            paxMinimalBtn.setBackgroundColor(Color.TRANSPARENT)
+            paxMinimalBtn.setTextColor(colorTextSecondary)
         }
     }
 
@@ -1079,9 +1113,21 @@ class MainActivity : Activity() {
         yawText.text = "Yaw: ${result.headYaw?.let { "%.1f".format(it) } ?: "--"}"
         pitchText.text = "Pitch: ${result.headPitch?.let { "%.1f".format(it) } ?: "--"}"
 
-        // Info
-        val pCount = result.passengerCount
-        passengerText.text = "$pCount passenger${if (pCount != 1) "s" else ""}"
+        // Info — passenger breakdown
+        if (Config.PASSENGER_INFO_DETAIL == "detailed") {
+            val parts = mutableListOf<String>()
+            if (result.driverDetected) parts.add("1 driver")
+            if (result.childCount > 0) {
+                parts.add("${result.childCount} child${if (result.childCount != 1) "ren" else ""}")
+            }
+            if (result.adultCount > 0) {
+                parts.add("${result.adultCount} adult${if (result.adultCount != 1) "s" else ""}")
+            }
+            passengerText.text = if (parts.isEmpty()) "No occupants" else parts.joinToString(", ")
+        } else {
+            val pCount = result.passengerCount
+            passengerText.text = "$pCount passenger${if (pCount != 1) "s" else ""}"
+        }
         val distS = result.distractionDurationS
         if (distS > 0) {
             distractionText.text = "Distraction: ${distS}s"

@@ -197,6 +197,7 @@ class MergerTest {
         )
         val pose = PoseResult(
             passengerCount = 2,
+            childCount = 1,
             driverUsingPhone = true,
             dangerousPosture = false,
             childPresent = true,
@@ -207,6 +208,9 @@ class MergerTest {
 
         assertTrue(result.driverEyesClosed)
         assertEquals(2, result.passengerCount)
+        assertEquals(1, result.childCount)
+        // adultCount = 2 (total) - 1 (driver detected) - 1 (child) = 0
+        assertEquals(0, result.adultCount)
         assertTrue(result.driverUsingPhone)
         assertFalse(result.dangerousPosture)
         assertTrue(result.childPresent)
@@ -313,5 +317,60 @@ class MergerTest {
         assertTrue(result.driverEatingDrinking)
         // yawning(2) + distracted(2) + eating(1) = 5 >= 3 -> "high"
         assertEquals("high", result.riskLevel)
+    }
+
+    @Test
+    fun test_child_count_and_adult_count_computed() {
+        // 4 persons detected (1 driver + 1 child + 2 adults)
+        val face = FaceResult()
+        val pose = PoseResult(
+            passengerCount = 4,
+            childCount = 1,
+            driverDetected = true,
+            childPresent = true
+        )
+        val result = mergeResults(face, pose)
+        assertEquals(4, result.passengerCount)
+        assertEquals(1, result.childCount)
+        // adultCount = 4 - 1 (driver) - 1 (child) = 2
+        assertEquals(2, result.adultCount)
+    }
+
+    @Test
+    fun test_adult_count_no_driver() {
+        // 3 persons, no driver detected, 1 child
+        val face = FaceResult()
+        val pose = PoseResult(
+            passengerCount = 3,
+            childCount = 1,
+            driverDetected = false
+        )
+        val result = mergeResults(face, pose)
+        // adultCount = 3 - 0 (no driver) - 1 (child) = 2
+        assertEquals(2, result.adultCount)
+    }
+
+    @Test
+    fun test_adult_count_zero_children() {
+        // 2 persons, driver + 1 adult passenger
+        val face = FaceResult()
+        val pose = PoseResult(
+            passengerCount = 2,
+            childCount = 0,
+            driverDetected = true
+        )
+        val result = mergeResults(face, pose)
+        assertEquals(0, result.childCount)
+        // adultCount = 2 - 1 (driver) - 0 = 1
+        assertEquals(1, result.adultCount)
+    }
+
+    @Test
+    fun test_defaults_have_zero_counts() {
+        val face = FaceResult()
+        val pose = PoseResult()
+        val result = mergeResults(face, pose)
+        assertEquals(0, result.childCount)
+        assertEquals(0, result.adultCount)
     }
 }

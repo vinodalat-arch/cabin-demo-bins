@@ -62,7 +62,13 @@ class CameraManager(
     }
 
     private fun findCamera(): String? {
-        val cameraIds = systemCameraManager.cameraIdList
+        val cameraIds = try {
+            systemCameraManager.cameraIdList
+        } catch (e: Exception) {
+            Log.w(TAG, "cameraIdList failed: ${e.message}")
+            emptyArray()
+        }
+        Log.i(TAG, "Camera IDs from API: ${cameraIds.joinToString()}")
 
         // Prefer external (USB) camera
         for (id in cameraIds) {
@@ -78,6 +84,17 @@ class CameraManager(
         if (cameraIds.isNotEmpty()) {
             Log.i(TAG, "No external camera found, using fallback: ${cameraIds[0]}")
             return cameraIds[0]
+        }
+
+        // AAOS workaround: config.disable_cameraservice=true hides cameras from
+        // Camera2 API, but the HAL may still have cameras. Try known IDs.
+        val probeIds = listOf("0", "10", "1")
+        for (id in probeIds) {
+            try {
+                systemCameraManager.getCameraCharacteristics(id)
+                Log.i(TAG, "Probed camera found: $id (hidden from cameraIdList)")
+                return id
+            } catch (_: Exception) { }
         }
 
         return null

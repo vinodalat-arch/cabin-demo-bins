@@ -66,6 +66,9 @@ object Config {
     // Driver seat side: "left" (LHD) or "right" (RHD)
     @JvmStatic @Volatile var DRIVER_SEAT_SIDE = "left"
 
+    // Passenger info detail: "minimal" or "detailed" (toggleable at runtime; persisted in SharedPreferences)
+    @JvmStatic @Volatile var PASSENGER_INFO_DETAIL = "minimal"
+
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2
     const val V4L2_MAX_CONSECUTIVE_FAILURES = 3

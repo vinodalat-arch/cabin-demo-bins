@@ -115,16 +115,19 @@
                     android:layout_weight="1" />
 
                 <!-- Start / Stop button -->
-                <Button
+                <TextView
                     android:id="@+id/toggleButton"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/button_height"
                     android:background="@drawable/bg_button_accent"
                     android:text="@string/start_service"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
                     android:textColor="#FFFFFFFF"
-                    android:textAllCaps="false"
-                    android:stateListAnimator="@null" />
+                    android:letterSpacing="0.08"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true" />
             </LinearLayout>
 
             <!-- ──── CENTER: Camera preview + AI status overlay ──── -->
@@ -238,12 +241,33 @@
                     android:gravity="center"
                     android:background="@color/surface">
 
+                    <!-- Premium brand mark -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Honda Smart Cabin"
-                        style="@style/TextTitle"
-                        android:textColor="@color/text_muted" />
+                        android:text="HONDA"
+                        android:textSize="32sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:letterSpacing="0.30"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <!-- Accent rule -->
+                    <View
+                        android:layout_width="48dp"
+                        android:layout_height="2dp"
+                        android:background="@color/accent"
+                        android:layout_marginTop="@dimen/space_sm"
+                        android:layout_marginBottom="@dimen/space_sm" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="SMART CABIN"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:letterSpacing="0.25"
+                        android:fontFamily="sans-serif-light" />
 
                     <TextView
                         android:id="@+id/statusText"
@@ -251,7 +275,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Tap Start to begin monitoring"
-                        android:layout_marginTop="@dimen/space_sm" />
+                        android:textColor="@color/text_muted"
+                        android:layout_marginTop="@dimen/space_xl" />
                 </LinearLayout>
 
                 <!-- AI status overlay at bottom of preview -->
@@ -550,6 +575,47 @@
                 android:layout_weight="1"
                 android:gravity="center"
                 android:text="JA"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+
+        <!-- Passenger Info Detail -->
+        <TextView
+            style="@style/TextCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Passenger Info"
+            android:layout_marginBottom="@dimen/space_sm" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_segmented_button"
+            android:layout_marginBottom="@dimen/space_xl">
+
+            <TextView
+                android:id="@+id/paxMinimalBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="MINIMAL"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="@color/divider" />
+
+            <TextView
+                android:id="@+id/paxDetailedBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="DETAILED"
                 android:textSize="13sp"
                 android:textColor="@color/text_secondary" />
         </LinearLayout>

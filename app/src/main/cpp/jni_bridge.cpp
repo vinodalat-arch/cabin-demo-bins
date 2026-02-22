@@ -154,7 +154,7 @@ Java_com_incabin_PoseAnalyzerBridge_nativeAnalyzePose(
     jboolean seat_on_left
 ) {
     static const char* FALLBACK_JSON =
-        "{\"passenger_count\":0,\"driver_detected\":false,\"driver_using_phone\":false,"
+        "{\"passenger_count\":0,\"child_count\":0,\"driver_detected\":false,\"driver_using_phone\":false,"
         "\"dangerous_posture\":false,\"child_present\":false,"
         "\"child_slouching\":false,\"driver_eating_drinking\":false}";
 

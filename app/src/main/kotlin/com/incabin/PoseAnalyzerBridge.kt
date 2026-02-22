@@ -34,6 +34,9 @@ data class PoseResult(
     @SerializedName("passenger_count")
     val passengerCount: Int = 0,
 
+    @SerializedName("child_count")
+    val childCount: Int = 0,
+
     @SerializedName("driver_detected")
     val driverDetected: Boolean = true,
 
