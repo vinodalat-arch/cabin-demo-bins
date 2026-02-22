@@ -4,34 +4,48 @@
     android:height="200dp"
     android:viewportWidth="200"
     android:viewportHeight="200"
-    android:alpha="0.35">
+    android:alpha="0.90">
 
-    <!-- Helmet dome -->
+    <!-- Helmet dome (rotated right) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M100,16 C74,16 64,36 64,50 L64,58 L136,58 L136,50 C136,36 126,16 100,16 Z" />
+        android:pathData="M104,16 C78,17 68,37 68,51 L68,59 L140,57 L140,49 C140,35 130,15 104,16 Z" />
 
     <!-- Visor slit -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3"
-        android:pathData="M70,38 L130,38 L130,50 L70,50 Z" />
+        android:pathData="M74,38 L134,37 L134,49 L74,50 Z" />
+
+    <!-- Visor eyes (orange - warning) -->
+    <path
+        android:fillColor="#F39C12"
+        android:pathData="M92,42 A4,4 0 1,1 92,42.01 Z" />
+    <path
+        android:fillColor="#F39C12"
+        android:pathData="M120,41 A4,4 0 1,1 120,41.01 Z" />
 
     <!-- Neck -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M86,58 L114,58 L114,66 L86,66 Z" />
+        android:pathData="M88,58 L116,58 L116,66 L88,66 Z" />
 
     <!-- Torso -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M72,66 L128,66 L132,70 L132,122 L128,128 L72,128 L68,122 L68,70 Z" />
 
-    <!-- Badge stripe (HONDA) -->
+    <!-- Badge stripe with H -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5"
         android:pathData="M80,90 L120,90 L120,100 L80,100 Z" />
+
+    <!-- H badge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.8"
+        android:pathData="M95,92 L95,98 M105,92 L105,98 M95,95 L105,95" />
 
     <!-- Left leg -->
     <path
@@ -43,19 +57,19 @@
         android:fillColor="#FFFFFF"
         android:pathData="M104,130 L124,130 L124,164 L128,164 L128,178 L100,178 L100,164 L104,164 Z" />
 
-    <!-- Left arm relaxed at side -->
+    <!-- Left arm on hip -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M68,72 L56,78 L52,86 L50,116 L58,120 L62,116 L60,86 L68,78 Z" />
+        android:pathData="M68,72 L52,82 L48,96 L56,102 L66,92 L68,80 Z" />
 
-    <!-- Right arm extended pointing forward -->
+    <!-- Right arm extended pointing forward strongly -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M132,68 L150,68 L174,66 L188,62 L188,56 L174,60 L150,62 L132,62 Z" />
+        android:pathData="M132,68 L150,64 L174,60 L190,56 L190,50 L174,54 L150,58 L132,62 Z" />
 
     <!-- Pointing finger -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M188,56 L198,54 L198,60 L188,62 Z" />
+        android:pathData="M190,50 L200,48 L200,54 L190,56 Z" />
 
 </vector>

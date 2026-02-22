@@ -4,58 +4,82 @@
     android:height="200dp"
     android:viewportWidth="200"
     android:viewportHeight="200"
-    android:alpha="0.35">
+    android:alpha="0.90">
 
-    <!-- Helmet dome (shifted down for kneeling) -->
+    <!-- Helmet dome (tilted down, looking at child) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M100,34 C74,34 64,54 64,68 L64,76 L136,76 L136,68 C136,54 126,34 100,34 Z" />
+        android:pathData="M100,36 C74,36 64,56 64,70 L64,78 L136,78 L136,70 C136,56 126,36 100,36 Z" />
 
     <!-- Visor slit -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3"
-        android:pathData="M70,56 L130,56 L130,68 L70,68 Z" />
+        android:pathData="M70,58 L130,58 L130,70 L70,70 Z" />
+
+    <!-- Visor eyes (blue - caring) -->
+    <path
+        android:fillColor="#5B8DEF"
+        android:pathData="M88,62 A4,4 0 1,1 88,62.01 Z" />
+    <path
+        android:fillColor="#5B8DEF"
+        android:pathData="M116,62 A4,4 0 1,1 116,62.01 Z" />
 
     <!-- Neck -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M86,76 L114,76 L114,84 L86,84 Z" />
+        android:pathData="M86,78 L114,78 L114,86 L86,86 Z" />
 
     <!-- Torso -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M72,84 L128,84 L132,88 L132,140 L128,146 L72,146 L68,140 L68,88 Z" />
+        android:pathData="M72,86 L128,86 L132,90 L132,142 L128,148 L72,148 L68,142 L68,90 Z" />
 
-    <!-- Badge stripe (HONDA) -->
+    <!-- Badge stripe with H -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5"
-        android:pathData="M80,108 L120,108 L120,118 L80,118 Z" />
+        android:pathData="M80,110 L120,110 L120,120 L80,120 Z" />
 
-    <!-- Left leg (kneeling - horizontal thigh, vertical shin) -->
+    <!-- H badge -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M72,148 L96,148 L96,156 L84,156 L84,178 L72,178 Z" />
+        android:fillAlpha="0.8"
+        android:pathData="M95,112 L95,118 M105,112 L105,118 M95,115 L105,115" />
+
+    <!-- Left leg (kneeling) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,150 L96,150 L96,158 L84,158 L84,180 L72,180 Z" />
 
     <!-- Right leg (kneeling) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M104,148 L128,148 L128,178 L116,178 L116,156 L104,156 Z" />
+        android:pathData="M104,150 L128,150 L128,180 L116,180 L116,158 L104,158 Z" />
 
     <!-- Left arm at side -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M68,90 L56,96 L52,104 L50,134 L58,138 L62,134 L60,104 L68,96 Z" />
+        android:pathData="M68,92 L56,98 L52,106 L50,136 L58,140 L62,136 L60,106 L68,98 Z" />
 
-    <!-- Right arm pointing down -->
+    <!-- Right arm pointing down toward child -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M132,90 L144,96 L148,108 L150,148 L154,164 L146,168 L142,164 L142,148 L140,108 L132,96 Z" />
+        android:pathData="M132,92 L144,98 L148,110 L150,150 L154,166 L146,170 L142,166 L142,150 L140,110 L132,98 Z" />
 
     <!-- Pointing finger down -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M146,168 L148,180 L154,180 L154,168 Z" />
+        android:pathData="M146,170 L148,182 L154,182 L154,170 Z" />
+
+    <!-- Small child silhouette outline (right side) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.35"
+        android:pathData="M168,130 C160,130 156,138 156,144 L156,148 L180,148 L180,144 C180,138 176,130 168,130 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.35"
+        android:pathData="M162,148 L174,148 L174,150 L176,150 L176,164 L180,164 L180,180 L156,180 L156,164 L160,164 L160,150 L162,150 Z" />
 
 </vector>

@@ -284,10 +284,19 @@ class MainActivity : Activity() {
     private val tickerEvents = mutableListOf<String>()
     private var lastTickerDetections = ""
 
-    // --- ASIMO mascot ---
+    // --- ASIMO mascot / companion hub ---
+    private lateinit var asimoContainer: LinearLayout
     private lateinit var asimoMascot: ImageView
+    private lateinit var asimoBrandingText: TextView
+    private lateinit var asimoBubbleFrame: FrameLayout
+    private lateinit var asimoBubbleText: TextView
+    private lateinit var asimoBubbleTail: ImageView
+    private lateinit var asimoGlowFrame: FrameLayout
+    private lateinit var asimoGlowView: AsimoBgGlowView
+    private lateinit var asimoDetectionLabel: TextView
     private var currentAsimoPose: Int = 0
     private var asimoAnimating: Boolean = false
+    private var currentAsimoDetectionKey: String = ""
 
     // --- Animation state ---
     private var currentRiskColor = 0
@@ -386,8 +395,16 @@ class MainActivity : Activity() {
         tickerLine2 = findViewById(R.id.tickerLine2)
         tickerLine3 = findViewById(R.id.tickerLine3)
 
-        // Bind views — ASIMO mascot
+        // Bind views — ASIMO companion hub
+        asimoContainer = findViewById(R.id.asimoContainer)
         asimoMascot = findViewById(R.id.asimoMascot)
+        asimoBrandingText = findViewById(R.id.asimoBrandingText)
+        asimoBubbleFrame = findViewById(R.id.asimoBubbleFrame)
+        asimoBubbleText = findViewById(R.id.asimoBubbleText)
+        asimoBubbleTail = findViewById(R.id.asimoBubbleTail)
+        asimoGlowFrame = findViewById(R.id.asimoGlowFrame)
+        asimoGlowView = findViewById(R.id.asimoGlowView)
+        asimoDetectionLabel = findViewById(R.id.asimoDetectionLabel)
 
         // Bind views — settings panel
         settingsPanel = findViewById(R.id.settingsPanel)
@@ -519,6 +536,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         riskAnimator?.cancel()
+        if (::asimoGlowView.isInitialized) asimoGlowView.stopPulse()
         deviceSetup?.cancel()
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -921,18 +939,29 @@ class MainActivity : Activity() {
         scoreContainer.visibility = View.VISIBLE
         scorePanel.visibility = View.VISIBLE
         leftDivider.visibility = View.VISIBLE
-        aiStatusText.visibility = View.VISIBLE
-        aiStatusText.text = "Warming up the AI brain..."
-        aiStatusText.setTextColor(colorAccent)
 
-        // Show ASIMO mascot with fade-in
+        // Show aiStatusText only when preview is ON (bubble handles it otherwise)
+        if (Config.ENABLE_PREVIEW) {
+            aiStatusText.visibility = View.VISIBLE
+            aiStatusText.text = "Warming up the AI brain..."
+            aiStatusText.setTextColor(colorAccent)
+        } else {
+            aiStatusText.visibility = View.GONE
+        }
+
+        // Show ASIMO companion hub with fade-in
         currentAsimoPose = R.drawable.asimo_all_clear
         asimoAnimating = false
+        currentAsimoDetectionKey = ""
         asimoMascot.setImageResource(R.drawable.asimo_all_clear)
+        asimoGlowView.setGlowColor(colorSafe)
+        asimoGlowView.stopPulse()
+        asimoBubbleText.text = if (Config.LANGUAGE == "ja") "AIの準備が完了しました！" else "Smart eyes are ready!"
+        asimoDetectionLabel.visibility = View.GONE
         updateAsimoSize()
-        asimoMascot.alpha = 0f
-        asimoMascot.visibility = View.VISIBLE
-        asimoMascot.animate().alpha(1f).setDuration(300).start()
+        asimoContainer.alpha = 0f
+        asimoContainer.visibility = View.VISIBLE
+        asimoContainer.animate().alpha(1f).setDuration(300).start()
 
         // Fade in right panel
         rightPanel.alpha = 0f
@@ -969,9 +998,10 @@ class MainActivity : Activity() {
             rightPanel.visibility = View.GONE
         }.start()
 
-        // Fade out ASIMO mascot
-        asimoMascot.animate().alpha(0f).setDuration(200).withEndAction {
-            asimoMascot.visibility = View.GONE
+        // Fade out ASIMO companion hub
+        asimoGlowView.stopPulse()
+        asimoContainer.animate().alpha(0f).setDuration(200).withEndAction {
+            asimoContainer.visibility = View.GONE
         }.start()
 
         scoreContainer.visibility = View.GONE
@@ -1186,7 +1216,7 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------------
 
     private fun updateAsimoPose(result: OutputResult) {
-        val targetDrawable = ASIMO_POSE_PRIORITY.firstOrNull { (field, _) ->
+        val targetEntry = ASIMO_POSE_PRIORITY.firstOrNull { (field, _) ->
             when (field) {
                 "driverUsingPhone" -> result.driverUsingPhone
                 "driverEyesClosed" -> result.driverEyesClosed
@@ -1197,7 +1227,27 @@ class MainActivity : Activity() {
                 "childSlouching" -> result.childSlouching
                 else -> false
             }
-        }?.second ?: R.drawable.asimo_all_clear
+        }
+        val targetDrawable = targetEntry?.second ?: R.drawable.asimo_all_clear
+        val detectionKey = targetEntry?.first ?: ""
+
+        // Update glow color based on risk level
+        val glowColor = when (result.riskLevel) {
+            "high" -> colorDanger
+            "medium" -> colorCaution
+            else -> colorSafe
+        }
+        asimoGlowView.animateColorTo(glowColor)
+
+        // Pulse on danger
+        if (result.riskLevel == "high") {
+            asimoGlowView.startPulse()
+        } else {
+            asimoGlowView.stopPulse()
+        }
+
+        // Update detection label
+        updateAsimoDetectionLabel(detectionKey)
 
         if (targetDrawable == currentAsimoPose || asimoAnimating) return
 
@@ -1219,16 +1269,88 @@ class MainActivity : Activity() {
             .start()
     }
 
+    private fun updateAsimoDetectionLabel(detectionKey: String) {
+        if (detectionKey == currentAsimoDetectionKey) return
+        currentAsimoDetectionKey = detectionKey
+
+        if (detectionKey.isEmpty()) {
+            // No detection — fade out label
+            if (asimoDetectionLabel.visibility == View.VISIBLE) {
+                asimoDetectionLabel.animate().alpha(0f).setDuration(200).withEndAction {
+                    asimoDetectionLabel.visibility = View.GONE
+                }.start()
+            }
+            return
+        }
+
+        val labelMap = if (Config.LANGUAGE == "ja") DETECTION_LABELS_JA else DETECTION_LABELS_EN
+        val label = (labelMap[detectionKey] ?: detectionKey).uppercase()
+        val isDanger = detectionKey in DETECTION_DANGER_FIELDS
+        val labelColor = if (isDanger) colorDanger else colorCaution
+
+        // Tint the background drawable
+        val bg = asimoDetectionLabel.background
+        if (bg is GradientDrawable) {
+            bg.setColor(labelColor and 0x00FFFFFF or 0x33000000) // 20% alpha tint
+        }
+
+        asimoDetectionLabel.text = label
+        asimoDetectionLabel.setTextColor(labelColor)
+
+        if (asimoDetectionLabel.visibility != View.VISIBLE) {
+            asimoDetectionLabel.alpha = 0f
+            asimoDetectionLabel.visibility = View.VISIBLE
+            asimoDetectionLabel.animate().alpha(1f).setDuration(200).start()
+        }
+    }
+
     private fun updateAsimoSize() {
-        val size = if (Config.ENABLE_PREVIEW) {
+        val isCompact = Config.ENABLE_PREVIEW
+
+        // Robot size
+        val robotSize = if (isCompact) {
             resources.getDimensionPixelSize(R.dimen.asimo_size_small)
         } else {
             resources.getDimensionPixelSize(R.dimen.asimo_size_large)
         }
-        val lp = asimoMascot.layoutParams
-        lp.width = size
-        lp.height = size
-        asimoMascot.layoutParams = lp
+        val robotLp = asimoMascot.layoutParams
+        robotLp.width = robotSize
+        robotLp.height = robotSize
+        asimoMascot.layoutParams = robotLp
+
+        // Glow frame size
+        val glowSize = if (isCompact) {
+            resources.getDimensionPixelSize(R.dimen.asimo_glow_size_small)
+        } else {
+            resources.getDimensionPixelSize(R.dimen.asimo_glow_size_large)
+        }
+        val glowLp = asimoGlowFrame.layoutParams
+        glowLp.width = glowSize
+        glowLp.height = glowSize
+        asimoGlowFrame.layoutParams = glowLp
+
+        // Show/hide bubble, label, branding based on mode
+        val hubVisibility = if (isCompact) View.GONE else View.VISIBLE
+        asimoBrandingText.visibility = hubVisibility
+        asimoBubbleFrame.visibility = hubVisibility
+        asimoBubbleTail.visibility = hubVisibility
+        asimoDetectionLabel.visibility = if (isCompact || currentAsimoDetectionKey.isEmpty()) View.GONE else View.VISIBLE
+
+        // Container gravity: center when full, bottom-end when compact
+        val containerLp = asimoContainer.layoutParams
+        if (containerLp is FrameLayout.LayoutParams) {
+            containerLp.gravity = if (isCompact) {
+                android.view.Gravity.BOTTOM or android.view.Gravity.END
+            } else {
+                android.view.Gravity.CENTER
+            }
+            asimoContainer.layoutParams = containerLp
+        }
+
+        // AI status text visibility (show when compact for fallback)
+        if (isRunning) {
+            aiStatusText.visibility = if (isCompact) View.VISIBLE else View.GONE
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -1346,12 +1468,14 @@ class MainActivity : Activity() {
             }
         }
 
-        // Crossfade: alpha out → set text → alpha in
-        if (aiStatusText.text != message) {
-            aiStatusText.animate().alpha(0f).setDuration(75).withEndAction {
-                aiStatusText.text = message
-                aiStatusText.setTextColor(color)
-                aiStatusText.animate().alpha(1f).setDuration(150).start()
+        // Route to bubble (preview OFF) or aiStatusText (preview ON)
+        val targetView = if (Config.ENABLE_PREVIEW) aiStatusText else asimoBubbleText
+
+        if (targetView.text != message) {
+            targetView.animate().alpha(0f).setDuration(75).withEndAction {
+                targetView.text = message
+                targetView.setTextColor(color)
+                targetView.animate().alpha(1f).setDuration(150).start()
             }.start()
         }
     }

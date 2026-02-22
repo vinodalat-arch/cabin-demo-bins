@@ -16,4 +16,8 @@
     <color name="gold">#F1C40F</color>
 
     <color name="divider">#1E1F2A</color>
+
+    <!-- Speech bubble -->
+    <color name="bubble_bg">#CC1A1B24</color>
+    <color name="bubble_border">#333D3F4A</color>
 </resources>

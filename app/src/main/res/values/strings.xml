@@ -6,4 +6,5 @@
     <string name="notification_channel">InCabin Service</string>
     <string name="notification_title">In-Cabin Monitor</string>
     <string name="notification_text">Monitoring active</string>
+    <string name="asimo_branding">\u2500\u2500 ASIMO \u2500\u2500</string>
 </resources>

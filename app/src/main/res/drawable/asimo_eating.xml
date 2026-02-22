@@ -4,53 +4,67 @@
     android:height="200dp"
     android:viewportWidth="200"
     android:viewportHeight="200"
-    android:alpha="0.35">
+    android:alpha="0.90">
 
-    <!-- Helmet dome -->
+    <!-- Helmet dome (forward tilt) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M100,16 C74,16 64,36 64,50 L64,58 L136,58 L136,50 C136,36 126,16 100,16 Z" />
+        android:pathData="M100,18 C74,18 64,38 64,52 L64,60 L136,60 L136,52 C136,38 126,18 100,18 Z" />
 
     <!-- Visor slit -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3"
-        android:pathData="M70,38 L130,38 L130,50 L70,50 Z" />
+        android:pathData="M70,40 L130,40 L130,52 L70,52 Z" />
+
+    <!-- Visor eyes (orange - warning) -->
+    <path
+        android:fillColor="#F39C12"
+        android:pathData="M88,44 A4,4 0 1,1 88,44.01 Z" />
+    <path
+        android:fillColor="#F39C12"
+        android:pathData="M116,44 A4,4 0 1,1 116,44.01 Z" />
 
     <!-- Neck -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M86,58 L114,58 L114,66 L86,66 Z" />
+        android:pathData="M86,60 L114,60 L114,68 L86,68 Z" />
 
     <!-- Torso -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M72,66 L128,66 L132,70 L132,122 L128,128 L72,128 L68,122 L68,70 Z" />
+        android:pathData="M72,68 L128,68 L132,72 L132,124 L128,130 L72,130 L68,124 L68,72 Z" />
 
-    <!-- Badge stripe (HONDA) -->
+    <!-- Badge stripe with H -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5"
-        android:pathData="M80,90 L120,90 L120,100 L80,100 Z" />
+        android:pathData="M80,92 L120,92 L120,102 L80,102 Z" />
 
-    <!-- Left leg -->
+    <!-- H badge -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M76,130 L96,130 L96,164 L100,164 L100,178 L72,178 L72,164 L76,164 Z" />
+        android:fillAlpha="0.8"
+        android:pathData="M95,94 L95,100 M105,94 L105,100 M95,97 L105,97" />
 
-    <!-- Right leg -->
+    <!-- Left leg (narrow stance) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M104,130 L124,130 L124,164 L128,164 L128,178 L100,178 L100,164 L104,164 Z" />
+        android:pathData="M80,132 L96,132 L96,164 L100,164 L100,178 L76,178 L76,164 L80,164 Z" />
 
-    <!-- Left arm on hip (akimbo) -->
+    <!-- Right leg (narrow stance) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M68,72 L52,82 L48,96 L56,102 L66,92 L68,80 Z" />
+        android:pathData="M104,132 L120,132 L120,164 L124,164 L124,178 L100,178 L100,164 L104,164 Z" />
 
-    <!-- Right arm on hip (akimbo) -->
+    <!-- Left arm crossed over torso -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M132,72 L148,82 L152,96 L144,102 L134,92 L132,80 Z" />
+        android:pathData="M68,74 L56,78 L56,86 L72,100 L100,104 L100,96 L72,92 L60,82 L68,76 Z" />
+
+    <!-- Right arm crossed over torso -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M132,74 L144,78 L144,86 L128,100 L100,104 L100,96 L128,92 L140,82 L132,76 Z" />
 
 </vector>

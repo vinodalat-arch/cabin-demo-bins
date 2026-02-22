@@ -4,18 +4,26 @@
     android:height="200dp"
     android:viewportWidth="200"
     android:viewportHeight="200"
-    android:alpha="0.35">
+    android:alpha="0.90">
 
-    <!-- Helmet dome -->
+    <!-- Helmet dome (slight right tilt) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M100,16 C74,16 64,36 64,50 L64,58 L136,58 L136,50 C136,36 126,16 100,16 Z" />
+        android:pathData="M102,16 C76,17 66,37 66,51 L66,59 L138,57 L138,49 C138,35 128,15 102,16 Z" />
 
     <!-- Visor slit -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3"
-        android:pathData="M70,38 L130,38 L130,50 L70,50 Z" />
+        android:pathData="M72,38 L132,37 L132,49 L72,50 Z" />
+
+    <!-- Visor eyes (blue - friendly) -->
+    <path
+        android:fillColor="#5B8DEF"
+        android:pathData="M88,42 A4,4 0 1,1 88,42.01 Z" />
+    <path
+        android:fillColor="#5B8DEF"
+        android:pathData="M116,41 A4,4 0 1,1 116,41.01 Z" />
 
     <!-- Neck -->
     <path
@@ -27,11 +35,17 @@
         android:fillColor="#FFFFFF"
         android:pathData="M72,66 L128,66 L132,70 L132,122 L128,128 L72,128 L68,122 L68,70 Z" />
 
-    <!-- Badge stripe (HONDA) -->
+    <!-- Badge stripe with H -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5"
         android:pathData="M80,90 L120,90 L120,100 L80,100 Z" />
+
+    <!-- H badge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.8"
+        android:pathData="M95,92 L95,98 M105,92 L105,98 M95,95 L105,95" />
 
     <!-- Left leg -->
     <path
@@ -43,12 +57,17 @@
         android:fillColor="#FFFFFF"
         android:pathData="M104,130 L124,130 L124,164 L128,164 L128,178 L100,178 L100,164 L104,164 Z" />
 
-    <!-- Left arm relaxed at side -->
+    <!-- Left arm waving (raised outward) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M68,72 L56,78 L52,86 L50,116 L58,120 L62,116 L60,86 L68,78 Z" />
+        android:pathData="M68,72 L54,62 L42,46 L36,28 L44,24 L48,28 L46,46 L56,60 L68,68 Z" />
 
-    <!-- Right arm raised -->
+    <!-- Left hand wave -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,28 L30,18 L38,14 L44,24 Z" />
+
+    <!-- Right arm raised thumbs-up -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M132,72 L140,66 L144,52 L144,24 L136,20 L132,24 L136,52 L132,66 Z" />

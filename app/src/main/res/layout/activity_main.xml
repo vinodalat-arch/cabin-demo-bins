@@ -141,16 +141,97 @@
                     android:background="@color/surface"
                     android:contentDescription="Camera preview" />
 
-                <!-- ASIMO mascot (reacts to detection state) -->
-                <ImageView
-                    android:id="@+id/asimoMascot"
-                    android:layout_width="@dimen/asimo_size_large"
-                    android:layout_height="@dimen/asimo_size_large"
+                <!-- ASIMO Companion Hub -->
+                <LinearLayout
+                    android:id="@+id/asimoContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:layout_gravity="center"
-                    android:scaleType="fitCenter"
-                    android:visibility="gone"
-                    android:src="@drawable/asimo_all_clear"
-                    android:contentDescription="ASIMO mascot" />
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:visibility="gone">
+
+                    <!-- Branding text -->
+                    <TextView
+                        android:id="@+id/asimoBrandingText"
+                        style="@style/TextMicro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/asimo_branding"
+                        android:textColor="@color/text_muted"
+                        android:letterSpacing="0.15"
+                        android:layout_marginBottom="@dimen/space_sm" />
+
+                    <!-- Speech bubble -->
+                    <FrameLayout
+                        android:id="@+id/asimoBubbleFrame"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="2dp">
+
+                        <TextView
+                            android:id="@+id/asimoBubbleText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxWidth="@dimen/bubble_max_width"
+                            android:background="@drawable/bg_speech_bubble"
+                            android:paddingStart="@dimen/bubble_padding_h"
+                            android:paddingEnd="@dimen/bubble_padding_h"
+                            android:paddingTop="@dimen/bubble_padding_v"
+                            android:paddingBottom="@dimen/bubble_padding_v"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_primary"
+                            android:gravity="center"
+                            android:text="Smart eyes are ready!" />
+                    </FrameLayout>
+
+                    <!-- Bubble tail -->
+                    <ImageView
+                        android:id="@+id/asimoBubbleTail"
+                        android:layout_width="16dp"
+                        android:layout_height="8dp"
+                        android:src="@drawable/bg_bubble_tail"
+                        android:layout_marginBottom="@dimen/space_xs"
+                        android:contentDescription="@null" />
+
+                    <!-- Glow ring + robot stacked -->
+                    <FrameLayout
+                        android:id="@+id/asimoGlowFrame"
+                        android:layout_width="@dimen/asimo_glow_size_large"
+                        android:layout_height="@dimen/asimo_glow_size_large">
+
+                        <com.incabin.AsimoBgGlowView
+                            android:id="@+id/asimoGlowView"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent" />
+
+                        <ImageView
+                            android:id="@+id/asimoMascot"
+                            android:layout_width="@dimen/asimo_size_large"
+                            android:layout_height="@dimen/asimo_size_large"
+                            android:layout_gravity="center"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/asimo_all_clear"
+                            android:contentDescription="ASIMO mascot" />
+                    </FrameLayout>
+
+                    <!-- Detection label below robot -->
+                    <TextView
+                        android:id="@+id/asimoDetectionLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_detection_label"
+                        android:paddingStart="@dimen/space_md"
+                        android:paddingEnd="@dimen/space_md"
+                        android:paddingTop="@dimen/space_xs"
+                        android:paddingBottom="@dimen/space_xs"
+                        android:textSize="13sp"
+                        android:textColor="@color/danger"
+                        android:letterSpacing="0.08"
+                        android:visibility="gone"
+                        android:layout_marginTop="@dimen/space_sm" />
+
+                </LinearLayout>
 
                 <!-- Idle branding (visible when not monitoring) -->
                 <LinearLayout

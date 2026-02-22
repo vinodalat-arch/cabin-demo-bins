@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="8dp"
+    android:viewportWidth="16"
+    android:viewportHeight="8">
+    <!-- Downward triangle tail for speech bubble -->
+    <path
+        android:fillColor="@color/bubble_bg"
+        android:pathData="M0,0 L16,0 L8,8 Z" />
+</vector>
