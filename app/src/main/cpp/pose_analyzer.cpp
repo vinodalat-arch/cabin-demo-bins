@@ -338,33 +338,37 @@ bool PoseAnalyzer::detectObjectsInRegion(const uint8_t* frame_bgr, int frame_w, 
 
 // ---- Main Analyze Pipeline ----
 
-PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height) {
+PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height, bool seat_on_left) {
     PoseResult result;
 
     // 1. Run pose model on full frame
     auto persons = runPoseModel(bgr_data, width, height);
     if (persons.empty()) {
         LOGI("No persons detected");
+        result.driver_detected = false;
         return result;
     }
 
     result.passenger_count = static_cast<int>(persons.size());
 
-    // 2. Identify driver = largest bbox by area
-    int driver_idx = 0;
+    // 2. Identify driver by seat side: largest person on the driver's side of the frame
+    int driver_idx = -1;
     float max_area = 0.0f;
+    float frame_mid_x = width / 2.0f;
+
     for (int i = 0; i < static_cast<int>(persons.size()); i++) {
-        float area = persons[i].area();
-        if (area > max_area) {
-            max_area = area;
-            driver_idx = i;
+        float center_x = (persons[i].x1 + persons[i].x2) / 2.0f;
+        bool on_driver_side = seat_on_left ? (center_x < frame_mid_x) : (center_x >= frame_mid_x);
+        if (on_driver_side) {
+            float area = persons[i].area();
+            if (area > max_area) {
+                max_area = area;
+                driver_idx = i;
+            }
         }
     }
 
-    const Detection& driver = persons[driver_idx];
-    float driver_height = driver.y2 - driver.y1;
-
-    // 2b. Populate overlay persons
+    // 2a. Populate overlay persons (always, even if driver not found)
     result.persons.resize(persons.size());
     for (int i = 0; i < static_cast<int>(persons.size()); i++) {
         auto& op = result.persons[i];
@@ -380,6 +384,19 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
             op.keypoints[k].conf = persons[i].keypoints[k].conf;
         }
     }
+
+    // 2b. If no person on driver side, skip driver-specific detections
+    if (driver_idx == -1) {
+        result.driver_detected = false;
+        LOGI("PoseAnalyzer: passengers=%d, driver_detected=false (no person on %s side)",
+             result.passenger_count, seat_on_left ? "left" : "right");
+        return result;
+    }
+
+    result.driver_detected = true;
+
+    const Detection& driver = persons[driver_idx];
+    float driver_height = driver.y2 - driver.y1;
 
     // 3. Check driver posture
     result.dangerous_posture = checkPosture(driver.keypoints, POSTURE_LEAN_THRESHOLD);
@@ -435,8 +452,8 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height)
     result.driver_eating_drinking = detectObjectsInCrop(
         bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f, FOOD_CONFIDENCE);
 
-    LOGI("PoseAnalyzer: passengers=%d, phone=%d, posture=%d, child=%d, slouch=%d, eating=%d",
-         result.passenger_count, result.driver_using_phone,
+    LOGI("PoseAnalyzer: passengers=%d, driver_detected=%d, phone=%d, posture=%d, child=%d, slouch=%d, eating=%d",
+         result.passenger_count, result.driver_detected, result.driver_using_phone,
          result.dangerous_posture, result.child_present,
          result.child_slouching, result.driver_eating_drinking);
 
@@ -452,6 +469,8 @@ std::string PoseResult::toJson() const {
 
     json += "{\"passenger_count\":";
     json += std::to_string(passenger_count);
+    json += ",\"driver_detected\":";
+    json += driver_detected ? "true" : "false";
     json += ",\"driver_using_phone\":";
     json += driver_using_phone ? "true" : "false";
     json += ",\"dangerous_posture\":";

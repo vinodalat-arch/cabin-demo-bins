@@ -70,6 +70,7 @@ fun mergeResults(faceResult: FaceResult, poseResult: PoseResult): OutputResult {
         marValue = faceResult.marValue,
         headYaw = faceResult.headYaw,
         headPitch = faceResult.headPitch,
-        distractionDurationS = 0
+        distractionDurationS = 0,
+        driverDetected = poseResult.driverDetected
     )
 }

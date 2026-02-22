@@ -34,6 +34,9 @@ data class PoseResult(
     @SerializedName("passenger_count")
     val passengerCount: Int = 0,
 
+    @SerializedName("driver_detected")
+    val driverDetected: Boolean = true,
+
     @SerializedName("driver_using_phone")
     val driverUsingPhone: Boolean = false,
 
@@ -99,18 +102,19 @@ class PoseAnalyzerBridge(
     /**
      * Run pose analysis on a BGR frame.
      *
-     * @param bgrData BGR pixel data (HWC uint8, width * height * 3 bytes)
-     * @param width   Frame width
-     * @param height  Frame height
+     * @param bgrData    BGR pixel data (HWC uint8, width * height * 3 bytes)
+     * @param width      Frame width
+     * @param height     Frame height
+     * @param seatOnLeft true if driver seat is on the left side of the frame
      * @return PoseResult with all pose-derived detection fields
      */
-    fun analyze(bgrData: ByteArray, width: Int, height: Int): PoseResult {
+    fun analyze(bgrData: ByteArray, width: Int, height: Int, seatOnLeft: Boolean = true): PoseResult {
         if (nativePtr == 0L) {
             Log.w(TAG, "analyze called on closed PoseAnalyzerBridge")
             return PoseResult()
         }
 
-        val jsonStr = nativeAnalyzePose(nativePtr, bgrData, width, height)
+        val jsonStr = nativeAnalyzePose(nativePtr, bgrData, width, height, seatOnLeft)
         return try {
             gson.fromJson(jsonStr, PoseResult::class.java)
         } catch (e: Exception) {
@@ -138,7 +142,8 @@ class PoseAnalyzerBridge(
         analyzerPtr: Long,
         bgrData: ByteArray,
         width: Int,
-        height: Int
+        height: Int,
+        seatOnLeft: Boolean
     ): String
 
     private external fun nativeDestroyPoseAnalyzer(analyzerPtr: Long)

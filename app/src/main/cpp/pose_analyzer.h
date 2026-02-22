@@ -28,6 +28,7 @@ struct OverlayPerson {
 
 struct PoseResult {
     int passenger_count = 0;
+    bool driver_detected = true;
     bool driver_using_phone = false;
     bool dangerous_posture = false;
     bool child_present = false;
@@ -65,12 +66,13 @@ public:
     /**
      * Run full pose analysis pipeline on a BGR frame.
      *
-     * @param bgr_data  BGR pixel data (HWC uint8)
-     * @param width     Frame width
-     * @param height    Frame height
+     * @param bgr_data     BGR pixel data (HWC uint8)
+     * @param width        Frame width
+     * @param height       Frame height
+     * @param seat_on_left true if driver seat is on the left side of the frame
      * @return PoseResult with all pose-derived fields
      */
-    PoseResult analyze(const uint8_t* bgr_data, int width, int height);
+    PoseResult analyze(const uint8_t* bgr_data, int width, int height, bool seat_on_left = true);
 
 private:
     // ONNX Runtime environment and sessions

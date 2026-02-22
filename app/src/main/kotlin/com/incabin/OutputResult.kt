@@ -53,7 +53,10 @@ data class OutputResult(
     val distractionDurationS: Int,
 
     @SerializedName("driver_name")
-    val driverName: String? = null
+    val driverName: String? = null,
+
+    @SerializedName("driver_detected")
+    val driverDetected: Boolean = true
 ) {
     fun toJson(): String {
         val sb = StringBuilder(384)
@@ -88,6 +91,7 @@ data class OutputResult(
             }
             sb.append('"')
         } else sb.append("null")
+        sb.append(",\"driver_detected\":").append(driverDetected)
         sb.append('}')
         return sb.toString()
     }
@@ -109,7 +113,8 @@ data class OutputResult(
         "head_yaw" to headYaw,
         "head_pitch" to headPitch,
         "distraction_duration_s" to distractionDurationS,
-        "driver_name" to driverName
+        "driver_name" to driverName,
+        "driver_detected" to driverDetected
     )
 
     companion object {
@@ -121,7 +126,8 @@ data class OutputResult(
             "timestamp", "passenger_count",
             "driver_using_phone", "driver_eyes_closed", "driver_yawning",
             "driver_distracted", "driver_eating_drinking", "dangerous_posture",
-            "child_present", "child_slouching", "risk_level", "distraction_duration_s"
+            "child_present", "child_slouching", "risk_level", "distraction_duration_s",
+            "driver_detected"
         )
 
         private val ALL_FIELDS = REQUIRED_FIELDS + listOf(
@@ -161,7 +167,7 @@ data class OutputResult(
             val boolFields = listOf(
                 "driver_using_phone", "driver_eyes_closed", "driver_yawning",
                 "driver_distracted", "driver_eating_drinking", "dangerous_posture",
-                "child_present", "child_slouching"
+                "child_present", "child_slouching", "driver_detected"
             )
             for (field in boolFields) {
                 data[field]?.let {
@@ -230,7 +236,8 @@ data class OutputResult(
             headYaw = null,
             headPitch = null,
             distractionDurationS = 0,
-            driverName = null
+            driverName = null,
+            driverDetected = true
         )
     }
 }

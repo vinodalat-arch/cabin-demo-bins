@@ -150,13 +150,17 @@ Java_com_incabin_PoseAnalyzerBridge_nativeAnalyzePose(
     jlong analyzer_ptr,
     jbyteArray bgr_array,
     jint width,
-    jint height
+    jint height,
+    jboolean seat_on_left
 ) {
+    static const char* FALLBACK_JSON =
+        "{\"passenger_count\":0,\"driver_detected\":false,\"driver_using_phone\":false,"
+        "\"dangerous_posture\":false,\"child_present\":false,"
+        "\"child_slouching\":false,\"driver_eating_drinking\":false}";
+
     if (analyzer_ptr == 0) {
         LOGE("nativeAnalyzePose: null analyzer pointer");
-        return env->NewStringUTF("{\"passenger_count\":0,\"driver_using_phone\":false,"
-                                 "\"dangerous_posture\":false,\"child_present\":false,"
-                                 "\"child_slouching\":false,\"driver_eating_drinking\":false}");
+        return env->NewStringUTF(FALLBACK_JSON);
     }
 
     auto* analyzer = reinterpret_cast<incabin::PoseAnalyzer*>(analyzer_ptr);
@@ -164,14 +168,13 @@ Java_com_incabin_PoseAnalyzerBridge_nativeAnalyzePose(
     jbyte* bgr_data = env->GetByteArrayElements(bgr_array, nullptr);
     if (!bgr_data) {
         LOGE("nativeAnalyzePose: failed to get BGR byte array");
-        return env->NewStringUTF("{\"passenger_count\":0,\"driver_using_phone\":false,"
-                                 "\"dangerous_posture\":false,\"child_present\":false,"
-                                 "\"child_slouching\":false,\"driver_eating_drinking\":false}");
+        return env->NewStringUTF(FALLBACK_JSON);
     }
 
     try {
         auto result = analyzer->analyze(
-            reinterpret_cast<const uint8_t*>(bgr_data), width, height);
+            reinterpret_cast<const uint8_t*>(bgr_data), width, height,
+            static_cast<bool>(seat_on_left));
 
         env->ReleaseByteArrayElements(bgr_array, bgr_data, JNI_ABORT);
 
@@ -180,9 +183,7 @@ Java_com_incabin_PoseAnalyzerBridge_nativeAnalyzePose(
     } catch (const std::exception& e) {
         LOGE("nativeAnalyzePose exception: %s", e.what());
         env->ReleaseByteArrayElements(bgr_array, bgr_data, JNI_ABORT);
-        return env->NewStringUTF("{\"passenger_count\":0,\"driver_using_phone\":false,"
-                                 "\"dangerous_posture\":false,\"child_present\":false,"
-                                 "\"child_slouching\":false,\"driver_eating_drinking\":false}");
+        return env->NewStringUTF(FALLBACK_JSON);
     }
 }
 

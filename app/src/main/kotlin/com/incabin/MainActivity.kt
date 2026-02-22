@@ -157,6 +157,7 @@ class MainActivity : Activity() {
 
         // Detection labels with dot colors
         private val DETECTION_LABELS_EN = mapOf(
+            "noDriverDetected" to "No Driver Detected",
             "driverUsingPhone" to "Phone Detected",
             "driverEyesClosed" to "Eyes Closed",
             "driverYawning" to "Yawning",
@@ -166,6 +167,7 @@ class MainActivity : Activity() {
             "childSlouching" to "Child Slouching"
         )
         private val DETECTION_LABELS_JA = mapOf(
+            "noDriverDetected" to "運転者未検出",
             "driverUsingPhone" to "スマホ検出",
             "driverEyesClosed" to "目を閉じている",
             "driverYawning" to "あくび",
@@ -841,6 +843,10 @@ class MainActivity : Activity() {
             targetColor = colorSurfaceElevated
             riskText = "NO OCCUPANTS"
             riskTextColor = colorTextSecondary
+        } else if (!result.driverDetected) {
+            targetColor = colorCaution
+            riskText = "NO DRIVER"
+            riskTextColor = Color.BLACK
         } else when (result.riskLevel) {
             "high" -> {
                 targetColor = colorDanger
@@ -923,6 +929,7 @@ class MainActivity : Activity() {
 
         // Build active set using field keys (language-independent)
         val activeKeys = mutableSetOf<String>()
+        if (!result.driverDetected && result.passengerCount > 0) activeKeys.add("noDriverDetected")
         if (result.driverUsingPhone) activeKeys.add("driverUsingPhone")
         if (result.driverEyesClosed) activeKeys.add("driverEyesClosed")
         if (result.driverYawning) activeKeys.add("driverYawning")

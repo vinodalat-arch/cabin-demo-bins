@@ -30,7 +30,8 @@ class OutputResultTest {
             "head_yaw" to 5.0f,
             "head_pitch" to 3.0f,
             "distraction_duration_s" to 0,
-            "driver_name" to null
+            "driver_name" to null,
+            "driver_detected" to true
         )
         base.putAll(overrides)
         return base

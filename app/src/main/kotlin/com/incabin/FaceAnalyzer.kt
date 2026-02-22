@@ -87,6 +87,35 @@ class FaceAnalyzer(context: Context) {
         // Minimum denominator to avoid division by zero
         private const val MIN_HORIZONTAL = 1e-6
 
+        /**
+         * Check whether a face center point falls within an expanded driver bounding box.
+         *
+         * Pure function — no Android dependencies, fully unit-testable.
+         *
+         * @param faceCenterX  X coordinate of the face center (e.g. nose tip) in pixels
+         * @param faceCenterY  Y coordinate of the face center in pixels
+         * @param bboxLeft     Driver bounding box left edge in pixels
+         * @param bboxTop      Driver bounding box top edge in pixels
+         * @param bboxRight    Driver bounding box right edge in pixels
+         * @param bboxBottom   Driver bounding box bottom edge in pixels
+         * @param margin       Expansion margin ratio (0.2 = 20% on each side)
+         * @return true if the face center is within the expanded bbox
+         */
+        fun isFaceInDriverRegion(
+            faceCenterX: Float, faceCenterY: Float,
+            bboxLeft: Float, bboxTop: Float, bboxRight: Float, bboxBottom: Float,
+            margin: Float = 0.2f
+        ): Boolean {
+            val w = bboxRight - bboxLeft
+            val h = bboxBottom - bboxTop
+            val expandedLeft = bboxLeft - w * margin
+            val expandedTop = bboxTop - h * margin
+            val expandedRight = bboxRight + w * margin
+            val expandedBottom = bboxBottom + h * margin
+            return faceCenterX in expandedLeft..expandedRight &&
+                faceCenterY in expandedTop..expandedBottom
+        }
+
         // Right eye landmark indices: [lateral, upper1, upper2, medial, lower1, lower2]
         private val RIGHT_EYE_INDICES = intArrayOf(33, 160, 158, 133, 153, 144)
 
@@ -170,9 +199,13 @@ class FaceAnalyzer(context: Context) {
      * @param bitmap RGB Bitmap of the frame (the caller is responsible for BGR->RGB conversion).
      * @param frameWidth  Width of the original frame in pixels (used for coordinate conversion).
      * @param frameHeight Height of the original frame in pixels (used for coordinate conversion).
+     * @param driverBbox  Optional driver bounding box [x1, y1, x2, y2] in pixels.
+     *                    When provided, the detected face must fall within the expanded bbox
+     *                    to be attributed to the driver. Null = skip spatial validation.
      * @return [FaceResult] with detection flags and metric values, or [FaceResult.NO_FACE] defaults.
      */
-    fun analyze(bitmap: Bitmap, frameWidth: Int, frameHeight: Int): FaceResult {
+    fun analyze(bitmap: Bitmap, frameWidth: Int, frameHeight: Int,
+                driverBbox: FloatArray? = null): FaceResult {
         // Wrap the bitmap for MediaPipe
         val mpImage = BitmapImageBuilder(bitmap).build()
 
@@ -193,6 +226,22 @@ class FaceAnalyzer(context: Context) {
         }
 
         val landmarks = result.faceLandmarks()[0]
+
+        // Spatial validation: check if the detected face is in the driver region
+        if (driverBbox != null && driverBbox.size == 4) {
+            val noseLm = landmarks[1] // nose tip — most stable facial landmark
+            val faceCenterX = noseLm.x() * frameWidth
+            val faceCenterY = noseLm.y() * frameHeight
+            if (!isFaceInDriverRegion(
+                    faceCenterX, faceCenterY,
+                    driverBbox[0], driverBbox[1], driverBbox[2], driverBbox[3]
+                )) {
+                Log.d(TAG, "Face outside driver region — skipping")
+                lastLandmarks = null
+                return FaceResult.NO_FACE
+            }
+        }
+
         lastLandmarks = landmarks
         val w = frameWidth.toDouble()
         val h = frameHeight.toDouble()

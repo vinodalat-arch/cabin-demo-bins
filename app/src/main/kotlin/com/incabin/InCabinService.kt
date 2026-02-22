@@ -442,15 +442,26 @@ class InCabinService : Service() {
         // C1/H6: Acquire pipeline lock; skip frame if service is shutting down
         if (!pipelineLock.tryLock()) return
         try {
-            // Step 1: Run PoseAnalyzer (C++/JNI)
+            // Step 1: Run PoseAnalyzer (C++/JNI) with seat-side selection
             val poseStartMs = System.currentTimeMillis()
-            val poseResult = poseAnalyzer?.analyze(bgrData, width, height) ?: PoseResult()
+            val seatOnLeft = Config.DRIVER_SEAT_SIDE == "left"
+            val poseResult = poseAnalyzer?.analyze(bgrData, width, height, seatOnLeft) ?: PoseResult()
             val poseElapsed = System.currentTimeMillis() - poseStartMs
 
+            // Step 1.5: Extract driver bbox for face-to-driver spatial validation
+            val driverBbox: FloatArray? = poseResult.persons
+                .firstOrNull { it.isDriver }
+                ?.let { floatArrayOf(it.x1, it.y1, it.x2, it.y2) }
+
             // Step 2: BGR -> Bitmap conversion for FaceAnalyzer
+            // When driver not detected, pass null bbox so face analysis returns NO_FACE
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
-            val faceResult = faceAnalyzer?.analyze(bitmap, width, height) ?: FaceResult.NO_FACE
+            val faceResult = if (poseResult.driverDetected) {
+                faceAnalyzer?.analyze(bitmap, width, height, driverBbox) ?: FaceResult.NO_FACE
+            } else {
+                FaceResult.NO_FACE
+            }
             val faceElapsed = System.currentTimeMillis() - faceStartMs
 
             // Step 2.5: Face recognition (try-catch isolated, never blocks core pipeline)
@@ -469,9 +480,16 @@ class InCabinService : Service() {
             val smoothed = smoother?.smooth(merged) ?: merged
 
             // Step 5: Update distraction duration counter (C2: atomic read-modify-write)
+            // Skip distraction tracking when driver is absent — passengers shouldn't
+            // accumulate distraction duration
             // Grace period: require 2 consecutive clean frames before resetting,
             // to avoid premature reset from single-frame detection dips
-            val durationVal = if (DISTRACTION_FIELDS_CHECK(smoothed)) {
+            val durationVal = if (!smoothed.driverDetected) {
+                // Driver absent: reset distraction counter
+                cleanFrameCount = 0
+                distractionDurationS.set(0)
+                0
+            } else if (DISTRACTION_FIELDS_CHECK(smoothed)) {
                 cleanFrameCount = 0
                 distractionDurationS.incrementAndGet()
             } else {

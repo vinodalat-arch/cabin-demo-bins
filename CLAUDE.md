@@ -1,13 +1,13 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, and IVI deployment robustness hardening. Build verified (`assembleDebug` + all 218 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, and seat-side driver identification with face alignment and driver-absent detection. Build verified (`assembleDebug` + all 234 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
 
 ## What it does
-Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 17 fields: passenger_count, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
+Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 18 fields: passenger_count, driver_detected, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
 ## Full Specification
 **See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and unit test specifications. That document is the single source of truth for this project.
@@ -140,12 +140,13 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Angle smoothing**: Yaw and pitch values smoothed via 3-frame moving average (`ArrayDeque`) before boolean thresholding. Eliminates solvePnP single-frame spikes
 - **Pitch auto-baseline**: First 10 frames accumulate smoothed pitch; baseline = mean. After calibration, distracted = `|pitch - baseline| > 25°` (eliminates camera mounting angle bias). Before calibration, falls back to fixed `|pitch| > 35°`
 - **Baseline lifecycle**: FaceAnalyzer is recreated each monitoring session — baselines reset automatically on stop/start
+- **Face-to-driver spatial validation**: When driver bbox is available from pose analysis, nose landmark (index 1) must fall within the driver bbox expanded by 20% margin. Face outside driver region → returns `FaceResult.NO_FACE`. Pure `isFaceInDriverRegion()` companion function for testability
 - **Import note**: `FaceLandmarkerOptions` is a nested class — import as `FaceLandmarker.FaceLandmarkerOptions`
 
 ### Pose Analysis (C++ + ONNX Runtime)
 - **YOLOv8n-pose**: Output [1,56,8400] → transpose → filter conf>0.35 → NMS IoU 0.45
 - **YOLOv8n detect**: Output [1,84,8400] → transpose → argmax class scores → filter → NMS. Per-class confidence thresholds threaded through `runDetectModel` → `parseDetectOutput`
-- **Driver**: Largest bbox by area
+- **Driver**: Largest bbox by area on the driver's side of the frame (seat side configurable via `Config.DRIVER_SEAT_SIDE`). If no person on driver side, `driver_detected=false` and driver-specific detections (phone, posture, eating, face analysis) are skipped
 - **Posture**: 4 checks (torso lean, head droop, head turn, face not visible)
 - **Phone**: 2-strategy (driver ROI + 20% pad → wrist crops 200x200px), confidence 0.45 (higher than default 0.35 to reduce false positives)
 - **Food/drink**: Driver ROI + 20% pad, COCO classes 39-48, confidence 0.50
@@ -267,12 +268,12 @@ in_cabin_poc-sa8155/
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 218 unit tests (all passing):
+- 234 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
@@ -284,6 +285,7 @@ in_cabin_poc-sa8155/
   - FlowConfigToggleTest: 8 tests (Config defaults, toggle state, language effects on alerts, smoother/risk config)
   - FlowFaceRecognitionTest: 8 tests (driver name schema, cosine similarity matching, pipeline survival, JSON round-trip)
   - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority logic)
+  - FlowDriverIdentificationTest: 16 tests (seat-side selection, face region validation, driver_detected schema/merger/smoother, config toggle)
   - CrashLogTest: 7 tests (formatLine format, field inclusion, shouldRotate boundary cases)
   - PipelineWatchdogTest: 6 tests (isStalled logic — not started, within timeout, beyond timeout, boundary, heartbeat reset)
   - MemoryPolicyTest: 5 tests (decideAction at various trim levels — no action, low, critical, high, zero)
