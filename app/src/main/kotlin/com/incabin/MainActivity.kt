@@ -511,6 +511,11 @@ class MainActivity : Activity() {
 
         registerButton.setOnClickListener {
             try {
+                // Stop monitoring first — only one consumer can use the USB camera
+                if (isRunning) {
+                    Log.i(TAG, "Stopping monitoring before face registration")
+                    stopMonitoringForRegistration()
+                }
                 val intent = Intent(this, FaceRegistrationActivity::class.java)
                 startActivity(intent)
             } catch (e: Exception) {
@@ -1011,15 +1016,22 @@ class MainActivity : Activity() {
         stopMonitoringInternal(stopService = true)
     }
 
-    private fun stopMonitoringInternal(stopService: Boolean) {
+    /** Stop monitoring silently (no session summary dialog). Used before launching face registration. */
+    private fun stopMonitoringForRegistration() {
+        stopMonitoringInternal(stopService = true, showSummary = false)
+    }
+
+    private fun stopMonitoringInternal(stopService: Boolean, showSummary: Boolean = true) {
         if (stopService) {
             val intent = Intent(this, InCabinService::class.java).apply {
                 action = InCabinService.ACTION_STOP
             }
             startService(intent)
 
-            // Show session summary before resetting
-            showSessionSummary()
+            // Show session summary before resetting (skip when stopping for registration)
+            if (showSummary) {
+                showSessionSummary()
+            }
         }
 
         isRunning = false

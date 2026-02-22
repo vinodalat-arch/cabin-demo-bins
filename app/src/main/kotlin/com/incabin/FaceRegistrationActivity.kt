@@ -2,13 +2,17 @@ package com.incabin
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.widget.*
 import androidx.core.content.ContextCompat
 
@@ -16,24 +20,27 @@ import androidx.core.content.ContextCompat
  * Activity for registering face embeddings.
  * Uses programmatic UI (no layout XML) with premium palette.
  *
+ * Self-contained camera ownership: opens its own camera (V4L2, Camera2, or MJPEG)
+ * and uses FaceDetectorLite for face detection. Does NOT depend on InCabinService
+ * or FrameHolder.
+ *
  * Multi-shot capture: captures 3 frames and averages embeddings for robustness.
  * Quality gate: rejects captures where embeddings are too inconsistent (cosine < 0.7).
- *
- * The monitoring service must be running for face capture to work,
- * as it provides BGR face crops via FrameHolder.
  */
 class FaceRegistrationActivity : Activity() {
 
     companion object {
         private const val TAG = "FaceRegistration"
-        private const val PREVIEW_POLL_MS = 500L
         private const val MULTI_SHOT_COUNT = 3
         private const val MULTI_SHOT_DELAY_MS = 1500L
-        private const val QUALITY_THRESHOLD = 0.7f  // min cosine between any pair of shots
+        private const val QUALITY_THRESHOLD = 0.7f
+        private const val CAMERA_START_RETRIES = 5
+        private const val CAMERA_RETRY_DELAY_MS = 1000L
     }
 
     private lateinit var previewImage: ImageView
     private lateinit var statusText: TextView
+    private lateinit var cameraStatusText: TextView
     private lateinit var nameInput: EditText
     private lateinit var captureButton: Button
     private lateinit var saveButton: Button
@@ -55,13 +62,34 @@ class FaceRegistrationActivity : Activity() {
     private var faceStore: FaceStore? = null
     private var capturedEmbedding: FloatArray? = null
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val previewPoller = object : Runnable {
-        override fun run() {
-            updatePreview()
-            handler.postDelayed(this, PREVIEW_POLL_MS)
-        }
+    // Camera (self-owned)
+    private val nativeLib = NativeLib()
+    private var v4l2Camera: V4l2CameraManager? = null
+    private var camera2Manager: CameraManager? = null
+    private var mjpegCamera: MjpegCameraManager? = null
+    private var cameraStarted = false
+
+    // Face detection
+    private var faceDetector: FaceDetectorLite? = null
+    private var lastFaceDetection: FaceDetectorLite.FaceDetection? = null
+
+    // Latest frame data (written by camera thread, read by capture thread)
+    @Volatile private var latestBgrData: ByteArray? = null
+    @Volatile private var latestFrameWidth = 0
+    @Volatile private var latestFrameHeight = 0
+
+    // Pre-allocated pixel buffer for BGR→Bitmap conversion
+    private var pixelBuffer: IntArray? = null
+    private var lastPixelBufferSize = 0
+
+    // Overlay paint for face bbox
+    private val bboxPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        color = Color.GREEN
     }
+
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,17 +115,233 @@ class FaceRegistrationActivity : Activity() {
             statusText.text = "Error: Could not load face store"
         }
 
+        try {
+            faceDetector = FaceDetectorLite(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to init FaceDetectorLite", e)
+            statusText.text = "Error: Face detection unavailable"
+        }
+
         refreshFaceList()
     }
 
     override fun onResume() {
         super.onResume()
-        handler.post(previewPoller)
+        startCamera()
     }
 
     override fun onPause() {
         super.onPause()
-        handler.removeCallbacks(previewPoller)
+        stopCamera()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        faceDetector?.close()
+        faceDetector = null
+        super.onDestroy()
+    }
+
+    // ---------------------------------------------------------------------
+    // Camera lifecycle
+    // ---------------------------------------------------------------------
+
+    private fun startCamera() {
+        if (cameraStarted) return
+
+        updateCameraStatusUI("Starting camera...")
+
+        Thread({
+            var started = false
+            for (attempt in 1..CAMERA_START_RETRIES) {
+                if (isFinishing || isDestroyed) return@Thread
+
+                started = tryStartCamera()
+                if (started) break
+
+                Log.i(TAG, "Camera start attempt $attempt/$CAMERA_START_RETRIES failed, retrying in ${CAMERA_RETRY_DELAY_MS}ms")
+                try {
+                    Thread.sleep(CAMERA_RETRY_DELAY_MS)
+                } catch (_: InterruptedException) {
+                    return@Thread
+                }
+            }
+
+            handler.post {
+                if (started) {
+                    cameraStarted = true
+                    updateCameraStatusUI("Camera active")
+                    statusText.text = "Position face in frame"
+                    statusText.setTextColor(colorTextSecondary)
+                } else {
+                    updateCameraStatusUI("Camera unavailable")
+                    statusText.text = "Could not open camera. Go back and try again."
+                    statusText.setTextColor(colorDanger)
+                }
+            }
+        }, "FaceReg-CameraStart").start()
+    }
+
+    private fun tryStartCamera(): Boolean {
+        val profile = PlatformProfile.detect()
+
+        // WiFi camera takes priority if configured
+        if (Config.WIFI_CAMERA_URL.isNotBlank()) {
+            Log.i(TAG, "Trying MJPEG camera: ${Config.WIFI_CAMERA_URL}")
+            val mjpeg = MjpegCameraManager(nativeLib, ::onBgrFrame)
+            if (mjpeg.start(Config.WIFI_CAMERA_URL)) {
+                mjpegCamera = mjpeg
+                Log.i(TAG, "MJPEG camera started")
+                return true
+            }
+        }
+
+        when (profile.cameraStrategy) {
+            PlatformProfile.CameraStrategy.V4L2_FIRST -> {
+                Log.i(TAG, "Trying V4L2 camera...")
+                val v4l2 = V4l2CameraManager(nativeLib, ::onBgrFrame)
+                if (v4l2.start()) {
+                    v4l2Camera = v4l2
+                    Log.i(TAG, "V4L2 camera started")
+                    return true
+                }
+                // Fallback to Camera2
+                Log.i(TAG, "V4L2 failed, trying Camera2...")
+                return tryStartCamera2()
+            }
+            PlatformProfile.CameraStrategy.CAMERA2_FIRST -> {
+                return tryStartCamera2()
+            }
+        }
+    }
+
+    private fun tryStartCamera2(): Boolean {
+        return try {
+            val cam2 = CameraManager(this, ::onYuvFrame)
+            cam2.start()
+            camera2Manager = cam2
+            Log.i(TAG, "Camera2 started")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Camera2 start failed", e)
+            false
+        }
+    }
+
+    private fun stopCamera() {
+        cameraStarted = false
+        v4l2Camera?.stop()
+        v4l2Camera = null
+        camera2Manager?.stop()
+        camera2Manager = null
+        mjpegCamera?.stop()
+        mjpegCamera = null
+        latestBgrData = null
+        Log.i(TAG, "Camera stopped")
+    }
+
+    // ---------------------------------------------------------------------
+    // Camera frame callbacks
+    // ---------------------------------------------------------------------
+
+    /** Called from V4L2 or MJPEG camera thread with BGR data. */
+    private fun onBgrFrame(bgrData: ByteArray, width: Int, height: Int) {
+        latestBgrData = bgrData
+        latestFrameWidth = width
+        latestFrameHeight = height
+        processFrame(bgrData, width, height)
+    }
+
+    /** Called from Camera2 with YUV planes. Convert to BGR first. */
+    private fun onYuvFrame(
+        y: ByteArray, u: ByteArray, v: ByteArray,
+        yRowStride: Int, uvRowStride: Int, uvPixelStride: Int,
+        width: Int, height: Int
+    ) {
+        if (!NativeLib.loaded) return
+        val bgrData = nativeLib.nativeYuvToBgr(y, u, v, yRowStride, uvRowStride, uvPixelStride, width, height)
+            ?: return
+        latestBgrData = bgrData
+        latestFrameWidth = width
+        latestFrameHeight = height
+        processFrame(bgrData, width, height)
+    }
+
+    /** Process a BGR frame: convert to bitmap, detect face, update preview. */
+    private fun processFrame(bgrData: ByteArray, width: Int, height: Int) {
+        try {
+            val numPixels = width * height
+
+            // Ensure pixel buffer is allocated
+            if (pixelBuffer == null || lastPixelBufferSize != numPixels) {
+                pixelBuffer = IntArray(numPixels)
+                lastPixelBufferSize = numPixels
+            }
+
+            val pixels = pixelBuffer ?: return
+
+            // BGR→ARGB via native
+            if (NativeLib.loaded) {
+                nativeLib.nativeBgrToArgbPixels(bgrData, pixels, width, height)
+            } else {
+                // Fallback: Kotlin BGR→ARGB conversion
+                for (i in 0 until numPixels) {
+                    val idx = i * 3
+                    val b = bgrData[idx].toInt() and 0xFF
+                    val g = bgrData[idx + 1].toInt() and 0xFF
+                    val r = bgrData[idx + 2].toInt() and 0xFF
+                    pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                }
+            }
+
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+
+            // Run face detection
+            val detection = faceDetector?.detect(bitmap, width, height)
+            lastFaceDetection = detection
+
+            // Draw face bbox overlay
+            if (detection != null) {
+                val canvas = Canvas(bitmap)
+                canvas.drawRect(
+                    detection.bboxLeft.toFloat(),
+                    detection.bboxTop.toFloat(),
+                    detection.bboxRight.toFloat(),
+                    detection.bboxBottom.toFloat(),
+                    bboxPaint
+                )
+            }
+
+            // Update UI on main thread
+            handler.post {
+                if (!isFinishing && !isDestroyed) {
+                    previewImage.setImageBitmap(bitmap)
+                    captureButton.isEnabled = detection != null
+                    if (detection != null && statusText.text == "Position face in frame") {
+                        statusText.text = "Face detected! Tap Capture."
+                        statusText.setTextColor(colorSafe)
+                    } else if (detection == null && capturedEmbedding == null) {
+                        statusText.text = "Position face in frame"
+                        statusText.setTextColor(colorTextSecondary)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Frame processing failed", e)
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // UI
+    // ---------------------------------------------------------------------
+
+    private fun updateCameraStatusUI(text: String) {
+        handler.post {
+            if (!isFinishing && !isDestroyed) {
+                cameraStatusText.text = text
+            }
+        }
     }
 
     private fun buildUI() {
@@ -124,13 +368,23 @@ class FaceRegistrationActivity : Activity() {
         }
         root.addView(previewImage, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(300)
-        ).apply { bottomMargin = dp(12) })
+        ).apply { bottomMargin = dp(4) })
+
+        // Camera status
+        cameraStatusText = TextView(this).apply {
+            text = "Camera: initializing..."
+            textSize = 12f
+            setTextColor(colorTextMuted)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(2), 0, dp(4))
+        }
+        root.addView(cameraStatusText)
 
         // Capture progress bar (hidden until multi-shot capture)
         captureProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = MULTI_SHOT_COUNT
             progress = 0
-            visibility = android.view.View.GONE
+            visibility = View.GONE
         }
         root.addView(captureProgress, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -139,7 +393,7 @@ class FaceRegistrationActivity : Activity() {
 
         // Status
         statusText = TextView(this).apply {
-            text = "Start monitoring, then capture a face"
+            text = "Position face in frame"
             textSize = 14f
             setTextColor(colorTextSecondary)
             gravity = Gravity.CENTER
@@ -168,6 +422,7 @@ class FaceRegistrationActivity : Activity() {
         }
 
         captureButton = makeButton("Capture").apply {
+            isEnabled = false
             setOnClickListener { onCapture() }
         }
         buttonRow.addView(captureButton, LinearLayout.LayoutParams(
@@ -231,16 +486,45 @@ class FaceRegistrationActivity : Activity() {
         }
     }
 
-    private fun updatePreview() {
-        try {
-            val bitmap = FrameHolder.getLatestFrame()
-            if (bitmap != null && !bitmap.isRecycled) {
-                previewImage.setImageBitmap(bitmap)
-            }
-        } catch (e: Exception) {
-            // Ignore — preview is best-effort
+    // ---------------------------------------------------------------------
+    // Face crop extraction from BGR data
+    // ---------------------------------------------------------------------
+
+    /**
+     * Extract a BGR face crop from the latest frame using the face detection bbox.
+     *
+     * @return FaceCropResult or null if no valid crop
+     */
+    private fun extractFaceCrop(): FrameHolder.CaptureData? {
+        val bgr = latestBgrData ?: return null
+        val width = latestFrameWidth
+        val height = latestFrameHeight
+        val detection = lastFaceDetection ?: return null
+
+        val cx1 = detection.paddedLeft
+        val cy1 = detection.paddedTop
+        val cx2 = detection.paddedRight
+        val cy2 = detection.paddedBottom
+
+        val cropW = cx2 - cx1
+        val cropH = cy2 - cy1
+        if (cropW <= 0 || cropH <= 0) return null
+
+        // Row-by-row BGR copy
+        val cropData = ByteArray(cropW * cropH * 3)
+        for (row in 0 until cropH) {
+            val srcOffset = ((cy1 + row) * width + cx1) * 3
+            val dstOffset = row * cropW * 3
+            if (srcOffset + cropW * 3 > bgr.size) return null
+            System.arraycopy(bgr, srcOffset, cropData, dstOffset, cropW * 3)
         }
+
+        return FrameHolder.CaptureData(cropData, cropW, cropH)
     }
+
+    // ---------------------------------------------------------------------
+    // Multi-shot capture
+    // ---------------------------------------------------------------------
 
     /**
      * Multi-shot capture: captures MULTI_SHOT_COUNT frames with delays between them,
@@ -248,9 +532,9 @@ class FaceRegistrationActivity : Activity() {
      * and averages the embeddings.
      */
     private fun onCapture() {
-        val captureData = FrameHolder.getCaptureData()
-        if (captureData == null) {
-            statusText.text = "No face detected. Start monitoring first."
+        val crop = extractFaceCrop()
+        if (crop == null) {
+            statusText.text = "No face detected. Position face in frame."
             statusText.setTextColor(colorDanger)
             return
         }
@@ -258,7 +542,7 @@ class FaceRegistrationActivity : Activity() {
         statusText.text = "Capturing 1/$MULTI_SHOT_COUNT..."
         statusText.setTextColor(colorAccent)
         captureButton.isEnabled = false
-        captureProgress.visibility = android.view.View.VISIBLE
+        captureProgress.visibility = View.VISIBLE
         captureProgress.progress = 0
 
         Thread({
@@ -270,7 +554,7 @@ class FaceRegistrationActivity : Activity() {
 
                 for (shot in 0 until MULTI_SHOT_COUNT) {
                     // Get latest face crop
-                    val data = FrameHolder.getCaptureData()
+                    val data = extractFaceCrop()
                     if (data == null) {
                         handler.post {
                             statusText.text = "Face lost during capture. Try again."
@@ -314,8 +598,8 @@ class FaceRegistrationActivity : Activity() {
                 recognizer?.close()
                 if (!isFinishing && !isDestroyed) {
                     handler.post {
-                        captureButton.isEnabled = true
-                        captureProgress.visibility = android.view.View.GONE
+                        captureButton.isEnabled = lastFaceDetection != null
+                        captureProgress.visibility = View.GONE
                     }
                 }
             }
