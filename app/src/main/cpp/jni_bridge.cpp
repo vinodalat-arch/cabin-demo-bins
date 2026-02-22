@@ -284,6 +284,28 @@ Java_com_incabin_NativeLib_nativeDestroyV4l2Camera(
     }
 }
 
+JNIEXPORT jint JNICALL
+Java_com_incabin_NativeLib_nativeGetV4l2Width(
+    JNIEnv* /* env */,
+    jobject /* this */,
+    jlong cameraPtr
+) {
+    if (cameraPtr == 0) return 0;
+    auto* camera = reinterpret_cast<incabin::V4l2Camera*>(cameraPtr);
+    return camera->width();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_incabin_NativeLib_nativeGetV4l2Height(
+    JNIEnv* /* env */,
+    jobject /* this */,
+    jlong cameraPtr
+) {
+    if (cameraPtr == 0) return 0;
+    auto* camera = reinterpret_cast<incabin::V4l2Camera*>(cameraPtr);
+    return camera->height();
+}
+
 // ---- FaceRecognizer JNI: Create ----
 
 JNIEXPORT jlong JNICALL

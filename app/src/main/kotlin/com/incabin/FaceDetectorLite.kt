@@ -81,8 +81,8 @@ class FaceDetectorLite(context: Context) {
         // Compute bounding box from all landmarks
         var minX = Float.MAX_VALUE
         var minY = Float.MAX_VALUE
-        var maxX = Float.MIN_VALUE
-        var maxY = Float.MIN_VALUE
+        var maxX = Float.NEGATIVE_INFINITY
+        var maxY = Float.NEGATIVE_INFINITY
 
         for (lm in landmarks) {
             minX = min(minX, lm.x())

@@ -60,4 +60,10 @@ class NativeLib {
 
     /** Destroy camera (stop stream + unmap + close). */
     external fun nativeDestroyV4l2Camera(cameraPtr: Long)
+
+    /** Get actual negotiated width from V4L2 camera (may differ from requested). */
+    external fun nativeGetV4l2Width(cameraPtr: Long): Int
+
+    /** Get actual negotiated height from V4L2 camera (may differ from requested). */
+    external fun nativeGetV4l2Height(cameraPtr: Long): Int
 }

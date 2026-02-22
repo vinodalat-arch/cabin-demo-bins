@@ -68,6 +68,8 @@ class FaceRegistrationActivity : Activity() {
     private var camera2Manager: CameraManager? = null
     private var mjpegCamera: MjpegCameraManager? = null
     private var cameraStarted = false
+    @Volatile private var cameraCancelled = false
+    private var cameraStartThread: Thread? = null
 
     // Face detection
     private var faceDetector: FaceDetectorLite? = null
@@ -149,12 +151,13 @@ class FaceRegistrationActivity : Activity() {
     private fun startCamera() {
         if (cameraStarted) return
 
+        cameraCancelled = false
         updateCameraStatusUI("Starting camera...")
 
-        Thread({
+        val thread = Thread({
             var started = false
             for (attempt in 1..CAMERA_START_RETRIES) {
-                if (isFinishing || isDestroyed) return@Thread
+                if (cameraCancelled || isFinishing || isDestroyed) return@Thread
 
                 started = tryStartCamera()
                 if (started) break
@@ -167,19 +170,23 @@ class FaceRegistrationActivity : Activity() {
                 }
             }
 
+            if (cameraCancelled) return@Thread
+
             handler.post {
-                if (started) {
+                if (started && !cameraCancelled) {
                     cameraStarted = true
                     updateCameraStatusUI("Camera active")
                     statusText.text = "Position face in frame"
                     statusText.setTextColor(colorTextSecondary)
-                } else {
+                } else if (!cameraCancelled) {
                     updateCameraStatusUI("Camera unavailable")
                     statusText.text = "Could not open camera. Go back and try again."
                     statusText.setTextColor(colorDanger)
                 }
             }
-        }, "FaceReg-CameraStart").start()
+        }, "FaceReg-CameraStart")
+        cameraStartThread = thread
+        thread.start()
     }
 
     private fun tryStartCamera(): Boolean {
@@ -229,6 +236,10 @@ class FaceRegistrationActivity : Activity() {
     }
 
     private fun stopCamera() {
+        cameraCancelled = true
+        cameraStartThread?.interrupt()
+        cameraStartThread?.join(2000)
+        cameraStartThread = null
         cameraStarted = false
         v4l2Camera?.stop()
         v4l2Camera = null
@@ -246,10 +257,13 @@ class FaceRegistrationActivity : Activity() {
 
     /** Called from V4L2 or MJPEG camera thread with BGR data. */
     private fun onBgrFrame(bgrData: ByteArray, width: Int, height: Int) {
-        latestBgrData = bgrData
+        // Defensive copy: MjpegCameraManager reuses its internal buffer across frames,
+        // so we must copy to avoid data races when multi-shot capture reads latestBgrData
+        val copy = bgrData.copyOf()
+        latestBgrData = copy
         latestFrameWidth = width
         latestFrameHeight = height
-        processFrame(bgrData, width, height)
+        processFrame(copy, width, height)
     }
 
     /** Called from Camera2 with YUV planes. Convert to BGR first. */

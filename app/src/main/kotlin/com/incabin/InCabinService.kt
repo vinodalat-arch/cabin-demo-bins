@@ -85,7 +85,9 @@ class InCabinService : Service() {
     @Volatile private var prevAudioEnabled = true
 
     // --- Pre-allocated pixel buffer for BGR→Bitmap conversion ---
-    private val pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
+    // Resized dynamically if actual frame dimensions differ from initial allocation
+    private var pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
+    private var pixelBufferSize = Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT
 
     // --- Inference error tracking ---
     private var consecutiveInferenceErrors = 0
@@ -663,6 +665,12 @@ class InCabinService : Service() {
      * Uses native C++ for pixel conversion with pre-allocated IntArray buffer.
      */
     private fun bgrToBitmap(bgrData: ByteArray, width: Int, height: Int): Bitmap {
+        val numPixels = width * height
+        if (numPixels > pixelBufferSize) {
+            pixelBuffer = IntArray(numPixels)
+            pixelBufferSize = numPixels
+            Log.i(TAG, "Resized pixelBuffer for ${width}x${height} ($numPixels pixels)")
+        }
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         nativeLib.nativeBgrToArgbPixels(bgrData, pixelBuffer, width, height)
         bitmap.setPixels(pixelBuffer, 0, width, 0, 0, width, height)
