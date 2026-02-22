@@ -878,11 +878,22 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Enter monitoring UI state without starting the service (for instrumented tests). */
+    internal fun startMonitoringUiOnly() {
+        startMonitoringInternal(launchService = false)
+    }
+
     private fun startMonitoring() {
-        val intent = Intent(this, InCabinService::class.java).apply {
-            action = InCabinService.ACTION_START
+        startMonitoringInternal(launchService = true)
+    }
+
+    private fun startMonitoringInternal(launchService: Boolean) {
+        if (launchService) {
+            val intent = Intent(this, InCabinService::class.java).apply {
+                action = InCabinService.ACTION_START
+            }
+            startForegroundService(intent)
         }
-        startForegroundService(intent)
         isRunning = true
         toggleButton.text = getString(R.string.stop_service)
         statusText.text = "Monitoring active"
@@ -957,14 +968,25 @@ class MainActivity : Activity() {
         Log.i(TAG, "Monitoring started")
     }
 
-    private fun stopMonitoring() {
-        val intent = Intent(this, InCabinService::class.java).apply {
-            action = InCabinService.ACTION_STOP
-        }
-        startService(intent)
+    /** Exit monitoring UI state without stopping the service (for instrumented tests). */
+    internal fun stopMonitoringUiOnly() {
+        stopMonitoringInternal(stopService = false)
+    }
 
-        // Show session summary before resetting
-        showSessionSummary()
+    private fun stopMonitoring() {
+        stopMonitoringInternal(stopService = true)
+    }
+
+    private fun stopMonitoringInternal(stopService: Boolean) {
+        if (stopService) {
+            val intent = Intent(this, InCabinService::class.java).apply {
+                action = InCabinService.ACTION_STOP
+            }
+            startService(intent)
+
+            // Show session summary before resetting
+            showSessionSummary()
+        }
 
         isRunning = false
         toggleButton.text = getString(R.string.start_service)

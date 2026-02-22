@@ -94,48 +94,64 @@ class CameraManager(
             setOnImageAvailableListener(imageListener, cameraHandler)
         }
 
-        systemCameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-            override fun onOpened(camera: CameraDevice) {
-                Log.i(TAG, "Camera opened")
-                cameraDevice = camera
-                createCaptureSession(camera)
-            }
+        try {
+            systemCameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    Log.i(TAG, "Camera opened")
+                    cameraDevice = camera
+                    createCaptureSession(camera)
+                }
 
-            override fun onDisconnected(camera: CameraDevice) {
-                Log.w(TAG, "Camera disconnected")
-                camera.close()
-                cameraDevice = null
-            }
+                override fun onDisconnected(camera: CameraDevice) {
+                    Log.w(TAG, "Camera disconnected")
+                    camera.close()
+                    cameraDevice = null
+                }
 
-            override fun onError(camera: CameraDevice, error: Int) {
-                Log.e(TAG, "Camera error: $error")
-                camera.close()
-                cameraDevice = null
-            }
-        }, cameraHandler)
+                override fun onError(camera: CameraDevice, error: Int) {
+                    Log.e(TAG, "Camera error: $error")
+                    camera.close()
+                    cameraDevice = null
+                }
+            }, cameraHandler)
+        } catch (e: CameraAccessException) {
+            Log.e(TAG, "Failed to open camera: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error opening camera", e)
+        }
     }
 
     private fun createCaptureSession(camera: CameraDevice) {
         val surface = imageReader?.surface ?: return
 
-        camera.createCaptureSession(
-            listOf(surface),
-            object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    captureSession = session
-                    val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                        addTarget(surface)
-                    }.build()
-                    session.setRepeatingRequest(request, null, cameraHandler)
-                    Log.i(TAG, "Capture session started")
-                }
+        try {
+            camera.createCaptureSession(
+                listOf(surface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        captureSession = session
+                        try {
+                            val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                                addTarget(surface)
+                            }.build()
+                            session.setRepeatingRequest(request, null, cameraHandler)
+                            Log.i(TAG, "Capture session started")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to start capture request", e)
+                        }
+                    }
 
-                override fun onConfigureFailed(session: CameraCaptureSession) {
-                    Log.e(TAG, "Capture session configuration failed")
-                }
-            },
-            cameraHandler
-        )
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        Log.e(TAG, "Capture session configuration failed")
+                    }
+                },
+                cameraHandler
+            )
+        } catch (e: CameraAccessException) {
+            Log.e(TAG, "Failed to create capture session: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error creating capture session", e)
+        }
     }
 
     private val imageListener = ImageReader.OnImageAvailableListener { reader ->

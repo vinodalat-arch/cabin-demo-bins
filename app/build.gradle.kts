@@ -46,6 +46,9 @@ android {
         getByName("test") {
             kotlin.srcDirs("src/test/kotlin")
         }
+        getByName("androidTest") {
+            kotlin.srcDirs("src/androidTest/kotlin")
+        }
     }
 
     externalNativeBuild {
@@ -107,4 +110,11 @@ dependencies {
 
     // Unit testing
     testImplementation("junit:junit:4.13.2")
+
+    // Instrumented testing
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.2.0")
 }
