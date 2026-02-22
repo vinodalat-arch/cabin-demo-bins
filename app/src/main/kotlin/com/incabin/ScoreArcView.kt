@@ -88,10 +88,10 @@ class ScoreArcView @JvmOverloads constructor(
         }
     }
 
-    private fun scoreColor(s: Float): Int = when {
-        s >= 75f -> colorSafe
-        s >= 40f -> colorCaution
-        else -> colorDanger
+    private fun scoreColor(s: Float): Int = when (AsimoHub.scoreColorCategory(s)) {
+        AsimoHub.ScoreColor.SAFE -> colorSafe
+        AsimoHub.ScoreColor.CAUTION -> colorCaution
+        AsimoHub.ScoreColor.DANGER -> colorDanger
     }
 
     override fun onDraw(canvas: Canvas) {

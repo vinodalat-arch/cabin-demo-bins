@@ -172,29 +172,6 @@ class MainActivity : Activity() {
             "前方注視。いい調子です！"
         )
 
-        // Detection labels with dot colors
-        private val DETECTION_LABELS_EN = mapOf(
-            "noDriverDetected" to "No Driver Detected",
-            "driverUsingPhone" to "Phone Detected",
-            "driverEyesClosed" to "Eyes Closed",
-            "driverYawning" to "Yawning",
-            "driverDistracted" to "Distracted",
-            "driverEatingDrinking" to "Eating / Drinking",
-            "dangerousPosture" to "Dangerous Posture",
-            "childSlouching" to "Child Slouching"
-        )
-        private val DETECTION_LABELS_JA = mapOf(
-            "noDriverDetected" to "運転者未検出",
-            "driverUsingPhone" to "スマホ検出",
-            "driverEyesClosed" to "目を閉じている",
-            "driverYawning" to "あくび",
-            "driverDistracted" to "よそ見",
-            "driverEatingDrinking" to "飲食中",
-            "dangerousPosture" to "危険な姿勢",
-            "childSlouching" to "子供の姿勢不良"
-        )
-        private val DETECTION_DANGER_FIELDS = setOf("driverUsingPhone", "driverEyesClosed")
-
         private val TICKER_TIME_FORMAT = SimpleDateFormat("HH:mm:ss", Locale.US)
     }
 
@@ -1117,7 +1094,7 @@ class MainActivity : Activity() {
 
     // --- Detection labels: vertical stack with dots ---
     private fun updateDetectionLabels(result: OutputResult) {
-        val labelMap = if (Config.LANGUAGE == "ja") DETECTION_LABELS_JA else DETECTION_LABELS_EN
+        val labelMap = if (Config.LANGUAGE == "ja") AsimoHub.DETECTION_LABELS_JA else AsimoHub.DETECTION_LABELS_EN
 
         // Build active set using field keys (language-independent)
         val activeKeys = mutableSetOf<String>()
@@ -1164,7 +1141,7 @@ class MainActivity : Activity() {
 
         // Add new detection labels
         for (key in added) {
-            val isDanger = key in DETECTION_DANGER_FIELDS
+            val isDanger = AsimoHub.isDangerField(key)
             val dotColor = if (isDanger) colorDanger else colorCaution
             val displayLabel = labelMap[key] ?: key
 
@@ -1216,31 +1193,21 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------------
 
     private fun updateAsimoPose(result: OutputResult) {
-        val targetEntry = ASIMO_POSE_PRIORITY.firstOrNull { (field, _) ->
-            when (field) {
-                "driverUsingPhone" -> result.driverUsingPhone
-                "driverEyesClosed" -> result.driverEyesClosed
-                "driverDistracted" -> result.driverDistracted
-                "driverYawning" -> result.driverYawning
-                "driverEatingDrinking" -> result.driverEatingDrinking
-                "dangerousPosture" -> result.dangerousPosture
-                "childSlouching" -> result.childSlouching
-                else -> false
-            }
-        }
-        val targetDrawable = targetEntry?.second ?: R.drawable.asimo_all_clear
-        val detectionKey = targetEntry?.first ?: ""
+        val detectionKey = AsimoHub.resolveDetectionKey(result)
+        val targetDrawable = ASIMO_POSE_PRIORITY.firstOrNull { it.first == detectionKey }?.second
+            ?: R.drawable.asimo_all_clear
 
         // Update glow color based on risk level
-        val glowColor = when (result.riskLevel) {
-            "high" -> colorDanger
-            "medium" -> colorCaution
-            else -> colorSafe
+        val glowCategory = AsimoHub.resolveGlowCategory(result.riskLevel)
+        val glowColor = when (glowCategory) {
+            AsimoHub.GlowCategory.DANGER -> colorDanger
+            AsimoHub.GlowCategory.CAUTION -> colorCaution
+            AsimoHub.GlowCategory.SAFE -> colorSafe
         }
         asimoGlowView.animateColorTo(glowColor)
 
         // Pulse on danger
-        if (result.riskLevel == "high") {
+        if (AsimoHub.shouldPulse(result.riskLevel)) {
             asimoGlowView.startPulse()
         } else {
             asimoGlowView.stopPulse()
@@ -1283,15 +1250,14 @@ class MainActivity : Activity() {
             return
         }
 
-        val labelMap = if (Config.LANGUAGE == "ja") DETECTION_LABELS_JA else DETECTION_LABELS_EN
-        val label = (labelMap[detectionKey] ?: detectionKey).uppercase()
-        val isDanger = detectionKey in DETECTION_DANGER_FIELDS
+        val label = AsimoHub.getDetectionLabel(detectionKey, Config.LANGUAGE) ?: return
+        val isDanger = AsimoHub.isDangerField(detectionKey)
         val labelColor = if (isDanger) colorDanger else colorCaution
 
         // Tint the background drawable
         val bg = asimoDetectionLabel.background
         if (bg is GradientDrawable) {
-            bg.setColor(labelColor and 0x00FFFFFF or 0x33000000) // 20% alpha tint
+            bg.setColor(AsimoHub.computeLabelTint(labelColor))
         }
 
         asimoDetectionLabel.text = label

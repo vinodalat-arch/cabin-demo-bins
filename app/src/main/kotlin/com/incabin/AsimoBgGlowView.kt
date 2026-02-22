@@ -89,8 +89,8 @@ class AsimoBgGlowView @JvmOverloads constructor(
 
         val gradient = RadialGradient(
             cx, cy, radius,
-            applyAlpha(currentColor, glowAlpha),
-            applyAlpha(currentColor, 0f),
+            AsimoHub.applyAlpha(currentColor, glowAlpha),
+            AsimoHub.applyAlpha(currentColor, 0f),
             Shader.TileMode.CLAMP
         )
         glowPaint.shader = gradient
@@ -103,8 +103,4 @@ class AsimoBgGlowView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
-    private fun applyAlpha(color: Int, alpha: Float): Int {
-        val a = (alpha * 255).toInt().coerceIn(0, 255)
-        return (color and 0x00FFFFFF) or (a shl 24)
-    }
 }
