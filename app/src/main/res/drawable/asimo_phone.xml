@@ -35,17 +35,20 @@
         android:fillColor="#FFFFFF"
         android:pathData="M72,68 L128,68 L132,72 L132,124 L128,130 L72,130 L68,124 L68,72 Z" />
 
-    <!-- Badge stripe with H -->
+    <!-- Badge stripe (invisible) -->
     <path
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.5"
-        android:pathData="M80,92 L120,92 L120,102 L80,102 Z" />
+        android:fillAlpha="0.0"
+        android:pathData="M78,92 L122,92 L122,102 L78,102 Z" />
 
-    <!-- H badge -->
+    <!-- ASIMO text -->
     <path
-        android:fillColor="#FFFFFF"
-        android:fillAlpha="0.8"
-        android:pathData="M95,94 L95,100 M105,94 L105,100 M95,97 L105,97" />
+        android:strokeColor="#5B8DEF"
+        android:strokeAlpha="1.0"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M82,100 L84.5,94 L87,100 M83,98 L86,98 M94,94.5 L90,94.5 L90,97 L94,97 L94,99.5 L90,99.5 M98,94 L98,100 M97,94 L99,94 M97,100 L99,100 M102,100 L102,94 L105.5,98 L109,94 L109,100 M112,94 L118,94 L118,100 L112,100 Z" />
 
     <!-- Left leg (wide stance) -->
     <path

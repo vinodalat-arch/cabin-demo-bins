@@ -151,16 +151,12 @@
                     android:gravity="center_horizontal"
                     android:visibility="gone">
 
-                    <!-- Branding text -->
+                    <!-- Branding text (hidden) -->
                     <TextView
                         android:id="@+id/asimoBrandingText"
-                        style="@style/TextMicro"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/asimo_branding"
-                        android:textColor="@color/text_muted"
-                        android:letterSpacing="0.15"
-                        android:layout_marginBottom="@dimen/space_sm" />
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:visibility="gone" />
 
                     <!-- Speech bubble -->
                     <FrameLayout
