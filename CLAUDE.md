@@ -1,10 +1,10 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, and seat-side driver identification with face alignment and driver-absent detection. Build verified (`assembleDebug` + all 234 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), and emulator camera support. Build verified (`assembleDebug` + all 234 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
-Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android.
+Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
 
 ## What it does
 Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 18 fields: passenger_count, driver_detected, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
@@ -44,9 +44,9 @@ The inference → merge → smooth → audio alert → JSON log path is **safety
 6. **Notification isolation**: Notification posting/cancellation in AudioAlerter is wrapped in try-catch. TTS queue and alert state updates must complete regardless of notification API failures.
 
 ### Multi-Platform Support
-Single APK supports SA8155, SA8295, and generic Android. `PlatformProfile.detect()` runs once at startup, reading `Build.MANUFACTURER`, `Build.HARDWARE`, and `Build.SOC_MODEL` to select the appropriate tuning profile:
+Single APK supports SA8155, SA8295, generic Android, and Android emulator. `PlatformProfile.detect()` runs once at startup, reading `Build.MANUFACTURER`, `Build.HARDWARE`, `Build.FINGERPRINT`, and `Build.SOC_MODEL` to select the appropriate tuning profile. Emulator detection (`isEmulator()`) checks for `ranchu`/`goldfish` hardware or `generic` in fingerprint — logs "Running on emulator — using Camera2 with host webcam" and maps to GENERIC profile:
 
-| Setting | SA8155 | SA8295 | Generic |
+| Setting | SA8155 | SA8295 | Generic / Emulator |
 |---|---|---|---|
 | Pose threads / affinity | 4 / cores 4-7 | 4 / OS-scheduled | 4 / OS-scheduled |
 | Face rec threads / affinity | 2 / core 5 | 2 / OS-scheduled | 2 / OS-scheduled |
@@ -77,7 +77,7 @@ On automotive BSPs (`isAutomotiveBsp`), the Start button triggers a multi-stage 
 - On generic Android, skips entirely and goes straight to permission dialogs
 
 ### Webcam Preview Toggle
-Runtime toggle button in the top row enables/disables camera preview:
+Runtime toggle in settings panel (hidden by default, 5-tap to open) enables/disables camera preview:
 - **Off (default)**: No bitmap creation, no overlay rendering, no GC pressure. Core pipeline unaffected.
 - **On**: Full overlay (bboxes, skeleton, landmarks, metrics) rendered on camera frames and displayed in ImageView.
 - State persisted across app restarts via SharedPreferences.
@@ -204,12 +204,19 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Metric labels**: EAR, MAR, Yaw, Pitch in top-left corner with dark background
 - Pre-allocated Paint objects; ~3-5ms overhead on 1280x720
 
-### Status Dashboard (MainActivity) — Premium Three-Zone Layout
+### Status Dashboard (MainActivity) — Luxury IVI Three-Zone Layout
 - **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
 - **Three-zone horizontal layout** optimized for 1920x720 automotive landscape display:
-  - **Left panel (280dp)**: Score arc (120dp, animated), streak/session timers, camera status (dot + text), preview toggle, Faces button, Start/Stop button
-  - **Center (flexible)**: Camera preview (or idle branding when not monitoring), AI status message overlay with gradient scrim at bottom
-  - **Right panel (360dp)**: Risk pill, driver name, passenger count, distraction timer, detection labels, ticker (visible during monitoring only)
+  - **Left panel (80dp)**: Slim status strip — score arc (64dp, animated), streak/session timers (TextMicro condensed), camera status dot (tap for tooltip), Start/Stop button. No settings buttons visible
+  - **Center (flexible)**: Camera preview (or idle branding when not monitoring), AI status message overlay with gradient scrim at bottom. Expanded to fill space recovered from slim left panel
+  - **Right panel (320dp)**: Risk pill, driver name, passenger count, distraction timer, detection labels, ticker (visible during monitoring only)
+- **Settings overlay** (hidden by default):
+  - **5-tap gesture**: Tap root layout 5 times within 3s to open. Visual hint (flash) on 4th tap
+  - **Settings panel (300dp)**: Slides in from left edge between left panel and center. Background: `surface_elevated` (#1A1B24) at 95% opacity, 12dp rounded right corners
+  - **Scrim**: 50% black overlay on center zone, clickable to dismiss
+  - **Controls**: Segmented buttons (LEFT/RIGHT seat side, EN/JA language), ON/OFF toggle buttons (audio, preview), action buttons (WiFi Camera dialog, Manage Faces activity)
+  - **Close**: Close button (x), tap scrim, or 5-tap again
+  - **Animation**: Slide right 300ms decelerate (open), slide left 200ms accelerate (close)
 - **Design system**: Centralized color palette (`res/values/colors.xml`), typography styles (`res/values/styles.xml`), spacing system (`res/values/dimens.xml`)
 - **Color palette**: `#0A0A0F` background, `#12131A` surface, `#E8E9ED` text, `#5B8DEF` accent, `#2ECC71` safe, `#F39C12` caution, `#E74C3C` danger, `#F1C40F` gold
 - **Typography**: 6 styles from TextDisplay (48sp bold) to TextMicro (11sp), system Roboto
@@ -219,11 +226,12 @@ score >= 3 → high, >= 1 → medium, else → low
   - Detection labels: fade in 200ms / fade out 300ms (vertical stack with colored dots)
   - AI status: crossfade 150ms (alpha out → set text → alpha in)
   - Panel show/hide: alpha animate 300ms/200ms
+  - Settings panel: translateX slide 300ms/200ms with scrim alpha fade
 - Risk pill: compact rounded-corner pill (12dp radius), states: LOW/MEDIUM/HIGH/NO OCCUPANTS
 - Detection labels: vertical stack, `● Phone Detected` with danger/caution colored dot, "All Clear" in safe color when empty
 - Ticker: static last 3 events on separate lines (replaces marquee)
 - Footer: 11sp `text_muted`, "KPIT Technologies, India"
-- Idle state: left controls visible, center shows "Honda Smart Cabin" branding, right panel hidden
+- Idle state: slim left status strip visible, center shows "Honda Smart Cabin" branding, right panel hidden
 - Session summary dialog on stop
 - Polls FrameHolder every 500ms
 - Custom app icon: dark blue background (#1A237E) with white eye/monitoring symbol
