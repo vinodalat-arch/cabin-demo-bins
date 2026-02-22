@@ -8,11 +8,12 @@
     <dimen name="space_xl">24dp</dimen>
 
     <!-- Panel widths -->
-    <dimen name="left_panel_width">280dp</dimen>
-    <dimen name="right_panel_width">360dp</dimen>
+    <dimen name="left_panel_width">80dp</dimen>
+    <dimen name="right_panel_width">320dp</dimen>
+    <dimen name="settings_panel_width">300dp</dimen>
 
     <!-- Score arc -->
-    <dimen name="score_arc_size">120dp</dimen>
+    <dimen name="score_arc_size">64dp</dimen>
 
     <!-- Buttons -->
     <dimen name="button_height">44dp</dimen>

@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
@@ -41,6 +42,10 @@ class MainActivity : Activity() {
         private const val PREF_LANGUAGE = "language"
         private const val PREF_SEAT_SIDE = "seat_side"
         private const val PREF_WIFI_URL = "wifi_camera_url"
+
+        // 5-tap gesture
+        private const val TAP_WINDOW_MS = 3000L
+        private const val REQUIRED_TAPS = 5
 
         // Score tuning
         private const val SCORE_RECOVERY = 0.5f
@@ -194,12 +199,11 @@ class MainActivity : Activity() {
     private var colorSurfaceElevated = 0
 
     // --- UI references ---
+    private lateinit var rootLayout: FrameLayout
     private lateinit var toggleButton: Button
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
     private lateinit var audioToggle: Button
-    private lateinit var langToggle: Button
-    private lateinit var seatToggle: Button
     private lateinit var wifiCamButton: Button
     private lateinit var cameraStatusText: TextView
     private lateinit var cameraStatusDot: View
@@ -228,6 +232,20 @@ class MainActivity : Activity() {
     private lateinit var tickerLine1: TextView
     private lateinit var tickerLine2: TextView
     private lateinit var tickerLine3: TextView
+
+    // --- Settings panel ---
+    private lateinit var settingsPanel: LinearLayout
+    private lateinit var settingsScrim: View
+    private lateinit var settingsCloseBtn: TextView
+    private lateinit var seatLeftBtn: TextView
+    private lateinit var seatRightBtn: TextView
+    private lateinit var langEnBtn: TextView
+    private lateinit var langJaBtn: TextView
+    private var settingsVisible = false
+
+    // --- 5-tap gesture ---
+    private var tapCount = 0
+    private var firstTapTime = 0L
 
     private var isRunning = false
     private var isSettingUp = false
@@ -319,14 +337,9 @@ class MainActivity : Activity() {
         // Detect platform once
         platformProfile = PlatformProfile.detect()
 
-        // Bind views
+        // Bind views — main layout
+        rootLayout = findViewById(R.id.rootLayout)
         toggleButton = findViewById(R.id.toggleButton)
-        registerButton = findViewById(R.id.registerButton)
-        previewToggle = findViewById(R.id.previewToggle)
-        audioToggle = findViewById(R.id.audioToggle)
-        langToggle = findViewById(R.id.langToggle)
-        seatToggle = findViewById(R.id.seatToggle)
-        wifiCamButton = findViewById(R.id.wifiCamButton)
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
         driverNameText = findViewById(R.id.driverNameText)
@@ -355,6 +368,19 @@ class MainActivity : Activity() {
         tickerLine2 = findViewById(R.id.tickerLine2)
         tickerLine3 = findViewById(R.id.tickerLine3)
 
+        // Bind views — settings panel
+        settingsPanel = findViewById(R.id.settingsPanel)
+        settingsScrim = findViewById(R.id.settingsScrim)
+        settingsCloseBtn = findViewById(R.id.settingsCloseBtn)
+        seatLeftBtn = findViewById(R.id.seatLeftBtn)
+        seatRightBtn = findViewById(R.id.seatRightBtn)
+        langEnBtn = findViewById(R.id.langEnBtn)
+        langJaBtn = findViewById(R.id.langJaBtn)
+        registerButton = findViewById(R.id.registerButton)
+        previewToggle = findViewById(R.id.previewToggle)
+        audioToggle = findViewById(R.id.audioToggle)
+        wifiCamButton = findViewById(R.id.wifiCamButton)
+
         currentRiskColor = colorSafe
 
         // Restore toggle states
@@ -366,10 +392,11 @@ class MainActivity : Activity() {
         Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
         updatePreviewToggleUI()
         updateAudioToggleUI()
-        updateLangToggleUI()
-        updateSeatToggleUI()
+        updateSeatSegmentUI()
+        updateLangSegmentUI()
         updateWifiCamButtonUI()
 
+        // --- Main controls ---
         toggleButton.setOnClickListener {
             if (isSettingUp) return@setOnClickListener
             if (isRunning) {
@@ -379,56 +406,61 @@ class MainActivity : Activity() {
             }
         }
 
-        registerButton.setOnClickListener {
-            try {
-                val intent = Intent(this, FaceRegistrationActivity::class.java)
-                startActivity(intent)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to launch FaceRegistrationActivity", e)
-            }
+        // Camera status dot tap → show tooltip
+        cameraStatusDot.setOnClickListener {
+            Toast.makeText(this, cameraStatusText.text, Toast.LENGTH_SHORT).show()
+        }
+
+        // --- 5-tap gesture on root layout ---
+        rootLayout.setOnClickListener {
+            onRootTap()
+        }
+
+        // --- Settings panel controls ---
+        settingsCloseBtn.setOnClickListener { hideSettingsPanel() }
+        settingsScrim.setOnClickListener { hideSettingsPanel() }
+
+        seatLeftBtn.setOnClickListener {
+            Config.DRIVER_SEAT_SIDE = "left"
+            prefs.edit().putString(PREF_SEAT_SIDE, "left").apply()
+            updateSeatSegmentUI()
+            Log.i(TAG, "Driver seat side: left")
+        }
+        seatRightBtn.setOnClickListener {
+            Config.DRIVER_SEAT_SIDE = "right"
+            prefs.edit().putString(PREF_SEAT_SIDE, "right").apply()
+            updateSeatSegmentUI()
+            Log.i(TAG, "Driver seat side: right")
+        }
+
+        langEnBtn.setOnClickListener {
+            Config.LANGUAGE = "en"
+            prefs.edit().putString(PREF_LANGUAGE, "en").apply()
+            updateLangSegmentUI()
+            Log.i(TAG, "Language: en")
+        }
+        langJaBtn.setOnClickListener {
+            Config.LANGUAGE = "ja"
+            prefs.edit().putString(PREF_LANGUAGE, "ja").apply()
+            updateLangSegmentUI()
+            Log.i(TAG, "Language: ja")
+        }
+
+        audioToggle.setOnClickListener {
+            Config.ENABLE_AUDIO_ALERTS = !Config.ENABLE_AUDIO_ALERTS
+            prefs.edit().putBoolean(PREF_AUDIO_ENABLED, Config.ENABLE_AUDIO_ALERTS).apply()
+            updateAudioToggleUI()
+            Log.i(TAG, "Audio alerts toggled: ${Config.ENABLE_AUDIO_ALERTS}")
         }
 
         previewToggle.setOnClickListener {
             Config.ENABLE_PREVIEW = !Config.ENABLE_PREVIEW
-            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(PREF_PREVIEW_ENABLED, Config.ENABLE_PREVIEW)
-                .apply()
+            prefs.edit().putBoolean(PREF_PREVIEW_ENABLED, Config.ENABLE_PREVIEW).apply()
             updatePreviewToggleUI()
             if (!Config.ENABLE_PREVIEW) {
                 previewImage.setImageBitmap(null)
             }
             Log.i(TAG, "Preview toggled: ${Config.ENABLE_PREVIEW}")
-        }
-
-        audioToggle.setOnClickListener {
-            Config.ENABLE_AUDIO_ALERTS = !Config.ENABLE_AUDIO_ALERTS
-            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(PREF_AUDIO_ENABLED, Config.ENABLE_AUDIO_ALERTS)
-                .apply()
-            updateAudioToggleUI()
-            Log.i(TAG, "Audio alerts toggled: ${Config.ENABLE_AUDIO_ALERTS}")
-        }
-
-        langToggle.setOnClickListener {
-            Config.LANGUAGE = if (Config.LANGUAGE == "en") "ja" else "en"
-            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putString(PREF_LANGUAGE, Config.LANGUAGE)
-                .apply()
-            updateLangToggleUI()
-            Log.i(TAG, "Language toggled: ${Config.LANGUAGE}")
-        }
-
-        seatToggle.setOnClickListener {
-            Config.DRIVER_SEAT_SIDE = if (Config.DRIVER_SEAT_SIDE == "left") "right" else "left"
-            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putString(PREF_SEAT_SIDE, Config.DRIVER_SEAT_SIDE)
-                .apply()
-            updateSeatToggleUI()
-            Log.i(TAG, "Driver seat side: ${Config.DRIVER_SEAT_SIDE}")
         }
 
         wifiCamButton.setOnClickListener {
@@ -437,6 +469,15 @@ class MainActivity : Activity() {
                 return@setOnClickListener
             }
             showWifiCameraDialog()
+        }
+
+        registerButton.setOnClickListener {
+            try {
+                val intent = Intent(this, FaceRegistrationActivity::class.java)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to launch FaceRegistrationActivity", e)
+            }
         }
     }
 
@@ -460,46 +501,134 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Preview Toggle
+    // 5-Tap Gesture → Settings Panel
+    // ---------------------------------------------------------------------
+
+    private fun onRootTap() {
+        val now = System.currentTimeMillis()
+        if (now - firstTapTime > TAP_WINDOW_MS) {
+            tapCount = 0
+            firstTapTime = now
+        }
+        tapCount++
+
+        // Visual hint on 4th tap — brief flash of the left panel border
+        if (tapCount == REQUIRED_TAPS - 1) {
+            val leftPanel = findViewById<View>(R.id.leftPanel)
+            leftPanel.animate().alpha(0.5f).setDuration(100).withEndAction {
+                leftPanel.animate().alpha(1f).setDuration(100).start()
+            }.start()
+        }
+
+        if (tapCount >= REQUIRED_TAPS) {
+            tapCount = 0
+            toggleSettingsPanel()
+        }
+    }
+
+    private fun toggleSettingsPanel() {
+        if (settingsVisible) {
+            hideSettingsPanel()
+        } else {
+            showSettingsPanel()
+        }
+    }
+
+    private fun showSettingsPanel() {
+        settingsVisible = true
+
+        // Position off-screen to the left, then slide in
+        settingsPanel.translationX = -dpToPx(300).toFloat()
+        settingsPanel.visibility = View.VISIBLE
+        settingsPanel.animate()
+            .translationX(0f)
+            .setDuration(300)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        // Fade in scrim
+        settingsScrim.alpha = 0f
+        settingsScrim.visibility = View.VISIBLE
+        settingsScrim.animate()
+            .alpha(1f)
+            .setDuration(300)
+            .start()
+    }
+
+    private fun hideSettingsPanel() {
+        settingsVisible = false
+
+        settingsPanel.animate()
+            .translationX(-dpToPx(300).toFloat())
+            .setDuration(200)
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                settingsPanel.visibility = View.GONE
+            }
+            .start()
+
+        settingsScrim.animate()
+            .alpha(0f)
+            .setDuration(200)
+            .withEndAction {
+                settingsScrim.visibility = View.GONE
+            }
+            .start()
+    }
+
+    // ---------------------------------------------------------------------
+    // Settings UI Updates
     // ---------------------------------------------------------------------
 
     private fun updatePreviewToggleUI() {
         if (Config.ENABLE_PREVIEW) {
-            previewToggle.text = "Preview ON"
+            previewToggle.text = "ON"
             previewToggle.setTextColor(colorTextPrimary)
+            previewToggle.setBackgroundResource(R.drawable.bg_button_accent)
         } else {
-            previewToggle.text = "Preview"
+            previewToggle.text = "OFF"
             previewToggle.setTextColor(colorTextSecondary)
+            previewToggle.setBackgroundResource(R.drawable.bg_button)
         }
     }
 
     private fun updateAudioToggleUI() {
         if (Config.ENABLE_AUDIO_ALERTS) {
-            audioToggle.text = "Audio ON"
+            audioToggle.text = "ON"
             audioToggle.setTextColor(colorTextPrimary)
+            audioToggle.setBackgroundResource(R.drawable.bg_button_accent)
         } else {
-            audioToggle.text = "Audio OFF"
+            audioToggle.text = "OFF"
             audioToggle.setTextColor(colorTextMuted)
+            audioToggle.setBackgroundResource(R.drawable.bg_button)
         }
     }
 
-    private fun updateLangToggleUI() {
-        if (Config.LANGUAGE == "ja") {
-            langToggle.text = "JA"
-            langToggle.setTextColor(colorTextPrimary)
+    private fun updateSeatSegmentUI() {
+        if (Config.DRIVER_SEAT_SIDE == "left") {
+            seatLeftBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            seatLeftBtn.setTextColor(Color.WHITE)
+            seatRightBtn.setBackgroundColor(Color.TRANSPARENT)
+            seatRightBtn.setTextColor(colorTextSecondary)
         } else {
-            langToggle.text = "EN"
-            langToggle.setTextColor(colorTextSecondary)
+            seatRightBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            seatRightBtn.setTextColor(Color.WHITE)
+            seatLeftBtn.setBackgroundColor(Color.TRANSPARENT)
+            seatLeftBtn.setTextColor(colorTextSecondary)
         }
     }
 
-    private fun updateSeatToggleUI() {
-        if (Config.DRIVER_SEAT_SIDE == "right") {
-            seatToggle.text = "Seat: Right"
-            seatToggle.setTextColor(colorTextPrimary)
+    private fun updateLangSegmentUI() {
+        if (Config.LANGUAGE == "en") {
+            langEnBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            langEnBtn.setTextColor(Color.WHITE)
+            langJaBtn.setBackgroundColor(Color.TRANSPARENT)
+            langJaBtn.setTextColor(colorTextSecondary)
         } else {
-            seatToggle.text = "Seat: Left"
-            seatToggle.setTextColor(colorTextSecondary)
+            langJaBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            langJaBtn.setTextColor(Color.WHITE)
+            langEnBtn.setBackgroundColor(Color.TRANSPARENT)
+            langEnBtn.setTextColor(colorTextSecondary)
         }
     }
 
@@ -509,10 +638,10 @@ class MainActivity : Activity() {
 
     private fun updateWifiCamButtonUI() {
         if (Config.WIFI_CAMERA_URL.isNotBlank()) {
-            wifiCamButton.text = "WiFi Cam ON"
+            wifiCamButton.text = "WiFi Cam: ON"
             wifiCamButton.setTextColor(colorAccent)
         } else {
-            wifiCamButton.text = "WiFi Cam"
+            wifiCamButton.text = "WiFi Camera..."
             wifiCamButton.setTextColor(colorTextSecondary)
         }
     }
@@ -545,6 +674,7 @@ class MainActivity : Activity() {
             })
         }
 
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog)
             .setTitle("WiFi Camera")
             .setView(container)
@@ -555,19 +685,13 @@ class MainActivity : Activity() {
                     return@setPositiveButton
                 }
                 Config.WIFI_CAMERA_URL = url
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(PREF_WIFI_URL, url)
-                    .apply()
+                prefs.edit().putString(PREF_WIFI_URL, url).apply()
                 updateWifiCamButtonUI()
                 Log.i(TAG, "WiFi camera URL: ${if (url.isBlank()) "(cleared)" else url}")
             }
             .setNeutralButton("Clear") { _, _ ->
                 Config.WIFI_CAMERA_URL = ""
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(PREF_WIFI_URL, "")
-                    .apply()
+                prefs.edit().putString(PREF_WIFI_URL, "").apply()
                 updateWifiCamButtonUI()
                 Log.i(TAG, "WiFi camera URL cleared")
             }
@@ -578,7 +702,7 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // Camera Status Indicator (dot + text)
+    // Camera Status Indicator (dot + tooltip)
     // ---------------------------------------------------------------------
 
     private fun setCameraStatusDotColor(color: Int) {
@@ -666,7 +790,7 @@ class MainActivity : Activity() {
 
         isSettingUp = true
         toggleButton.isEnabled = false
-        toggleButton.text = "Setting up..."
+        toggleButton.text = "..."
 
         FrameHolder.postCameraStatus(FrameHolder.CameraStatus.CONNECTING)
 
@@ -761,9 +885,9 @@ class MainActivity : Activity() {
         currentDetections = emptySet()
 
         scoreArc.score = 100
-        streakText.text = "Streak: 0:00"
-        bestStreakText.text = "Best: 0:00"
-        sessionTimeText.text = "Session: 0:00"
+        streakText.text = "0:00"
+        bestStreakText.text = "Best 0:00"
+        sessionTimeText.text = "0:00"
 
         // Show monitoring UI with fade-in
         idleOverlay.animate().alpha(0f).setDuration(200).withEndAction {
@@ -1075,11 +1199,11 @@ class MainActivity : Activity() {
         }
 
         val streakMs = now - lastDetectionMs
-        streakText.text = "Streak: ${formatDuration(streakMs)}"
-        streakText.setTextColor(if (streakMs > 60_000) colorSafe else colorTextSecondary)
+        streakText.text = formatDuration(streakMs)
+        streakText.setTextColor(if (streakMs > 60_000) colorSafe else colorTextMuted)
 
         val displayBest = if (streakMs > bestStreakMs) streakMs else bestStreakMs
-        bestStreakText.text = "Best: ${formatDuration(displayBest)}"
+        bestStreakText.text = "Best ${formatDuration(displayBest)}"
     }
 
     // ---------------------------------------------------------------------
@@ -1179,7 +1303,7 @@ class MainActivity : Activity() {
 
     private fun updateSessionTime() {
         val elapsed = System.currentTimeMillis() - sessionStartMs
-        sessionTimeText.text = "Session: ${formatDuration(elapsed)}"
+        sessionTimeText.text = formatDuration(elapsed)
     }
 
     // ---------------------------------------------------------------------

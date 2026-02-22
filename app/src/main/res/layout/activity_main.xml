@@ -1,406 +1,549 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="@color/background">
 
-    <!-- ═══════════ Three-zone horizontal body ═══════════ -->
+    <!-- ═══════════ Main content layer ═══════════ -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal">
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-        <!-- ──── LEFT PANEL: Controls + Score ──── -->
+        <!-- ═══════════ Three-zone horizontal body ═══════════ -->
         <LinearLayout
-            android:id="@+id/leftPanel"
-            android:layout_width="@dimen/left_panel_width"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:background="@color/surface"
-            android:paddingStart="@dimen/space_lg"
-            android:paddingEnd="@dimen/space_lg"
-            android:paddingTop="@dimen/space_lg"
-            android:paddingBottom="@dimen/space_sm">
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
 
-            <!-- Score arc (hidden when idle) -->
-            <FrameLayout
-                android:id="@+id/scoreContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:visibility="gone"
-                android:layout_marginBottom="@dimen/space_md">
-
-                <com.incabin.ScoreArcView
-                    android:id="@+id/scoreArc"
-                    android:layout_width="@dimen/score_arc_size"
-                    android:layout_height="@dimen/score_arc_size"
-                    android:layout_gravity="center_horizontal" />
-            </FrameLayout>
-
-            <!-- Streak / session (hidden when idle) -->
+            <!-- ──── LEFT PANEL: Slim status strip (80dp) ──── -->
             <LinearLayout
-                android:id="@+id/scorePanel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone"
-                android:layout_marginBottom="@dimen/space_lg">
-
-                <TextView
-                    android:id="@+id/streakText"
-                    style="@style/TextCaption"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Streak: 0:00" />
-
-                <TextView
-                    android:id="@+id/bestStreakText"
-                    style="@style/TextMicro"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Best: 0:00"
-                    android:layout_marginTop="2dp" />
-
-                <TextView
-                    android:id="@+id/sessionTimeText"
-                    style="@style/TextMicro"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Session: 0:00"
-                    android:layout_marginTop="2dp" />
-            </LinearLayout>
-
-            <!-- Divider -->
-            <View
-                android:id="@+id/leftDivider"
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="@color/divider"
-                android:layout_marginBottom="@dimen/space_md"
-                android:visibility="gone" />
-
-            <!-- Camera status -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="@dimen/space_md">
-
-                <View
-                    android:id="@+id/cameraStatusDot"
-                    android:layout_width="8dp"
-                    android:layout_height="8dp"
-                    android:background="@color/danger"
-                    android:layout_marginEnd="@dimen/space_sm" />
-
-                <TextView
-                    android:id="@+id/cameraStatusText"
-                    style="@style/TextMicro"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="No camera" />
-            </LinearLayout>
-
-            <!-- Spacer -->
-            <View
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-            <!-- Seat side toggle (LHD/RHD) -->
-            <Button
-                android:id="@+id/seatToggle"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height"
-                android:background="@drawable/bg_button"
-                android:text="Seat: Left"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary"
-                android:textAllCaps="false"
-                android:layout_marginBottom="@dimen/space_sm"
-                android:stateListAnimator="@null" />
-
-            <!-- WiFi camera button -->
-            <Button
-                android:id="@+id/wifiCamButton"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height"
-                android:background="@drawable/bg_button"
-                android:text="WiFi Cam"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary"
-                android:textAllCaps="false"
-                android:layout_marginBottom="@dimen/space_sm"
-                android:stateListAnimator="@null" />
-
-            <!-- Language toggle button -->
-            <Button
-                android:id="@+id/langToggle"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height"
-                android:background="@drawable/bg_button"
-                android:text="EN"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary"
-                android:textAllCaps="false"
-                android:layout_marginBottom="@dimen/space_sm"
-                android:stateListAnimator="@null" />
-
-            <!-- Audio toggle button -->
-            <Button
-                android:id="@+id/audioToggle"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height"
-                android:background="@drawable/bg_button"
-                android:text="Audio ON"
-                android:textSize="13sp"
-                android:textColor="@color/text_primary"
-                android:textAllCaps="false"
-                android:layout_marginBottom="@dimen/space_sm"
-                android:stateListAnimator="@null" />
-
-            <!-- Preview toggle button -->
-            <Button
-                android:id="@+id/previewToggle"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height"
-                android:background="@drawable/bg_button"
-                android:text="Preview"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary"
-                android:textAllCaps="false"
-                android:layout_marginBottom="@dimen/space_sm"
-                android:stateListAnimator="@null" />
-
-            <!-- Faces button -->
-            <Button
-                android:id="@+id/registerButton"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height"
-                android:background="@drawable/bg_button"
-                android:text="Faces"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary"
-                android:textAllCaps="false"
-                android:layout_marginBottom="@dimen/space_sm"
-                android:stateListAnimator="@null" />
-
-            <!-- Start / Stop button -->
-            <Button
-                android:id="@+id/toggleButton"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/button_height_large"
-                android:background="@drawable/bg_button_accent"
-                android:text="@string/start_service"
-                android:textSize="14sp"
-                android:textColor="#FFFFFFFF"
-                android:textAllCaps="false"
-                android:stateListAnimator="@null" />
-        </LinearLayout>
-
-        <!-- ──── CENTER: Camera preview + AI status overlay ──── -->
-        <FrameLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1">
-
-            <ImageView
-                android:id="@+id/previewImage"
-                android:layout_width="match_parent"
+                android:id="@+id/leftPanel"
+                android:layout_width="@dimen/left_panel_width"
                 android:layout_height="match_parent"
-                android:scaleType="fitCenter"
+                android:orientation="vertical"
                 android:background="@color/surface"
-                android:contentDescription="Camera preview" />
+                android:paddingStart="@dimen/space_sm"
+                android:paddingEnd="@dimen/space_sm"
+                android:paddingTop="@dimen/space_md"
+                android:paddingBottom="@dimen/space_sm"
+                android:gravity="center_horizontal">
 
-            <!-- Idle branding (visible when not monitoring) -->
-            <LinearLayout
-                android:id="@+id/idleOverlay"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:background="@color/surface">
-
-                <TextView
-                    android:layout_width="wrap_content"
+                <!-- Score arc (hidden when idle) -->
+                <FrameLayout
+                    android:id="@+id/scoreContainer"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Honda Smart Cabin"
-                    style="@style/TextTitle"
-                    android:textColor="@color/text_muted" />
+                    android:visibility="gone"
+                    android:layout_marginBottom="@dimen/space_sm">
 
-                <TextView
-                    android:id="@+id/statusText"
-                    style="@style/TextCaption"
-                    android:layout_width="wrap_content"
+                    <com.incabin.ScoreArcView
+                        android:id="@+id/scoreArc"
+                        android:layout_width="@dimen/score_arc_size"
+                        android:layout_height="@dimen/score_arc_size"
+                        android:layout_gravity="center_horizontal" />
+                </FrameLayout>
+
+                <!-- Streak / session (hidden when idle) -->
+                <LinearLayout
+                    android:id="@+id/scorePanel"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Tap Start to begin monitoring"
-                    android:layout_marginTop="@dimen/space_sm" />
-            </LinearLayout>
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:gravity="center_horizontal"
+                    android:layout_marginBottom="@dimen/space_sm">
 
-            <!-- AI status overlay at bottom of preview -->
-            <TextView
-                android:id="@+id/aiStatusText"
-                style="@style/TextBody"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom"
-                android:background="@drawable/bg_ai_scrim"
-                android:gravity="center"
-                android:paddingTop="@dimen/space_xl"
-                android:paddingBottom="@dimen/space_md"
-                android:paddingStart="@dimen/space_lg"
-                android:paddingEnd="@dimen/space_lg"
-                android:text="Tap Start to begin monitoring"
-                android:textColor="@color/text_secondary"
-                android:visibility="gone" />
-        </FrameLayout>
+                    <TextView
+                        android:id="@+id/streakText"
+                        style="@style/TextMicro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textSize="10sp" />
 
-        <!-- ──── RIGHT PANEL: Safety dashboard ──── -->
-        <LinearLayout
-            android:id="@+id/rightPanel"
-            android:layout_width="@dimen/right_panel_width"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:background="@color/surface"
-            android:paddingStart="@dimen/space_lg"
-            android:paddingEnd="@dimen/space_lg"
-            android:paddingTop="@dimen/space_lg"
-            android:paddingBottom="@dimen/space_sm"
-            android:visibility="gone">
+                    <TextView
+                        android:id="@+id/bestStreakText"
+                        style="@style/TextMicro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Best 0:00"
+                        android:textSize="9sp"
+                        android:layout_marginTop="1dp" />
 
-            <!-- Risk pill -->
-            <TextView
-                android:id="@+id/riskBanner"
-                style="@style/TextHeadline"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_risk_pill"
-                android:paddingStart="@dimen/risk_pill_padding_h"
-                android:paddingEnd="@dimen/risk_pill_padding_h"
-                android:paddingTop="@dimen/risk_pill_padding_v"
-                android:paddingBottom="@dimen/risk_pill_padding_v"
-                android:text="LOW"
-                android:textColor="#FF000000"
-                android:layout_marginBottom="@dimen/space_lg" />
+                    <TextView
+                        android:id="@+id/sessionTimeText"
+                        style="@style/TextMicro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textSize="9sp"
+                        android:layout_marginTop="1dp" />
+                </LinearLayout>
 
-            <!-- Driver name -->
-            <TextView
-                android:id="@+id/driverNameText"
-                style="@style/TextTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/accent"
-                android:visibility="gone"
-                android:layout_marginBottom="@dimen/space_md" />
-
-            <!-- Passengers -->
-            <TextView
-                android:id="@+id/passengerText"
-                style="@style/TextBody"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0 passengers"
-                android:textColor="@color/text_secondary"
-                android:layout_marginBottom="@dimen/space_xs" />
-
-            <!-- Distraction timer -->
-            <TextView
-                android:id="@+id/distractionText"
-                style="@style/TextBody"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Distraction: 0s"
-                android:textColor="@color/text_secondary"
-                android:layout_marginBottom="@dimen/space_lg" />
-
-            <!-- Detection labels container -->
-            <LinearLayout
-                android:id="@+id/detectionsContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="@dimen/space_md" />
-
-            <!-- Spacer -->
-            <View
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-            <!-- Ticker: last 3 events -->
-            <LinearLayout
-                android:id="@+id/tickerContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
+                <!-- Divider -->
                 <View
+                    android:id="@+id/leftDivider"
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:background="@color/divider"
+                    android:layout_marginBottom="@dimen/space_sm"
+                    android:visibility="gone" />
+
+                <!-- Camera status (dot only, tap for tooltip) -->
+                <View
+                    android:id="@+id/cameraStatusDot"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@color/danger"
                     android:layout_marginBottom="@dimen/space_sm" />
 
+                <!-- Hidden camera status text (for logic compatibility) -->
                 <TextView
-                    android:id="@+id/tickerLine1"
-                    style="@style/TextMicro"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:singleLine="true"
-                    android:ellipsize="end" />
+                    android:id="@+id/cameraStatusText"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone"
+                    android:text="No camera" />
 
-                <TextView
-                    android:id="@+id/tickerLine2"
-                    style="@style/TextMicro"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:singleLine="true"
-                    android:ellipsize="end" />
+                <!-- Spacer -->
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
 
-                <TextView
-                    android:id="@+id/tickerLine3"
-                    style="@style/TextMicro"
+                <!-- Start / Stop button -->
+                <Button
+                    android:id="@+id/toggleButton"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:singleLine="true"
-                    android:ellipsize="end" />
+                    android:layout_height="@dimen/button_height"
+                    android:background="@drawable/bg_button_accent"
+                    android:text="@string/start_service"
+                    android:textSize="11sp"
+                    android:textColor="#FFFFFFFF"
+                    android:textAllCaps="false"
+                    android:stateListAnimator="@null" />
             </LinearLayout>
 
-            <!-- Hidden engineering metrics (kept in layout for compatibility) -->
-            <TextView
-                android:id="@+id/earText"
+            <!-- ──── CENTER: Camera preview + AI status overlay ──── -->
+            <FrameLayout
                 android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
-            <TextView
-                android:id="@+id/marText"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
-            <TextView
-                android:id="@+id/yawText"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
-            <TextView
-                android:id="@+id/pitchText"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:visibility="gone" />
+                android:layout_height="match_parent"
+                android:layout_weight="1">
+
+                <ImageView
+                    android:id="@+id/previewImage"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="fitCenter"
+                    android:background="@color/surface"
+                    android:contentDescription="Camera preview" />
+
+                <!-- Idle branding (visible when not monitoring) -->
+                <LinearLayout
+                    android:id="@+id/idleOverlay"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:background="@color/surface">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Honda Smart Cabin"
+                        style="@style/TextTitle"
+                        android:textColor="@color/text_muted" />
+
+                    <TextView
+                        android:id="@+id/statusText"
+                        style="@style/TextCaption"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Tap Start to begin monitoring"
+                        android:layout_marginTop="@dimen/space_sm" />
+                </LinearLayout>
+
+                <!-- AI status overlay at bottom of preview -->
+                <TextView
+                    android:id="@+id/aiStatusText"
+                    style="@style/TextBody"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:background="@drawable/bg_ai_scrim"
+                    android:gravity="center"
+                    android:paddingTop="@dimen/space_xl"
+                    android:paddingBottom="@dimen/space_md"
+                    android:paddingStart="@dimen/space_lg"
+                    android:paddingEnd="@dimen/space_lg"
+                    android:text="Tap Start to begin monitoring"
+                    android:textColor="@color/text_secondary"
+                    android:visibility="gone" />
+            </FrameLayout>
+
+            <!-- ──── RIGHT PANEL: Safety dashboard ──── -->
+            <LinearLayout
+                android:id="@+id/rightPanel"
+                android:layout_width="@dimen/right_panel_width"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:background="@color/surface"
+                android:paddingStart="@dimen/space_lg"
+                android:paddingEnd="@dimen/space_lg"
+                android:paddingTop="@dimen/space_lg"
+                android:paddingBottom="@dimen/space_sm"
+                android:visibility="gone">
+
+                <!-- Risk pill -->
+                <TextView
+                    android:id="@+id/riskBanner"
+                    style="@style/TextHeadline"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_risk_pill"
+                    android:paddingStart="@dimen/risk_pill_padding_h"
+                    android:paddingEnd="@dimen/risk_pill_padding_h"
+                    android:paddingTop="@dimen/risk_pill_padding_v"
+                    android:paddingBottom="@dimen/risk_pill_padding_v"
+                    android:text="LOW"
+                    android:textColor="#FF000000"
+                    android:layout_marginBottom="@dimen/space_lg" />
+
+                <!-- Driver name -->
+                <TextView
+                    android:id="@+id/driverNameText"
+                    style="@style/TextTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/accent"
+                    android:visibility="gone"
+                    android:layout_marginBottom="@dimen/space_md" />
+
+                <!-- Passengers -->
+                <TextView
+                    android:id="@+id/passengerText"
+                    style="@style/TextBody"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0 passengers"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="@dimen/space_xs" />
+
+                <!-- Distraction timer -->
+                <TextView
+                    android:id="@+id/distractionText"
+                    style="@style/TextBody"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Distraction: 0s"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginBottom="@dimen/space_lg" />
+
+                <!-- Detection labels container -->
+                <LinearLayout
+                    android:id="@+id/detectionsContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="@dimen/space_md" />
+
+                <!-- Spacer -->
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <!-- Ticker: last 3 events -->
+                <LinearLayout
+                    android:id="@+id/tickerContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider"
+                        android:layout_marginBottom="@dimen/space_sm" />
+
+                    <TextView
+                        android:id="@+id/tickerLine1"
+                        style="@style/TextMicro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:singleLine="true"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:id="@+id/tickerLine2"
+                        style="@style/TextMicro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:singleLine="true"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:id="@+id/tickerLine3"
+                        style="@style/TextMicro"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:singleLine="true"
+                        android:ellipsize="end" />
+                </LinearLayout>
+
+                <!-- Hidden engineering metrics (kept in layout for compatibility) -->
+                <TextView
+                    android:id="@+id/earText"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/marText"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/yawText"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/pitchText"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+            </LinearLayout>
         </LinearLayout>
+
+        <!-- ═══════════ Footer ═══════════ -->
+        <TextView
+            style="@style/TextMicro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="KPIT Technologies, India"
+            android:gravity="center"
+            android:paddingTop="@dimen/space_xs"
+            android:paddingBottom="@dimen/space_xs" />
     </LinearLayout>
 
-    <!-- ═══════════ Footer ═══════════ -->
-    <TextView
-        style="@style/TextMicro"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="KPIT Technologies, India"
-        android:gravity="center"
-        android:paddingTop="@dimen/space_xs"
-        android:paddingBottom="@dimen/space_xs" />
+    <!-- ═══════════ Settings overlay layer (above main content) ═══════════ -->
 
-</LinearLayout>
+    <!-- Scrim (covers entire screen, dismisses on tap) -->
+    <View
+        android:id="@+id/settingsScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone"
+        android:clickable="true" />
+
+    <!-- Settings panel (slides in from left) -->
+    <LinearLayout
+        android:id="@+id/settingsPanel"
+        android:layout_width="@dimen/settings_panel_width"
+        android:layout_height="match_parent"
+        android:layout_marginStart="@dimen/left_panel_width"
+        android:orientation="vertical"
+        android:background="@drawable/bg_settings_panel"
+        android:paddingStart="@dimen/space_xl"
+        android:paddingEnd="@dimen/space_xl"
+        android:paddingTop="@dimen/space_lg"
+        android:paddingBottom="@dimen/space_lg"
+        android:visibility="gone"
+        android:elevation="8dp"
+        android:clickable="true">
+
+        <!-- Header row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/space_xl">
+
+            <TextView
+                style="@style/TextTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Settings"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/settingsCloseBtn"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="\u2715"
+                android:textSize="18sp"
+                android:textColor="@color/text_secondary"
+                android:background="?android:attr/selectableItemBackgroundBorderless" />
+        </LinearLayout>
+
+        <!-- Driver Seat Side -->
+        <TextView
+            style="@style/TextCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Driver Seat"
+            android:layout_marginBottom="@dimen/space_sm" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_segmented_button"
+            android:layout_marginBottom="@dimen/space_xl">
+
+            <TextView
+                android:id="@+id/seatLeftBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="LEFT"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="@color/divider" />
+
+            <TextView
+                android:id="@+id/seatRightBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="RIGHT"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+
+        <!-- Language -->
+        <TextView
+            style="@style/TextCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Language"
+            android:layout_marginBottom="@dimen/space_sm" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_segmented_button"
+            android:layout_marginBottom="@dimen/space_xl">
+
+            <TextView
+                android:id="@+id/langEnBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="EN"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary" />
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="@color/divider" />
+
+            <TextView
+                android:id="@+id/langJaBtn"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="JA"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+
+        <!-- Audio Alerts toggle -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/space_xl">
+
+            <TextView
+                style="@style/TextCaption"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Audio Alerts" />
+
+            <Button
+                android:id="@+id/audioToggle"
+                android:layout_width="72dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_button"
+                android:text="ON"
+                android:textSize="12sp"
+                android:textColor="@color/text_primary"
+                android:textAllCaps="false"
+                android:stateListAnimator="@null" />
+        </LinearLayout>
+
+        <!-- Camera Preview toggle -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="@dimen/space_xl">
+
+            <TextView
+                style="@style/TextCaption"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Camera Preview" />
+
+            <Button
+                android:id="@+id/previewToggle"
+                android:layout_width="72dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_button"
+                android:text="OFF"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:textAllCaps="false"
+                android:stateListAnimator="@null" />
+        </LinearLayout>
+
+        <!-- WiFi Camera button -->
+        <Button
+            android:id="@+id/wifiCamButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/button_height"
+            android:background="@drawable/bg_button"
+            android:text="WiFi Camera..."
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:textAllCaps="false"
+            android:layout_marginBottom="@dimen/space_md"
+            android:stateListAnimator="@null" />
+
+        <!-- Face Registry button -->
+        <Button
+            android:id="@+id/registerButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/button_height"
+            android:background="@drawable/bg_button"
+            android:text="Manage Faces..."
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:textAllCaps="false"
+            android:stateListAnimator="@null" />
+    </LinearLayout>
+
+</FrameLayout>

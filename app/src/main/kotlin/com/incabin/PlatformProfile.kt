@@ -50,6 +50,7 @@ data class PlatformProfile(
             val hardware = Build.HARDWARE
             val manufacturer = Build.MANUFACTURER
             val model = Build.MODEL
+            val fingerprint = Build.FINGERPRINT
             val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Build.SOC_MODEL
             } else {
@@ -58,6 +59,10 @@ data class PlatformProfile(
 
             Log.i(TAG, "Platform detection: MANUFACTURER=$manufacturer, MODEL=$model, " +
                 "HARDWARE=$hardware, SOC_MODEL=$socModel")
+
+            if (isEmulator(hardware, fingerprint)) {
+                Log.i(TAG, "Running on emulator — using Camera2 with host webcam")
+            }
 
             val profile = fromDeviceInfo(manufacturer, model, hardware, socModel)
             Log.i(TAG, "Detected: ${profile.platform}, camera=${profile.cameraStrategy}, " +
@@ -140,6 +145,12 @@ data class PlatformProfile(
         private fun isSA8295(hardware: String, socModel: String): Boolean {
             return socModel.contains("SA8295", ignoreCase = true) ||
                 hardware.contains("SA8295", ignoreCase = true)
+        }
+
+        /** Testable: detect if running on an Android emulator. */
+        fun isEmulator(hardware: String, fingerprint: String): Boolean {
+            return hardware in listOf("ranchu", "goldfish") ||
+                fingerprint.contains("generic", ignoreCase = true)
         }
     }
 }
