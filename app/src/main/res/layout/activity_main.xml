@@ -141,6 +141,17 @@
                     android:background="@color/surface"
                     android:contentDescription="Camera preview" />
 
+                <!-- ASIMO mascot (reacts to detection state) -->
+                <ImageView
+                    android:id="@+id/asimoMascot"
+                    android:layout_width="@dimen/asimo_size_large"
+                    android:layout_height="@dimen/asimo_size_large"
+                    android:layout_gravity="center"
+                    android:scaleType="fitCenter"
+                    android:visibility="gone"
+                    android:src="@drawable/asimo_all_clear"
+                    android:contentDescription="ASIMO mascot" />
+
                 <!-- Idle branding (visible when not monitoring) -->
                 <LinearLayout
                     android:id="@+id/idleOverlay"

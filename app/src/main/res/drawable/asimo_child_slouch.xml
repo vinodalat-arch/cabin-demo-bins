@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200"
+    android:alpha="0.35">
+
+    <!-- Helmet dome (shifted down for kneeling) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M100,34 C74,34 64,54 64,68 L64,76 L136,76 L136,68 C136,54 126,34 100,34 Z" />
+
+    <!-- Visor slit -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3"
+        android:pathData="M70,56 L130,56 L130,68 L70,68 Z" />
+
+    <!-- Neck -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M86,76 L114,76 L114,84 L86,84 Z" />
+
+    <!-- Torso -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,84 L128,84 L132,88 L132,140 L128,146 L72,146 L68,140 L68,88 Z" />
+
+    <!-- Badge stripe (HONDA) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5"
+        android:pathData="M80,108 L120,108 L120,118 L80,118 Z" />
+
+    <!-- Left leg (kneeling - horizontal thigh, vertical shin) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,148 L96,148 L96,156 L84,156 L84,178 L72,178 Z" />
+
+    <!-- Right leg (kneeling) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M104,148 L128,148 L128,178 L116,178 L116,156 L104,156 Z" />
+
+    <!-- Left arm at side -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68,90 L56,96 L52,104 L50,134 L58,138 L62,134 L60,104 L68,96 Z" />
+
+    <!-- Right arm pointing down -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M132,90 L144,96 L148,108 L150,148 L154,164 L146,168 L142,164 L142,148 L140,108 L132,96 Z" />
+
+    <!-- Pointing finger down -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M146,168 L148,180 L154,180 L154,168 Z" />
+
+</vector>

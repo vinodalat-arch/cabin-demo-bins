@@ -71,6 +71,18 @@ class MainActivity : Activity() {
             30L * 60 * 1000 to "30分間完璧な運転。伝説です！"
         )
 
+        // ASIMO mascot pose priority (highest first)
+        private val ASIMO_POSE_PRIORITY = listOf(
+            "driverUsingPhone" to R.drawable.asimo_phone,
+            "driverEyesClosed" to R.drawable.asimo_eyes_closed,
+            "driverDistracted" to R.drawable.asimo_distracted,
+            "driverYawning" to R.drawable.asimo_yawning,
+            "driverEatingDrinking" to R.drawable.asimo_eating,
+            "dangerousPosture" to R.drawable.asimo_posture,
+            "childSlouching" to R.drawable.asimo_child_slouch
+        )
+        private const val ASIMO_CROSSFADE_MS = 300L
+
         // Varied detection messages
         private val PHONE_MESSAGES = listOf(
             "Phone spotted! That text can wait.",
@@ -272,6 +284,11 @@ class MainActivity : Activity() {
     private val tickerEvents = mutableListOf<String>()
     private var lastTickerDetections = ""
 
+    // --- ASIMO mascot ---
+    private lateinit var asimoMascot: ImageView
+    private var currentAsimoPose: Int = 0
+    private var asimoAnimating: Boolean = false
+
     // --- Animation state ---
     private var currentRiskColor = 0
     private var riskAnimator: ValueAnimator? = null
@@ -295,6 +312,7 @@ class MainActivity : Activity() {
                         updateStreak(result)
                         updateAiStatus(result)
                         updateTicker(result)
+                        updateAsimoPose(result)
                         totalFrames++
                         scoreSum += drivingScore
                     }
@@ -367,6 +385,9 @@ class MainActivity : Activity() {
         tickerLine1 = findViewById(R.id.tickerLine1)
         tickerLine2 = findViewById(R.id.tickerLine2)
         tickerLine3 = findViewById(R.id.tickerLine3)
+
+        // Bind views — ASIMO mascot
+        asimoMascot = findViewById(R.id.asimoMascot)
 
         // Bind views — settings panel
         settingsPanel = findViewById(R.id.settingsPanel)
@@ -459,6 +480,9 @@ class MainActivity : Activity() {
             updatePreviewToggleUI()
             if (!Config.ENABLE_PREVIEW) {
                 previewImage.setImageBitmap(null)
+            }
+            if (isRunning) {
+                updateAsimoSize()
             }
             Log.i(TAG, "Preview toggled: ${Config.ENABLE_PREVIEW}")
         }
@@ -901,6 +925,15 @@ class MainActivity : Activity() {
         aiStatusText.text = "Warming up the AI brain..."
         aiStatusText.setTextColor(colorAccent)
 
+        // Show ASIMO mascot with fade-in
+        currentAsimoPose = R.drawable.asimo_all_clear
+        asimoAnimating = false
+        asimoMascot.setImageResource(R.drawable.asimo_all_clear)
+        updateAsimoSize()
+        asimoMascot.alpha = 0f
+        asimoMascot.visibility = View.VISIBLE
+        asimoMascot.animate().alpha(1f).setDuration(300).start()
+
         // Fade in right panel
         rightPanel.alpha = 0f
         rightPanel.visibility = View.VISIBLE
@@ -934,6 +967,11 @@ class MainActivity : Activity() {
         // Hide monitoring UI with fade
         rightPanel.animate().alpha(0f).setDuration(200).withEndAction {
             rightPanel.visibility = View.GONE
+        }.start()
+
+        // Fade out ASIMO mascot
+        asimoMascot.animate().alpha(0f).setDuration(200).withEndAction {
+            asimoMascot.visibility = View.GONE
         }.start()
 
         scoreContainer.visibility = View.GONE
@@ -1141,6 +1179,56 @@ class MainActivity : Activity() {
         }
         detectionsContainer.addView(tv)
         tv.animate().alpha(1f).setDuration(200).start()
+    }
+
+    // ---------------------------------------------------------------------
+    // ASIMO Mascot
+    // ---------------------------------------------------------------------
+
+    private fun updateAsimoPose(result: OutputResult) {
+        val targetDrawable = ASIMO_POSE_PRIORITY.firstOrNull { (field, _) ->
+            when (field) {
+                "driverUsingPhone" -> result.driverUsingPhone
+                "driverEyesClosed" -> result.driverEyesClosed
+                "driverDistracted" -> result.driverDistracted
+                "driverYawning" -> result.driverYawning
+                "driverEatingDrinking" -> result.driverEatingDrinking
+                "dangerousPosture" -> result.dangerousPosture
+                "childSlouching" -> result.childSlouching
+                else -> false
+            }
+        }?.second ?: R.drawable.asimo_all_clear
+
+        if (targetDrawable == currentAsimoPose || asimoAnimating) return
+
+        // Crossfade: half out, swap drawable, half in
+        asimoAnimating = true
+        val halfDuration = ASIMO_CROSSFADE_MS / 2
+        asimoMascot.animate()
+            .alpha(0f)
+            .setDuration(halfDuration)
+            .withEndAction {
+                asimoMascot.setImageResource(targetDrawable)
+                currentAsimoPose = targetDrawable
+                asimoMascot.animate()
+                    .alpha(1f)
+                    .setDuration(halfDuration)
+                    .withEndAction { asimoAnimating = false }
+                    .start()
+            }
+            .start()
+    }
+
+    private fun updateAsimoSize() {
+        val size = if (Config.ENABLE_PREVIEW) {
+            resources.getDimensionPixelSize(R.dimen.asimo_size_small)
+        } else {
+            resources.getDimensionPixelSize(R.dimen.asimo_size_large)
+        }
+        val lp = asimoMascot.layoutParams
+        lp.width = size
+        lp.height = size
+        asimoMascot.layoutParams = lp
     }
 
     // ---------------------------------------------------------------------

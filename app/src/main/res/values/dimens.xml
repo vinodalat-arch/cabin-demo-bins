@@ -20,6 +20,10 @@
     <dimen name="button_height_large">48dp</dimen>
     <dimen name="button_radius">8dp</dimen>
 
+    <!-- ASIMO mascot -->
+    <dimen name="asimo_size_large">200dp</dimen>
+    <dimen name="asimo_size_small">80dp</dimen>
+
     <!-- Risk pill -->
     <dimen name="risk_pill_radius">12dp</dimen>
     <dimen name="risk_pill_padding_h">12dp</dimen>

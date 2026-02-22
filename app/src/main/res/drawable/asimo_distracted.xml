@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200"
+    android:alpha="0.35">
+
+    <!-- Helmet dome -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M100,16 C74,16 64,36 64,50 L64,58 L136,58 L136,50 C136,36 126,16 100,16 Z" />
+
+    <!-- Visor slit -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3"
+        android:pathData="M70,38 L130,38 L130,50 L70,50 Z" />
+
+    <!-- Neck -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M86,58 L114,58 L114,66 L86,66 Z" />
+
+    <!-- Torso -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,66 L128,66 L132,70 L132,122 L128,128 L72,128 L68,122 L68,70 Z" />
+
+    <!-- Badge stripe (HONDA) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5"
+        android:pathData="M80,90 L120,90 L120,100 L80,100 Z" />
+
+    <!-- Left leg -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,130 L96,130 L96,164 L100,164 L100,178 L72,178 L72,164 L76,164 Z" />
+
+    <!-- Right leg -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M104,130 L124,130 L124,164 L128,164 L128,178 L100,178 L100,164 L104,164 Z" />
+
+    <!-- Left arm relaxed at side -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M68,72 L56,78 L52,86 L50,116 L58,120 L62,116 L60,86 L68,78 Z" />
+
+    <!-- Right arm extended pointing forward -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M132,68 L150,68 L174,66 L188,62 L188,56 L174,60 L150,62 L132,62 Z" />
+
+    <!-- Pointing finger -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M188,56 L198,54 L198,60 L188,62 Z" />
+
+</vector>
