@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), and emulator camera support. Build verified (`assembleDebug` + all 234 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, and independent face registration (own camera + FaceDetectorLite). Build verified (`assembleDebug` + all 447 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -185,9 +185,20 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Threshold**: cosine similarity ≥ 0.5 for positive match
 - **Thread pinning**: 2 intra-op threads pinned to Gold core 5 (avoids PoseAnalyzer contention on 4-7)
 - **Storage**: `faces.json` flat file in app internal storage, Gson serialization
-- **Registration**: `FaceRegistrationActivity` — captures BGR crop from `FrameHolder.getCaptureData()`, computes embedding via temporary `FaceRecognizerBridge`, saves name+embedding to `FaceStore`
+- **Registration**: `FaceRegistrationActivity` — fully self-contained with own camera and face detection (see below)
 - **Pipeline isolation**: Recognition wrapped in try-catch; failure returns cached name. Core path never blocked.
 - **Graceful degradation**: If model file missing, `FaceRecognizerBridge.nativePtr=0`, all calls return null, `driverName` stays null
+
+### Face Registration (Independent Camera)
+- **Self-contained**: `FaceRegistrationActivity` owns its own camera — does NOT depend on InCabinService or FrameHolder
+- **Camera selection**: Uses `PlatformProfile.detect()` to choose V4L2, Camera2, or MJPEG (same strategy as service). Camera starts in `onResume()`, stops in `onPause()`
+- **Camera startup retry**: 5 attempts × 1s delay to handle race with service teardown releasing the USB device
+- **Face detection**: `FaceDetectorLite` — lightweight MediaPipe FaceLandmarker in `IMAGE` mode (no timestamps, no EAR/MAR/solvePnP/calibration). Returns bbox with 20% padding
+- **Live preview**: BGR→Bitmap with green face bbox overlay, pushed directly from camera callback (no polling)
+- **Capture flow**: BGR face crop extracted inline from `latestBgrData` using `FaceDetectorLite.FaceDetection` padded bbox → `FaceRecognizerBridge.computeEmbedding()` → quality gate (pairwise cosine ≥ 0.7) → average → save via FaceStore
+- **Monitoring stops first**: MainActivity stops InCabinService before launching registration (only one USB camera consumer at a time). No session summary dialog shown. User taps START to resume after returning
+- **MJPEG safety**: `onBgrFrame()` copies BGR data defensively to avoid data race with MjpegCameraManager's reused internal buffer
+- **Thread safety**: Camera retry thread cancelled via `@Volatile` flag on `onPause()`, preventing background camera reopen
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
@@ -269,7 +280,7 @@ in_cabin_poc-sa8155/
 │   │   └── CMakeLists.txt
 │   ├── kotlin/com/incabin/
 │   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
-│   │   ├── FaceAnalyzer, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
+│   │   ├── FaceAnalyzer, FaceDetectorLite, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
 │   │   ├── PlatformProfile, DeviceSetup, BootReceiver
 │   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
@@ -281,7 +292,7 @@ in_cabin_poc-sa8155/
 ```
 
 ## Testing
-- 234 unit tests (all passing):
+- 447 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
@@ -343,6 +354,8 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 - **FrameHolder crash safety**: Old bitmaps are not recycled in `postFrame()` — left for GC finalizer to avoid TOCTOU race where Activity reads a bitmap recycled by the service thread (recycled-bitmap exception on UI thread would kill the entire process including InCabinService)
 - **Activity preview safety**: `previewPoller` in MainActivity wraps all FrameHolder access and bitmap operations in try-catch to prevent UI exceptions from crashing the shared process
 - **Face recognition isolation**: `recognizeDriver()` wrapped in try-catch in `processFrame()`; failure returns cached name. Recognition uses raw BGR bytes (no bitmap lifecycle risk). `FaceStore` is `@Synchronized`. `FaceRegistrationActivity` creates its own `FaceRecognizerBridge` instance; activity crash doesn't affect service
+- **Dynamic pixelBuffer**: `InCabinService.bgrToBitmap()` resizes `pixelBuffer` when actual frame dimensions exceed pre-allocated size (prevents JNI out-of-bounds write with non-standard MJPEG resolutions)
+- **V4L2 actual dimensions**: `V4l2CameraManager` queries actual negotiated width/height from native camera via `nativeGetV4l2Width/Height` JNI methods (prevents wrong stride when driver negotiates different resolution than requested)
 
 ## IVI Deployment Robustness
 System-level hardening for unattended automotive IVI deployment:
