@@ -48,7 +48,7 @@ class AudioAlerterTest {
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
         assertEquals("Phone detected, please put it down", alerts[0].text)
-        assertEquals("driver_using_phone", alerts[0].dangerField)
+        assertNull(alerts[0].dangerField) // onset alerts bypass "danger still active?" check
         assertFalse(alerts[0].playBeepFirst)
     }
 
@@ -327,9 +327,10 @@ class AudioAlerterTest {
     }
 
     @Test
-    fun test_danger_field_set_on_onset_message() {
+    fun test_onset_dangerField_is_null() {
+        // Onset alerts have null dangerField to bypass "danger still active?" staleness check
         val alerts = build(current = snap(eating = true), prev = CLEAR)
-        assertEquals("driver_eating_drinking", alerts[0].dangerField)
+        assertNull(alerts[0].dangerField)
     }
 
     @Test
@@ -406,7 +407,7 @@ class AudioAlerterTest {
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
         assertEquals("Hands off wheel, please grip the steering", alerts[0].text)
-        assertEquals("hands_off_wheel", alerts[0].dangerField)
+        assertNull(alerts[0].dangerField) // onset alerts bypass staleness check
     }
 
     @Test

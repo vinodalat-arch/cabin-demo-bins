@@ -159,12 +159,15 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             }
 
             // Build joined onset message (CRITICAL parts first, then WARNING)
+            // dangerField = null: onset alerts must always be spoken. The worker thread's
+            // "danger still active?" staleness check would drop transient detections
+            // (e.g. eyes_closed with fast-clear) that resolve before the worker dequeues.
+            // The 4s age staleness check is sufficient protection for onset messages.
             val allParts = criticalParts + warningParts
             if (allParts.isNotEmpty()) {
                 val text = allParts.joinToString(". ")
                 val priority = if (criticalParts.isNotEmpty()) AlertPriority.CRITICAL else AlertPriority.WARNING
-                val primaryField = newDangerFields.first()
-                alerts.add(AlertMessage(priority, text, primaryField, false, nowMs))
+                alerts.add(AlertMessage(priority, text, null, false, nowMs))
 
                 for (field in newDangerFields) {
                     cooldownMap[field] = nowMs
@@ -491,7 +494,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         // --- No-driver alert (before DangerSnapshot logic) ---
         if (shouldAlertNoDriver(result.driverDetected, result.passengerCount, prevDriverDetected, now, cooldownMap)) {
             val noDriverText = if (isJapanese) "運転者未検出" else "No driver detected"
-            val noDriverAlert = AlertMessage(AlertPriority.WARNING, noDriverText, "no_driver_detected", false, now)
+            val noDriverAlert = AlertMessage(AlertPriority.WARNING, noDriverText, null, false, now)
             enqueueWithPriority(noDriverAlert)
             cooldownMap["no_driver_detected"] = now
             try {
