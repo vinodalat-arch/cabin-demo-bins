@@ -426,8 +426,8 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     }
     result.child_count = child_count;
 
-    // 5. Phone detection (two-strategy, higher confidence threshold)
-    // Strategy 1: driver ROI with 20% padding
+    // 5. Phone detection (three-strategy)
+    // Strategy 1: YOLO object detection on driver ROI with 20% padding
     static const std::vector<int> phone_classes = {YOLO_PHONE_CLASS};
     if (detectObjectsInCrop(bgr_data, width, height, driver, phone_classes, 0.2f, PHONE_CONFIDENCE)) {
         result.driver_using_phone = true;
@@ -458,38 +458,56 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
             }
         }
     }
+    // Strategy 3: wrist-near-ear posture (phone at ear even if YOLO can't see it)
+    if (!result.driver_using_phone) {
+        float shoulder_width = 0.0f;
+        if (driver.keypoints[KP_LEFT_SHOULDER].conf > KP_CONF_THRESHOLD &&
+            driver.keypoints[KP_RIGHT_SHOULDER].conf > KP_CONF_THRESHOLD) {
+            shoulder_width = std::abs(driver.keypoints[KP_LEFT_SHOULDER].x -
+                                      driver.keypoints[KP_RIGHT_SHOULDER].x);
+        }
+        // Use 30% of shoulder width as proximity threshold, min 40px
+        float ear_thresh = std::max(40.0f, shoulder_width * 0.3f);
+
+        int ear_indices[] = {KP_LEFT_EAR, KP_RIGHT_EAR};
+        int wrist_indices_s3[] = {KP_LEFT_WRIST, KP_RIGHT_WRIST};
+        for (int wrist_idx : wrist_indices_s3) {
+            if (driver.keypoints[wrist_idx].conf < KP_CONF_THRESHOLD) continue;
+            float wx = driver.keypoints[wrist_idx].x;
+            float wy = driver.keypoints[wrist_idx].y;
+
+            for (int ear_idx : ear_indices) {
+                if (driver.keypoints[ear_idx].conf < KP_CONF_THRESHOLD) continue;
+                float ex = driver.keypoints[ear_idx].x;
+                float ey = driver.keypoints[ear_idx].y;
+
+                float dist = std::sqrt((wx - ex) * (wx - ex) + (wy - ey) * (wy - ey));
+                if (dist < ear_thresh) {
+                    result.driver_using_phone = true;
+                    LOGI("PoseAnalyzer: phone detected via wrist-near-ear (dist=%.0f, thresh=%.0f)", dist, ear_thresh);
+                    break;
+                }
+            }
+            if (result.driver_using_phone) break;
+        }
+    }
 
     // 6. Food/drink detection (driver ROI with 20% padding, higher confidence threshold)
     result.driver_eating_drinking = detectObjectsInCrop(
         bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f, FOOD_CONFIDENCE);
 
-    // 7. Hands-off-wheel detection: both wrists visible and raised
+    // 7. Hands-off-wheel detection: both wrists visible and in upper half of driver bbox
+    // Uses driver bbox as reference — works even when hips/shoulders aren't detected.
+    // Steering wheel is in the lower portion; wrists in upper half = hands off wheel.
     {
         const auto& lw = driver.keypoints[KP_LEFT_WRIST];
         const auto& rw = driver.keypoints[KP_RIGHT_WRIST];
         bool both_wrists_visible = lw.conf >= KP_CONF_THRESHOLD && rw.conf >= KP_CONF_THRESHOLD;
         if (both_wrists_visible) {
-            bool hips_ok = driver.keypoints[KP_LEFT_HIP].conf > KP_CONF_THRESHOLD &&
-                           driver.keypoints[KP_RIGHT_HIP].conf > KP_CONF_THRESHOLD;
-            if (hips_ok) {
-                float hip_mid_y = (driver.keypoints[KP_LEFT_HIP].y + driver.keypoints[KP_RIGHT_HIP].y) / 2.0f;
-                // Both wrists above hip midpoint (lower Y = higher in image)
-                if (lw.y < hip_mid_y && rw.y < hip_mid_y) {
-                    result.hands_off_wheel = true;
-                }
-            }
-            // Fallback: hips not visible (common in car) — use shoulders
-            if (!result.hands_off_wheel) {
-                bool shoulders_ok = driver.keypoints[KP_LEFT_SHOULDER].conf > KP_CONF_THRESHOLD &&
-                                    driver.keypoints[KP_RIGHT_SHOULDER].conf > KP_CONF_THRESHOLD;
-                if (shoulders_ok) {
-                    float shoulder_mid_y = (driver.keypoints[KP_LEFT_SHOULDER].y +
-                                            driver.keypoints[KP_RIGHT_SHOULDER].y) / 2.0f;
-                    // Both wrists above shoulder midpoint — definitely off wheel
-                    if (lw.y < shoulder_mid_y && rw.y < shoulder_mid_y) {
-                        result.hands_off_wheel = true;
-                    }
-                }
+            float bbox_mid_y = (driver.y1 + driver.y2) / 2.0f;
+            // Both wrists above the vertical midpoint of the driver bbox
+            if (lw.y < bbox_mid_y && rw.y < bbox_mid_y) {
+                result.hands_off_wheel = true;
             }
         }
     }
