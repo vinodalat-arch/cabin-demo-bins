@@ -253,21 +253,26 @@ bool PoseAnalyzer::checkPosture(const std::array<Keypoint, NUM_KEYPOINTS>& kps,
         }
     }
 
-    // Block 2: Head turn + face visibility (needs shoulders only)
+    // Block 2: Head turn + face visibility + head droop (needs shoulders only)
     if (shoulders_ok) {
         float shoulder_mid_x = (kps[KP_LEFT_SHOULDER].x + kps[KP_RIGHT_SHOULDER].x) / 2.0f;
+        float shoulder_mid_y = (kps[KP_LEFT_SHOULDER].y + kps[KP_RIGHT_SHOULDER].y) / 2.0f;
         float shoulder_width = std::abs(kps[KP_LEFT_SHOULDER].x - kps[KP_RIGHT_SHOULDER].x);
 
+        // Head droop: nose below shoulder midline (doesn't need hips)
+        if (kps[KP_NOSE].conf > KP_CONF_THRESHOLD) {
+            if (kps[KP_NOSE].y > shoulder_mid_y) return true;
+        }
+
         if (shoulder_width > 1e-6f) {
-            // Multi-point face visibility: require at least 2 of 3 face points
-            // (nose, left_eye, right_eye) to be invisible before flagging
+            // Face visibility: at most 1 of 3 face points visible → head down/away
             int face_points_visible = 0;
             if (kps[KP_NOSE].conf > KP_CONF_THRESHOLD) face_points_visible++;
             if (kps[KP_LEFT_EYE].conf > KP_CONF_THRESHOLD) face_points_visible++;
             if (kps[KP_RIGHT_EYE].conf > KP_CONF_THRESHOLD) face_points_visible++;
 
-            if (face_points_visible == 0) {
-                return true;  // No face points visible at all
+            if (face_points_visible <= 1) {
+                return true;  // Most face points not visible
             }
 
             // Head turn check (only if nose is visible)
@@ -427,8 +432,10 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     if (detectObjectsInCrop(bgr_data, width, height, driver, phone_classes, 0.2f, PHONE_CONFIDENCE)) {
         result.driver_using_phone = true;
     } else {
-        // Strategy 2: wrist crops (200x200px, no padding)
+        // Strategy 2: wrist crops (asymmetric: extends more upward to capture phone at ear)
         const int half = WRIST_CROP_SIZE / 2;
+        const int crop_up = half + half / 2;   // 150px above wrist (toward ear)
+        const int crop_down = half / 2;         // 50px below wrist
         int wrist_indices[] = {KP_LEFT_WRIST, KP_RIGHT_WRIST};
 
         for (int wrist_idx : wrist_indices) {
@@ -438,9 +445,9 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
             int wy = static_cast<int>(driver.keypoints[wrist_idx].y);
 
             int cx1 = std::max(0, wx - half);
-            int cy1 = std::max(0, wy - half);
+            int cy1 = std::max(0, wy - crop_up);
             int cx2 = std::min(width, wx + half);
-            int cy2 = std::min(height, wy + half);
+            int cy2 = std::min(height, wy + crop_down);
 
             if (cx2 <= cx1 || cy2 <= cy1) continue;
 
@@ -456,7 +463,7 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     result.driver_eating_drinking = detectObjectsInCrop(
         bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f, FOOD_CONFIDENCE);
 
-    // 7. Hands-off-wheel detection: both wrists visible and raised above hip midpoint
+    // 7. Hands-off-wheel detection: both wrists visible and raised
     {
         const auto& lw = driver.keypoints[KP_LEFT_WRIST];
         const auto& rw = driver.keypoints[KP_RIGHT_WRIST];
@@ -469,6 +476,19 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
                 // Both wrists above hip midpoint (lower Y = higher in image)
                 if (lw.y < hip_mid_y && rw.y < hip_mid_y) {
                     result.hands_off_wheel = true;
+                }
+            }
+            // Fallback: hips not visible (common in car) — use shoulders
+            if (!result.hands_off_wheel) {
+                bool shoulders_ok = driver.keypoints[KP_LEFT_SHOULDER].conf > KP_CONF_THRESHOLD &&
+                                    driver.keypoints[KP_RIGHT_SHOULDER].conf > KP_CONF_THRESHOLD;
+                if (shoulders_ok) {
+                    float shoulder_mid_y = (driver.keypoints[KP_LEFT_SHOULDER].y +
+                                            driver.keypoints[KP_RIGHT_SHOULDER].y) / 2.0f;
+                    // Both wrists above shoulder midpoint — definitely off wheel
+                    if (lw.y < shoulder_mid_y && rw.y < shoulder_mid_y) {
+                        result.hands_off_wheel = true;
+                    }
                 }
             }
         }
