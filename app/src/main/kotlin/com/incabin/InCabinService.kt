@@ -61,6 +61,8 @@ class InCabinService : Service() {
     private var poseAnalyzer: PoseAnalyzerBridge? = null
     private var smoother: TemporalSmoother? = null
     private var audioAlerter: AudioAlerter? = null
+    private var alertOrchestrator: AlertOrchestrator? = null
+    private var vehicleChannelManager: VehicleChannelManager? = null
     private val overlayRenderer = OverlayRenderer()
 
     // --- Device setup (automotive BSP only) ---
@@ -234,8 +236,10 @@ class InCabinService : Service() {
             cachedDriverName = null
             lastWelcomedDriverName = null
 
-            audioAlerter?.close()
-            audioAlerter = null
+            alertOrchestrator?.close()
+            alertOrchestrator = null
+            audioAlerter = null  // closed by orchestrator
+            vehicleChannelManager = null  // closed by orchestrator
 
             smoother = null
             distractionDurationS.set(0)
@@ -387,6 +391,23 @@ class InCabinService : Service() {
             Log.i(TAG, "AudioAlerter initialized (audioUsage=${platformProfile.audioUsage})")
         } catch (e: Exception) {
             Log.e(TAG, "AudioAlerter initialization failed", e)
+        }
+
+        // VehicleChannelManager (Car API for VHAL-backed vehicle actions)
+        if (platformProfile.enableVehicleChannels) {
+            try {
+                vehicleChannelManager = VehicleChannelManager(this)
+                Log.i(TAG, "VehicleChannelManager initialized")
+            } catch (e: Exception) {
+                Log.w(TAG, "VehicleChannelManager initialization failed — vehicle channels disabled", e)
+                vehicleChannelManager = null
+            }
+        }
+
+        // AlertOrchestrator wraps AudioAlerter + VehicleChannelManager
+        audioAlerter?.let { alerter ->
+            alertOrchestrator = AlertOrchestrator(alerter, vehicleChannelManager)
+            Log.i(TAG, "AlertOrchestrator initialized (vehicleChannels=${vehicleChannelManager != null})")
         }
 
         Log.i(TAG, "Parallel init completed in ${System.currentTimeMillis() - initStartMs}ms")
@@ -595,17 +616,17 @@ class InCabinService : Service() {
                 lastWelcomedDriverName = recognizedName
                 val isJapanese = Config.LANGUAGE == "ja"
                 val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
-                audioAlerter?.enqueueWelcome(welcomeText)
+                alertOrchestrator?.enqueueWelcome(welcomeText)
             }
 
-            // Step 7: Audio alerter (core — must run even if overlay fails)
+            // Step 7: Alert orchestrator (core — must run even if overlay fails)
             val audioEnabled = Config.ENABLE_AUDIO_ALERTS
             if (audioEnabled) {
                 // Reset alert state on false→true transition to avoid stale prevDangers
                 if (!prevAudioEnabled) {
-                    audioAlerter?.resetState()
+                    alertOrchestrator?.resetState()
                 }
-                audioAlerter?.checkAndAnnounce(finalResult)
+                alertOrchestrator?.evaluate(finalResult)
             }
             prevAudioEnabled = audioEnabled
 
@@ -627,7 +648,7 @@ class InCabinService : Service() {
                 // Audio alert for passenger posture (pipeline-isolated, separate from driver alerts)
                 if (audioEnabled) {
                     try {
-                        audioAlerter?.checkPassengerPostures(postures)
+                        alertOrchestrator?.checkPassengerPostures(postures)
                     } catch (e: Exception) {
                         Log.w(TAG, "Passenger posture audio alert failed", e)
                     }

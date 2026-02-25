@@ -100,6 +100,18 @@ object Config {
     // Inference error tracking
     const val MAX_CONSECUTIVE_INFERENCE_ERRORS = 10
 
+    // Multi-modal escalation thresholds (seconds)
+    const val ESCALATION_L2_THRESHOLD_S = 5   // aligns with ALERT_ESCALATION_FIRST_S
+    const val ESCALATION_L3_THRESHOLD_S = 10  // aligns with ALERT_ESCALATION_BEEP_S
+    const val ESCALATION_L4_THRESHOLD_S = 20
+    const val ESCALATION_L5_THRESHOLD_S = 30
+
+    // Vehicle action pulse durations (ms)
+    const val VEHICLE_PULSE_CABIN_LIGHTS_MS = 3000L
+    const val VEHICLE_PULSE_LUMBAR_MS = 2000L
+    const val VEHICLE_PULSE_SEAT_THERMAL_MS = 5000L
+    const val VEHICLE_WINDOW_CRACK_MS = 30000L
+
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3
     const val RISK_WEIGHT_EYES = 3

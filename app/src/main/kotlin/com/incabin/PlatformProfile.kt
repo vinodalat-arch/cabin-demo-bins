@@ -27,7 +27,9 @@ data class PlatformProfile(
     /** Head pitch threshold (degrees) — tuned per platform for camera mount angle */
     val headPitchThreshold: Float = 35.0f,
     /** EAR threshold — default 0.21, may need tuning per camera/IR */
-    val earThreshold: Float = 0.21f
+    val earThreshold: Float = 0.21f,
+    /** Whether to enable vehicle channel dispatch via Car API (VHAL-backed actions) */
+    val enableVehicleChannels: Boolean = false
 ) {
     enum class CameraStrategy {
         V4L2_FIRST,
@@ -100,7 +102,8 @@ data class PlatformProfile(
                 faceRecThreadAffinity = "5",
                 audioUsage = USAGE_ASSISTANCE_SONIFICATION,
                 cameraStrategy = CameraStrategy.V4L2_FIRST,
-                headPitchThreshold = 35.0f  // Camera mount angle causes ~5-10° pitch baseline
+                headPitchThreshold = 35.0f,  // Camera mount angle causes ~5-10° pitch baseline
+                enableVehicleChannels = true
             )
             Platform.SA8255 -> PlatformProfile(
                 platform = Platform.SA8255,
@@ -109,7 +112,8 @@ data class PlatformProfile(
                 faceRecThreadCount = 2,
                 faceRecThreadAffinity = "",
                 audioUsage = USAGE_ALARM,
-                cameraStrategy = CameraStrategy.V4L2_FIRST
+                cameraStrategy = CameraStrategy.V4L2_FIRST,
+                enableVehicleChannels = true
             )
             Platform.SA8295 -> PlatformProfile(
                 platform = Platform.SA8295,
@@ -118,7 +122,8 @@ data class PlatformProfile(
                 faceRecThreadCount = 2,
                 faceRecThreadAffinity = "",
                 audioUsage = USAGE_ALARM,
-                cameraStrategy = CameraStrategy.V4L2_FIRST
+                cameraStrategy = CameraStrategy.V4L2_FIRST,
+                enableVehicleChannels = true
             )
             Platform.GENERIC -> PlatformProfile(
                 platform = Platform.GENERIC,
