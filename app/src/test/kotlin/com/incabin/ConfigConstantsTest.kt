@@ -171,8 +171,8 @@ class ConfigConstantsTest {
 
     @Test
     fun test_escalation_thresholds() {
-        assertEquals(10, Config.ALERT_ESCALATION_FIRST_S)
-        assertEquals(20, Config.ALERT_ESCALATION_BEEP_S)
+        assertEquals(5, Config.ALERT_ESCALATION_FIRST_S)
+        assertEquals(10, Config.ALERT_ESCALATION_BEEP_S)
         assertEquals(10, Config.ALERT_ESCALATION_REPEAT_S)
     }
 

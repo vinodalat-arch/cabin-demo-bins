@@ -45,8 +45,8 @@ object Config {
     // Audio — escalation ladder
     const val ALERT_COOLDOWN_MS = 10_000L
     const val ALERT_STALENESS_MS = 4_000L
-    const val ALERT_ESCALATION_FIRST_S = 10
-    const val ALERT_ESCALATION_BEEP_S = 20
+    const val ALERT_ESCALATION_FIRST_S = 5
+    const val ALERT_ESCALATION_BEEP_S = 10
     const val ALERT_ESCALATION_REPEAT_S = 10
     const val ALERT_BEEP_DURATION_MS = 1000
     const val ALERT_QUEUE_CAPACITY = 3

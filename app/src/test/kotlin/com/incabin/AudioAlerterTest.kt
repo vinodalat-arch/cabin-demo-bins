@@ -226,24 +226,40 @@ class AudioAlerterTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_escalation_at_10s_reminder() {
+    fun test_escalation_at_5s_reminder() {
         val escalationMap = mutableMapOf<String, EscalationState>()
         val alerts = build(
             current = snap(phone = true),
             prev = snap(phone = true), // no new danger
+            duration = 5,
+            prevDuration = 4,
+            escalationMap = escalationMap
+        )
+        assertEquals(1, alerts.size)
+        assertEquals(AlertPriority.WARNING, alerts[0].priority)
+        assertEquals("Still distracted, 5 seconds", alerts[0].text)
+        assertFalse(alerts[0].playBeepFirst)
+    }
+
+    @Test
+    fun test_escalation_at_10s_beep() {
+        val escalationMap = mutableMapOf("distraction" to EscalationState(5, 0))
+        val alerts = build(
+            current = snap(phone = true),
+            prev = snap(phone = true),
             duration = 10,
             prevDuration = 9,
             escalationMap = escalationMap
         )
         assertEquals(1, alerts.size)
-        assertEquals(AlertPriority.WARNING, alerts[0].priority)
-        assertEquals("Still distracted, 10 seconds", alerts[0].text)
-        assertFalse(alerts[0].playBeepFirst)
+        assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
+        assertEquals("Warning. Distracted 10 seconds", alerts[0].text)
+        assertTrue(alerts[0].playBeepFirst)
     }
 
     @Test
-    fun test_escalation_at_20s_beep() {
-        val escalationMap = mutableMapOf("distraction" to EscalationState(10, 0))
+    fun test_escalation_at_20s_repeat_beep() {
+        val escalationMap = mutableMapOf("distraction" to EscalationState(10, 1))
         val alerts = build(
             current = snap(phone = true),
             prev = snap(phone = true),
@@ -259,7 +275,7 @@ class AudioAlerterTest {
 
     @Test
     fun test_escalation_at_30s_repeat_beep() {
-        val escalationMap = mutableMapOf("distraction" to EscalationState(20, 1))
+        val escalationMap = mutableMapOf("distraction" to EscalationState(20, 2))
         val alerts = build(
             current = snap(phone = true),
             prev = snap(phone = true),
@@ -268,33 +284,17 @@ class AudioAlerterTest {
             escalationMap = escalationMap
         )
         assertEquals(1, alerts.size)
-        assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
         assertEquals("Warning. Distracted 30 seconds", alerts[0].text)
-        assertTrue(alerts[0].playBeepFirst)
-    }
-
-    @Test
-    fun test_escalation_at_40s_repeat_beep() {
-        val escalationMap = mutableMapOf("distraction" to EscalationState(30, 2))
-        val alerts = build(
-            current = snap(phone = true),
-            prev = snap(phone = true),
-            duration = 40,
-            prevDuration = 39,
-            escalationMap = escalationMap
-        )
-        assertEquals(1, alerts.size)
-        assertEquals("Warning. Distracted 40 seconds", alerts[0].text)
     }
 
     @Test
     fun test_no_escalation_between_thresholds() {
-        val escalationMap = mutableMapOf("distraction" to EscalationState(10, 0))
+        val escalationMap = mutableMapOf("distraction" to EscalationState(5, 0))
         val alerts = build(
             current = snap(phone = true),
             prev = snap(phone = true),
-            duration = 15,
-            prevDuration = 14,
+            duration = 7,
+            prevDuration = 6,
             escalationMap = escalationMap
         )
         assertTrue(alerts.isEmpty())
@@ -318,8 +318,8 @@ class AudioAlerterTest {
         val alerts = build(
             current = snap(phone = true, eyes = true),
             prev = snap(phone = true), // eyes is NEW
-            duration = 10,
-            prevDuration = 9,
+            duration = 5,
+            prevDuration = 4,
             escalationMap = escalationMap
         )
         assertEquals(1, alerts.size)
@@ -339,7 +339,7 @@ class AudioAlerterTest {
         val alerts = build(
             current = snap(phone = true),
             prev = snap(phone = true),
-            duration = 10,
+            duration = 5,
             escalationMap = escalationMap
         )
         assertNull(alerts[0].dangerField)
@@ -377,22 +377,22 @@ class AudioAlerterTest {
     @Test
     fun test_escalation_below_threshold_no_alert() {
         val escalationMap = mutableMapOf<String, EscalationState>()
-        val result = AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, false)
+        val result = AudioAlerter.buildEscalationAlert(3, NOW, escalationMap, false)
         assertNull(result)
     }
 
     @Test
     fun test_escalation_state_tracks_duration() {
         val escalationMap = mutableMapOf<String, EscalationState>()
-        AudioAlerter.buildEscalationAlert(10, NOW, escalationMap, false)
+        AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, false)
         val state = escalationMap["distraction"]!!
-        assertEquals(10, state.lastAnnouncedDuration)
+        assertEquals(5, state.lastAnnouncedDuration)
     }
 
     @Test
     fun test_escalation_beep_count_increments() {
-        val escalationMap = mutableMapOf("distraction" to EscalationState(20, 1))
-        AudioAlerter.buildEscalationAlert(30, NOW, escalationMap, false)
+        val escalationMap = mutableMapOf("distraction" to EscalationState(10, 1))
+        AudioAlerter.buildEscalationAlert(20, NOW, escalationMap, false)
         val state = escalationMap["distraction"]!!
         assertEquals(2, state.beepCount)
     }

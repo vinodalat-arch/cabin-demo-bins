@@ -45,39 +45,39 @@ class FlowEscalationTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_escalation_10s_warning_no_beep() {
+    fun test_escalation_5s_warning_no_beep() {
         val escalationMap = mutableMapOf<String, EscalationState>()
-        val alert = AudioAlerter.buildEscalationAlert(10, NOW, escalationMap, false)
-        assertTrue("Should produce escalation at 10s", alert != null)
+        val alert = AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, false)
+        assertTrue("Should produce escalation at 5s", alert != null)
         assertEquals(AlertPriority.WARNING, alert!!.priority)
-        assertTrue(alert.text.contains("10 seconds"))
-        assertFalse("No beep at 10s", alert.playBeepFirst)
+        assertTrue(alert.text.contains("5 seconds"))
+        assertFalse("No beep at 5s", alert.playBeepFirst)
     }
 
     @Test
-    fun test_escalation_20s_critical_with_beep() {
+    fun test_escalation_10s_critical_with_beep() {
         val escalationMap = mutableMapOf<String, EscalationState>()
-        // First hit 10s threshold
-        AudioAlerter.buildEscalationAlert(10, NOW, escalationMap, false)
-        // Then 20s
-        val alert = AudioAlerter.buildEscalationAlert(20, NOW + 10_000, escalationMap, false)
+        // First hit 5s threshold
+        AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, false)
+        // Then 10s
+        val alert = AudioAlerter.buildEscalationAlert(10, NOW + 5_000, escalationMap, false)
+        assertTrue("Should produce escalation at 10s", alert != null)
+        assertEquals(AlertPriority.CRITICAL, alert!!.priority)
+        assertTrue(alert.text.contains("10 seconds"))
+        assertTrue("Beep at 10s", alert.playBeepFirst)
+    }
+
+    @Test
+    fun test_escalation_20s_beep_repeat() {
+        val escalationMap = mutableMapOf<String, EscalationState>()
+        // Progress through 5s, 10s, then 20s
+        AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, false)
+        AudioAlerter.buildEscalationAlert(10, NOW + 5_000, escalationMap, false)
+        val alert = AudioAlerter.buildEscalationAlert(20, NOW + 15_000, escalationMap, false)
         assertTrue("Should produce escalation at 20s", alert != null)
         assertEquals(AlertPriority.CRITICAL, alert!!.priority)
-        assertTrue(alert.text.contains("20 seconds"))
-        assertTrue("Beep at 20s", alert.playBeepFirst)
-    }
-
-    @Test
-    fun test_escalation_30s_beep_repeat() {
-        val escalationMap = mutableMapOf<String, EscalationState>()
-        // Progress through 10s, 20s, then 30s
-        AudioAlerter.buildEscalationAlert(10, NOW, escalationMap, false)
-        AudioAlerter.buildEscalationAlert(20, NOW + 10_000, escalationMap, false)
-        val alert = AudioAlerter.buildEscalationAlert(30, NOW + 20_000, escalationMap, false)
-        assertTrue("Should produce escalation at 30s", alert != null)
-        assertEquals(AlertPriority.CRITICAL, alert!!.priority)
-        assertTrue("Beep repeats at 30s", alert.playBeepFirst)
-        assertTrue(alert.text.contains("30"))
+        assertTrue("Beep repeats at 20s", alert.playBeepFirst)
+        assertTrue(alert.text.contains("20"))
     }
 
     // -------------------------------------------------------------------------
@@ -91,11 +91,11 @@ class FlowEscalationTest {
 
         // Onset
         build(snap(phone = true), CLEAR, 0, 0, NOW, cooldownMap, escalationMap)
-        // Escalation at 10s
-        build(snap(phone = true), snap(phone = true), 10, 5, NOW + 10_000, cooldownMap, escalationMap)
+        // Escalation at 5s
+        build(snap(phone = true), snap(phone = true), 5, 3, NOW + 5_000, cooldownMap, escalationMap)
 
         // All-clear
-        val alerts = build(CLEAR, snap(phone = true), 0, 10, NOW + 15_000, cooldownMap, escalationMap)
+        val alerts = build(CLEAR, snap(phone = true), 0, 5, NOW + 10_000, cooldownMap, escalationMap)
         assertEquals(1, alerts.size)
         assertEquals("All clear", alerts[0].text)
         assertTrue("Cooldown map should be cleared", cooldownMap.isEmpty())
@@ -177,11 +177,11 @@ class FlowEscalationTest {
         val cooldownMap = mutableMapOf<String, Long>()
         val escalationMap = mutableMapOf<String, EscalationState>()
 
-        // Phone already active, eyes onset at exactly 10s duration
+        // Phone already active, eyes onset at exactly 5s duration
         // Onset for eyes should fire, not the escalation
         val alerts = build(
             snap(phone = true, eyes = true), snap(phone = true),
-            10, 9, NOW, cooldownMap, escalationMap
+            5, 4, NOW, cooldownMap, escalationMap
         )
         assertEquals(1, alerts.size)
         // The alert is for the new eyes onset, not escalation
@@ -193,13 +193,13 @@ class FlowEscalationTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_beep_flag_only_at_20s_plus() {
+    fun test_beep_flag_only_at_10s_plus() {
         val escalationMap = mutableMapOf<String, EscalationState>()
-        val alert10 = AudioAlerter.buildEscalationAlert(10, NOW, escalationMap, false)
-        assertFalse("No beep at 10s", alert10!!.playBeepFirst)
+        val alert5 = AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, false)
+        assertFalse("No beep at 5s", alert5!!.playBeepFirst)
 
-        val alert20 = AudioAlerter.buildEscalationAlert(20, NOW + 10_000, escalationMap, false)
-        assertTrue("Beep at 20s", alert20!!.playBeepFirst)
+        val alert10 = AudioAlerter.buildEscalationAlert(10, NOW + 5_000, escalationMap, false)
+        assertTrue("Beep at 10s", alert10!!.playBeepFirst)
     }
 
     // -------------------------------------------------------------------------
@@ -221,8 +221,8 @@ class FlowEscalationTest {
     @Test
     fun test_japanese_escalation_messages() {
         val escalationMap = mutableMapOf<String, EscalationState>()
-        val alert = AudioAlerter.buildEscalationAlert(10, NOW, escalationMap, true)
-        assertTrue("Japanese 10s message", alert != null)
+        val alert = AudioAlerter.buildEscalationAlert(5, NOW, escalationMap, true)
+        assertTrue("Japanese 5s message", alert != null)
         assertTrue("Should contain Japanese text", alert!!.text.contains("秒"))
     }
 }
