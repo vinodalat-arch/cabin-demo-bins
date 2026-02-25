@@ -586,12 +586,42 @@ class FaceRegistrationActivity : Activity() {
             return
         }
 
+        // Check for duplicate face
+        val match = faceStore?.findBestMatch(embedding, Config.FACE_RECOGNITION_THRESHOLD)
+        if (match != null && match.first != name) {
+            showDuplicateFaceDialog(name, embedding, match.first, match.second)
+            return
+        }
+
+        doSave(name, embedding)
+    }
+
+    private fun showDuplicateFaceDialog(newName: String, embedding: FloatArray, existingName: String, similarity: Float) {
+        try {
+            val pct = (similarity * 100).toInt()
+            AlertDialog.Builder(this)
+                .setTitle("Duplicate Face")
+                .setMessage("This face looks like \"$existingName\" ($pct% match).")
+                .setPositiveButton("Update \"$existingName\"") { _, _ ->
+                    doSave(existingName, embedding)
+                }
+                .setNeutralButton("Save as \"$newName\"") { _, _ ->
+                    doSave(newName, embedding)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to show duplicate dialog", e)
+            doSave(newName, embedding)
+        }
+    }
+
+    private fun doSave(name: String, embedding: FloatArray) {
         try {
             faceStore?.register(name, embedding)
             capturedEmbedding = null
             saveButton.isEnabled = false
             updateButtonAlpha(saveButton, false)
-            // Reset save button to neutral style
             saveButton.setBackgroundResource(R.drawable.bg_button)
             saveButton.setTextColor(colorTextSecondary)
             nameInput.text.clear()
@@ -638,6 +668,21 @@ class FaceRegistrationActivity : Activity() {
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
             row.addView(Button(this).apply {
+                text = "Edit"
+                textSize = 12f
+                setTextColor(colorAccent)
+                isAllCaps = false
+                stateListAnimator = null
+                setBackgroundResource(R.drawable.bg_button)
+                setOnClickListener { showRenameDialog(name) }
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = (8 * resources.displayMetrics.density).toInt()
+            })
+
+            row.addView(Button(this).apply {
                 text = "Delete"
                 textSize = 12f
                 setTextColor(colorDanger)
@@ -648,6 +693,43 @@ class FaceRegistrationActivity : Activity() {
             })
 
             faceListLayout.addView(row)
+        }
+    }
+
+    private fun showRenameDialog(currentName: String) {
+        try {
+            val input = EditText(this).apply {
+                setText(currentName)
+                setSelectAllOnFocus(true)
+                setTextColor(colorTextPrimary)
+                val pad = (16 * resources.displayMetrics.density).toInt()
+                setPadding(pad, pad, pad, pad)
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Rename Face")
+                .setView(input)
+                .setPositiveButton("Rename") { _, _ ->
+                    val newName = input.text.toString().trim()
+                    if (newName.isEmpty()) {
+                        statusText.text = "Name cannot be empty"
+                        statusText.setTextColor(colorCaution)
+                        return@setPositiveButton
+                    }
+                    if (newName == currentName) return@setPositiveButton
+                    val success = faceStore?.rename(currentName, newName) ?: false
+                    if (success) {
+                        statusText.text = "Renamed: $currentName → $newName"
+                        statusText.setTextColor(colorSafe)
+                        refreshFaceList()
+                    } else {
+                        statusText.text = "Rename failed: face not found"
+                        statusText.setTextColor(colorDanger)
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to show rename dialog", e)
         }
     }
 

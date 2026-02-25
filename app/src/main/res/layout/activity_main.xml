@@ -527,6 +527,17 @@
                         android:ellipsize="end" />
                 </LinearLayout>
 
+                <!-- Driver position (seat side) -->
+                <TextView
+                    android:id="@+id/driverPositionText"
+                    style="@style/TextMicro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Driver Position: LEFT"
+                    android:textColor="@color/text_muted"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:visibility="gone" />
+
                 <!-- Hidden engineering metrics (kept in layout for compatibility) -->
                 <TextView
                     android:id="@+id/earText"

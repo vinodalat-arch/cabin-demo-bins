@@ -138,6 +138,9 @@ class InCabinService : Service() {
         }
         initialized = true
 
+        // Load user settings from SharedPreferences (ensures BootReceiver path uses saved config)
+        ConfigPrefs.loadIntoConfig(this)
+
         // Detect platform once
         platformProfile = PlatformProfile.detect()
 

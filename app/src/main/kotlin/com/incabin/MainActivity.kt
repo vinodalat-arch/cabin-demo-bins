@@ -36,15 +36,6 @@ class MainActivity : Activity() {
         private const val TAG = "InCabin-Activity"
         private const val PERMISSION_REQUEST_CODE = 100
         private const val PREVIEW_POLL_MS = 500L
-        private const val PREFS_NAME = "incabin_prefs"
-        private const val PREF_PREVIEW_ENABLED = "preview_enabled"
-        private const val PREF_AUDIO_ENABLED = "audio_enabled"
-        private const val PREF_LANGUAGE = "language"
-        private const val PREF_SEAT_SIDE = "seat_side"
-        private const val PREF_WIFI_URL = "wifi_camera_url"
-        private const val PREF_PASSENGER_DETAIL = "passenger_info_detail"
-        private const val PREF_ASIMO_SIZE = "asimo_size"
-        private const val PREF_BOTTOM_WIDGET = "bottom_widget"
 
         // Tips rotation interval
         private const val TIPS_ROTATION_MS = 10_000L
@@ -232,6 +223,7 @@ class MainActivity : Activity() {
     private lateinit var cameraStatusText: TextView
     private lateinit var cameraStatusDot: View
     private lateinit var driverNameText: TextView
+    private lateinit var driverPositionText: TextView
     private lateinit var statusText: TextView
     private lateinit var previewImage: ImageView
     private lateinit var idleOverlay: LinearLayout
@@ -415,6 +407,7 @@ class MainActivity : Activity() {
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
         driverNameText = findViewById(R.id.driverNameText)
+        driverPositionText = findViewById(R.id.driverPositionText)
         statusText = findViewById(R.id.statusText)
         previewImage = findViewById(R.id.previewImage)
         idleOverlay = findViewById(R.id.idleOverlay)
@@ -489,15 +482,8 @@ class MainActivity : Activity() {
         currentRiskColor = colorSafe
 
         // Restore toggle states
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        Config.ENABLE_PREVIEW = prefs.getBoolean(PREF_PREVIEW_ENABLED, false)
-        Config.ENABLE_AUDIO_ALERTS = prefs.getBoolean(PREF_AUDIO_ENABLED, true)
-        Config.LANGUAGE = prefs.getString(PREF_LANGUAGE, "en") ?: "en"
-        Config.DRIVER_SEAT_SIDE = prefs.getString(PREF_SEAT_SIDE, "left") ?: "left"
-        Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
-        Config.PASSENGER_INFO_DETAIL = prefs.getString(PREF_PASSENGER_DETAIL, "minimal") ?: "minimal"
-        Config.ASIMO_SIZE = prefs.getString(PREF_ASIMO_SIZE, "m") ?: "m"
-        Config.BOTTOM_WIDGET = prefs.getString(PREF_BOTTOM_WIDGET, "none") ?: "none"
+        ConfigPrefs.loadIntoConfig(this)
+        val prefs = getSharedPreferences(ConfigPrefs.PREFS_NAME, Context.MODE_PRIVATE)
         updatePreviewToggleUI()
         updateAudioToggleUI()
         updateSeatSegmentUI()
@@ -533,53 +519,53 @@ class MainActivity : Activity() {
 
         seatLeftBtn.setOnClickListener {
             Config.DRIVER_SEAT_SIDE = "left"
-            prefs.edit().putString(PREF_SEAT_SIDE, "left").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_SEAT_SIDE, "left").apply()
             updateSeatSegmentUI()
             Log.i(TAG, "Driver seat side: left")
         }
         seatRightBtn.setOnClickListener {
             Config.DRIVER_SEAT_SIDE = "right"
-            prefs.edit().putString(PREF_SEAT_SIDE, "right").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_SEAT_SIDE, "right").apply()
             updateSeatSegmentUI()
             Log.i(TAG, "Driver seat side: right")
         }
 
         langEnBtn.setOnClickListener {
             Config.LANGUAGE = "en"
-            prefs.edit().putString(PREF_LANGUAGE, "en").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_LANGUAGE, "en").apply()
             updateLangSegmentUI()
             Log.i(TAG, "Language: en")
         }
         langJaBtn.setOnClickListener {
             Config.LANGUAGE = "ja"
-            prefs.edit().putString(PREF_LANGUAGE, "ja").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_LANGUAGE, "ja").apply()
             updateLangSegmentUI()
             Log.i(TAG, "Language: ja")
         }
 
         paxMinimalBtn.setOnClickListener {
             Config.PASSENGER_INFO_DETAIL = "minimal"
-            prefs.edit().putString(PREF_PASSENGER_DETAIL, "minimal").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_PASSENGER_DETAIL, "minimal").apply()
             updatePaxDetailSegmentUI()
             Log.i(TAG, "Passenger info: minimal")
         }
         paxDetailedBtn.setOnClickListener {
             Config.PASSENGER_INFO_DETAIL = "detailed"
-            prefs.edit().putString(PREF_PASSENGER_DETAIL, "detailed").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_PASSENGER_DETAIL, "detailed").apply()
             updatePaxDetailSegmentUI()
             Log.i(TAG, "Passenger info: detailed")
         }
 
         audioToggle.setOnClickListener {
             Config.ENABLE_AUDIO_ALERTS = !Config.ENABLE_AUDIO_ALERTS
-            prefs.edit().putBoolean(PREF_AUDIO_ENABLED, Config.ENABLE_AUDIO_ALERTS).apply()
+            prefs.edit().putBoolean(ConfigPrefs.PREF_AUDIO_ENABLED, Config.ENABLE_AUDIO_ALERTS).apply()
             updateAudioToggleUI()
             Log.i(TAG, "Audio alerts toggled: ${Config.ENABLE_AUDIO_ALERTS}")
         }
 
         previewToggle.setOnClickListener {
             Config.ENABLE_PREVIEW = !Config.ENABLE_PREVIEW
-            prefs.edit().putBoolean(PREF_PREVIEW_ENABLED, Config.ENABLE_PREVIEW).apply()
+            prefs.edit().putBoolean(ConfigPrefs.PREF_PREVIEW_ENABLED, Config.ENABLE_PREVIEW).apply()
             updatePreviewToggleUI()
             if (!Config.ENABLE_PREVIEW) {
                 previewImage.setImageBitmap(null)
@@ -592,21 +578,21 @@ class MainActivity : Activity() {
 
         asimoSizeSmallBtn.setOnClickListener {
             Config.ASIMO_SIZE = "s"
-            prefs.edit().putString(PREF_ASIMO_SIZE, "s").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_ASIMO_SIZE, "s").apply()
             updateAsimoSizeSegmentUI()
             if (isRunning) updateAsimoSize()
             Log.i(TAG, "ASIMO size: s")
         }
         asimoSizeMediumBtn.setOnClickListener {
             Config.ASIMO_SIZE = "m"
-            prefs.edit().putString(PREF_ASIMO_SIZE, "m").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_ASIMO_SIZE, "m").apply()
             updateAsimoSizeSegmentUI()
             if (isRunning) updateAsimoSize()
             Log.i(TAG, "ASIMO size: m")
         }
         asimoSizeLargeBtn.setOnClickListener {
             Config.ASIMO_SIZE = "l"
-            prefs.edit().putString(PREF_ASIMO_SIZE, "l").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_ASIMO_SIZE, "l").apply()
             updateAsimoSizeSegmentUI()
             if (isRunning) updateAsimoSize()
             Log.i(TAG, "ASIMO size: l")
@@ -614,21 +600,21 @@ class MainActivity : Activity() {
 
         widgetOffBtn.setOnClickListener {
             Config.BOTTOM_WIDGET = "none"
-            prefs.edit().putString(PREF_BOTTOM_WIDGET, "none").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_BOTTOM_WIDGET, "none").apply()
             updateBottomWidgetSegmentUI()
             updateBottomWidgetVisibility()
             Log.i(TAG, "Bottom widget: none")
         }
         widgetStatsBtn.setOnClickListener {
             Config.BOTTOM_WIDGET = "stats"
-            prefs.edit().putString(PREF_BOTTOM_WIDGET, "stats").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_BOTTOM_WIDGET, "stats").apply()
             updateBottomWidgetSegmentUI()
             updateBottomWidgetVisibility()
             Log.i(TAG, "Bottom widget: stats")
         }
         widgetTipsBtn.setOnClickListener {
             Config.BOTTOM_WIDGET = "tips"
-            prefs.edit().putString(PREF_BOTTOM_WIDGET, "tips").apply()
+            prefs.edit().putString(ConfigPrefs.PREF_BOTTOM_WIDGET, "tips").apply()
             updateBottomWidgetSegmentUI()
             updateBottomWidgetVisibility()
             Log.i(TAG, "Bottom widget: tips")
@@ -996,7 +982,7 @@ class MainActivity : Activity() {
             })
         }
 
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(ConfigPrefs.PREFS_NAME, Context.MODE_PRIVATE)
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog)
             .setTitle("WiFi Camera")
             .setView(container)
@@ -1007,13 +993,13 @@ class MainActivity : Activity() {
                     return@setPositiveButton
                 }
                 Config.WIFI_CAMERA_URL = url
-                prefs.edit().putString(PREF_WIFI_URL, url).apply()
+                prefs.edit().putString(ConfigPrefs.PREF_WIFI_URL, url).apply()
                 updateWifiCamButtonUI()
                 Log.i(TAG, "WiFi camera URL: ${if (url.isBlank()) "(cleared)" else url}")
             }
             .setNeutralButton("Clear") { _, _ ->
                 Config.WIFI_CAMERA_URL = ""
-                prefs.edit().putString(PREF_WIFI_URL, "").apply()
+                prefs.edit().putString(ConfigPrefs.PREF_WIFI_URL, "").apply()
                 updateWifiCamButtonUI()
                 Log.i(TAG, "WiFi camera URL cleared")
             }
@@ -1379,18 +1365,23 @@ class MainActivity : Activity() {
         riskBanner.setTextColor(riskTextColor)
         animateRiskColor(targetColor)
 
-        // Driver name + seat side indicator
-        val seatSide = Config.DRIVER_SEAT_SIDE.uppercase()
+        // Driver name
         val name = result.driverName
         if (name != null) {
-            driverNameText.text = "$name ($seatSide)"
+            driverNameText.text = "Driver: $name"
+            if (driverNameText.visibility != View.VISIBLE) {
+                driverNameText.alpha = 0f
+                driverNameText.visibility = View.VISIBLE
+                driverNameText.animate().alpha(1f).setDuration(200).start()
+            }
         } else {
-            driverNameText.text = "Driver ($seatSide)"
+            driverNameText.visibility = View.GONE
         }
-        if (driverNameText.visibility != View.VISIBLE) {
-            driverNameText.alpha = 0f
-            driverNameText.visibility = View.VISIBLE
-            driverNameText.animate().alpha(1f).setDuration(200).start()
+
+        // Driver position (seat side) — static at bottom of right panel
+        driverPositionText.text = "Driver Position: ${Config.DRIVER_SEAT_SIDE.uppercase()}"
+        if (driverPositionText.visibility != View.VISIBLE) {
+            driverPositionText.visibility = View.VISIBLE
         }
 
         // Engineering metrics (hidden, but kept updated)

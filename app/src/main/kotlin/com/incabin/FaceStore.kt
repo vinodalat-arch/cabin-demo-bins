@@ -78,6 +78,19 @@ class FaceStore private constructor(context: Context) {
         return removed
     }
 
+    /** Rename a registered face. Removes any existing entry with newName to prevent duplicates. Returns true if oldName was found. */
+    @Synchronized
+    fun rename(oldName: String, newName: String): Boolean {
+        val index = faces.indexOfFirst { it.name == oldName }
+        if (index < 0) return false
+        faces.removeAll { it.name == newName }
+        val old = faces[index]
+        faces[index] = RegisteredFace(newName, old.embedding)
+        saveToDisk()
+        Log.i(TAG, "Renamed face: $oldName -> $newName (total: ${faces.size})")
+        return true
+    }
+
     /** Get all registered face names. */
     @Synchronized
     fun getNames(): List<String> = faces.map { it.name }
