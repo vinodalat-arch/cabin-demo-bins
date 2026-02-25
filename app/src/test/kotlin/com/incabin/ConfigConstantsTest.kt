@@ -110,7 +110,7 @@ class ConfigConstantsTest {
 
     @Test
     fun test_child_bbox_ratio() {
-        assertEquals(0.75f, Config.CHILD_BBOX_RATIO, 0.001f)
+        assertEquals(0.65f, Config.CHILD_BBOX_RATIO, 0.001f)
     }
 
     @Test

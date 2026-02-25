@@ -26,7 +26,7 @@ object Config {
     const val POSTURE_LEAN_THRESHOLD = 30.0f
     const val CHILD_SLOUCH_THRESHOLD = 20.0f
     const val HEAD_TURN_THRESHOLD = 0.3f
-    const val CHILD_BBOX_RATIO = 0.75f
+    const val CHILD_BBOX_RATIO = 0.65f
     const val KP_CONF_THRESHOLD = 0.5f
     const val WRIST_CROP_SIZE = 200
 

@@ -17,7 +17,9 @@ namespace incabin {
 static constexpr float POSTURE_LEAN_THRESHOLD = 30.0f;
 static constexpr float CHILD_SLOUCH_THRESHOLD = 20.0f;
 static constexpr float HEAD_TURN_THRESHOLD = 0.3f;
-static constexpr float CHILD_BBOX_RATIO = 0.75f;
+static constexpr float CHILD_BBOX_RATIO = 0.65f;
+static constexpr float CHILD_SHOULDER_RATIO = 0.7f;
+static constexpr float CHILD_MIN_BBOX_HEIGHT = 50.0f;
 static constexpr int WRIST_CROP_SIZE = 200;
 static constexpr int YOLO_PHONE_CLASS = 67;
 static const std::vector<int> FOOD_DRINK_CLASSES = {39, 40, 41, 42, 43, 44, 45, 46, 47, 48};
@@ -407,16 +409,49 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     // 3. Check driver posture
     result.dangerous_posture = checkPosture(driver.keypoints, POSTURE_LEAN_THRESHOLD);
 
-    // 4. Check for children
+    // 4. Check for children (multi-signal: bbox height ratio + shoulder width ratio)
     int child_count = 0;
+
+    // Compute driver shoulder width for shoulder ratio signal
+    float driver_shoulder_width = 0.0f;
+    if (driver.keypoints[KP_LEFT_SHOULDER].conf > KP_CONF_THRESHOLD &&
+        driver.keypoints[KP_RIGHT_SHOULDER].conf > KP_CONF_THRESHOLD) {
+        driver_shoulder_width = std::abs(driver.keypoints[KP_LEFT_SHOULDER].x -
+                                          driver.keypoints[KP_RIGHT_SHOULDER].x);
+    }
+
     for (int i = 0; i < static_cast<int>(persons.size()); i++) {
         if (i == driver_idx) continue;
 
         float person_height = persons[i].y2 - persons[i].y1;
+
+        // Skip tiny detections (noise)
+        if (person_height < CHILD_MIN_BBOX_HEIGHT) continue;
         if (driver_height < 1e-6f) continue;
 
-        float ratio = person_height / driver_height;
-        if (ratio < CHILD_BBOX_RATIO) {
+        bool is_child = false;
+
+        // Signal 1: bbox height ratio
+        float height_ratio = person_height / driver_height;
+        if (height_ratio < CHILD_BBOX_RATIO) {
+            is_child = true;
+        }
+
+        // Signal 2: shoulder width ratio (when both have confident shoulder keypoints)
+        if (!is_child && driver_shoulder_width > 1e-6f) {
+            const auto& p = persons[i];
+            if (p.keypoints[KP_LEFT_SHOULDER].conf > KP_CONF_THRESHOLD &&
+                p.keypoints[KP_RIGHT_SHOULDER].conf > KP_CONF_THRESHOLD) {
+                float person_shoulder_width = std::abs(p.keypoints[KP_LEFT_SHOULDER].x -
+                                                        p.keypoints[KP_RIGHT_SHOULDER].x);
+                float shoulder_ratio = person_shoulder_width / driver_shoulder_width;
+                if (shoulder_ratio < CHILD_SHOULDER_RATIO) {
+                    is_child = true;
+                }
+            }
+        }
+
+        if (is_child) {
             child_count++;
             result.child_present = true;
             if (checkPosture(persons[i].keypoints, CHILD_SLOUCH_THRESHOLD)) {

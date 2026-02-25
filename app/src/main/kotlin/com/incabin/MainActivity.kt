@@ -1379,17 +1379,18 @@ class MainActivity : Activity() {
         riskBanner.setTextColor(riskTextColor)
         animateRiskColor(targetColor)
 
-        // Driver name
+        // Driver name + seat side indicator
+        val seatSide = Config.DRIVER_SEAT_SIDE.uppercase()
         val name = result.driverName
         if (name != null) {
-            driverNameText.text = "Driver: $name"
-            if (driverNameText.visibility != View.VISIBLE) {
-                driverNameText.alpha = 0f
-                driverNameText.visibility = View.VISIBLE
-                driverNameText.animate().alpha(1f).setDuration(200).start()
-            }
+            driverNameText.text = "$name ($seatSide)"
         } else {
-            driverNameText.visibility = View.GONE
+            driverNameText.text = "Driver ($seatSide)"
+        }
+        if (driverNameText.visibility != View.VISIBLE) {
+            driverNameText.alpha = 0f
+            driverNameText.visibility = View.VISIBLE
+            driverNameText.animate().alpha(1f).setDuration(200).start()
         }
 
         // Engineering metrics (hidden, but kept updated)
@@ -1398,21 +1399,9 @@ class MainActivity : Activity() {
         yawText.text = "Yaw: ${result.headYaw?.let { "%.1f".format(it) } ?: "--"}"
         pitchText.text = "Pitch: ${result.headPitch?.let { "%.1f".format(it) } ?: "--"}"
 
-        // Info — passenger breakdown
-        if (Config.PASSENGER_INFO_DETAIL == "detailed") {
-            val parts = mutableListOf<String>()
-            if (result.driverDetected) parts.add("1 driver")
-            if (result.childCount > 0) {
-                parts.add("${result.childCount} child${if (result.childCount != 1) "ren" else ""}")
-            }
-            if (result.adultCount > 0) {
-                parts.add("${result.adultCount} adult${if (result.adultCount != 1) "s" else ""}")
-            }
-            passengerText.text = if (parts.isEmpty()) "No occupants" else parts.joinToString(", ")
-        } else {
-            val pCount = result.passengerCount
-            passengerText.text = "$pCount passenger${if (pCount != 1) "s" else ""}"
-        }
+        // Info — passenger count (simple)
+        val pCount = result.passengerCount
+        passengerText.text = "$pCount passenger${if (pCount != 1) "s" else ""}"
         val distS = result.distractionDurationS
         if (distS > 0) {
             distractionText.text = "Distraction: ${distS}s"
