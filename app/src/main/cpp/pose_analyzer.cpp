@@ -455,10 +455,28 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     result.driver_eating_drinking = detectObjectsInCrop(
         bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f, FOOD_CONFIDENCE);
 
-    LOGI("PoseAnalyzer: passengers=%d, driver_detected=%d, phone=%d, posture=%d, child=%d, slouch=%d, eating=%d",
+    // 7. Hands-off-wheel detection: both wrists visible and raised above hip midpoint
+    {
+        const auto& lw = driver.keypoints[KP_LEFT_WRIST];
+        const auto& rw = driver.keypoints[KP_RIGHT_WRIST];
+        bool both_wrists_visible = lw.conf >= KP_CONF_THRESHOLD && rw.conf >= KP_CONF_THRESHOLD;
+        if (both_wrists_visible) {
+            bool hips_ok = driver.keypoints[KP_LEFT_HIP].conf > KP_CONF_THRESHOLD &&
+                           driver.keypoints[KP_RIGHT_HIP].conf > KP_CONF_THRESHOLD;
+            if (hips_ok) {
+                float hip_mid_y = (driver.keypoints[KP_LEFT_HIP].y + driver.keypoints[KP_RIGHT_HIP].y) / 2.0f;
+                // Both wrists above hip midpoint (lower Y = higher in image)
+                if (lw.y < hip_mid_y && rw.y < hip_mid_y) {
+                    result.hands_off_wheel = true;
+                }
+            }
+        }
+    }
+
+    LOGI("PoseAnalyzer: passengers=%d, driver_detected=%d, phone=%d, posture=%d, child=%d, slouch=%d, eating=%d, hands_off=%d",
          result.passenger_count, result.driver_detected, result.driver_using_phone,
          result.dangerous_posture, result.child_present,
-         result.child_slouching, result.driver_eating_drinking);
+         result.child_slouching, result.driver_eating_drinking, result.hands_off_wheel);
 
     return result;
 }
@@ -486,6 +504,8 @@ std::string PoseResult::toJson() const {
     json += child_slouching ? "true" : "false";
     json += ",\"driver_eating_drinking\":";
     json += driver_eating_drinking ? "true" : "false";
+    json += ",\"hands_off_wheel\":";
+    json += hands_off_wheel ? "true" : "false";
     json += ",\"persons\":[";
 
     // Reusable buffer for float formatting (avoids repeated std::to_string heap allocs)

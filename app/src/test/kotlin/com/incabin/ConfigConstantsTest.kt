@@ -141,6 +141,7 @@ class ConfigConstantsTest {
         assertEquals(2, Config.EATING_MIN_FRAMES)
         assertEquals(2, Config.POSTURE_MIN_FRAMES)
         assertEquals(2, Config.YAWNING_MIN_FRAMES)
+        assertEquals(3, Config.HANDS_OFF_MIN_FRAMES)
         assertEquals(3, Config.CHILD_SLOUCH_MIN_FRAMES)
     }
 
@@ -233,6 +234,7 @@ class ConfigConstantsTest {
     fun test_risk_weights() {
         assertEquals(3, Config.RISK_WEIGHT_PHONE)
         assertEquals(3, Config.RISK_WEIGHT_EYES)
+        assertEquals(3, Config.RISK_WEIGHT_HANDS_OFF)
         assertEquals(2, Config.RISK_WEIGHT_YAWNING)
         assertEquals(2, Config.RISK_WEIGHT_DISTRACTED)
         assertEquals(2, Config.RISK_WEIGHT_POSTURE)

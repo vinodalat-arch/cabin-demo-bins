@@ -75,6 +75,7 @@ class MainActivity : Activity() {
         private val SCORE_PENALTIES = mapOf(
             "phone" to 2.0f,
             "eyes" to 2.0f,
+            "hands_off" to 2.0f,
             "distracted" to 1.5f,
             "yawning" to 1.0f,
             "eating" to 1.0f,
@@ -98,6 +99,7 @@ class MainActivity : Activity() {
         private val ASIMO_POSE_PRIORITY = listOf(
             "driverUsingPhone" to R.drawable.asimo_phone,
             "driverEyesClosed" to R.drawable.asimo_eyes_closed,
+            "handsOffWheel" to R.drawable.asimo_distracted,
             "driverDistracted" to R.drawable.asimo_distracted,
             "driverYawning" to R.drawable.asimo_yawning,
             "driverEatingDrinking" to R.drawable.asimo_eating,
@@ -141,6 +143,11 @@ class MainActivity : Activity() {
             "Little one slouching back there!",
             "Check on your little passenger!",
             "Kiddo needs a posture check!"
+        )
+        private val HANDS_OFF_MESSAGES = listOf(
+            "Hands on the wheel, please!",
+            "Grip the steering wheel!",
+            "Both hands off? Not safe!"
         )
 
         private val ALL_CLEAR_MESSAGES = listOf(
@@ -186,6 +193,11 @@ class MainActivity : Activity() {
             "お子様の姿勢が悪いです！",
             "後部座席のお子様を確認して！",
             "お子様の姿勢チェック！"
+        )
+        private val HANDS_OFF_MESSAGES_JA = listOf(
+            "ハンドルを握ってください！",
+            "ハンドルから手を離さないで！",
+            "両手でハンドルを！"
         )
         private val ALL_CLEAR_MESSAGES_JA = listOf(
             "順調です！安全運転を。",
@@ -1441,6 +1453,7 @@ class MainActivity : Activity() {
         if (result.driverYawning) activeKeys.add("driverYawning")
         if (result.driverDistracted) activeKeys.add("driverDistracted")
         if (result.driverEatingDrinking) activeKeys.add("driverEatingDrinking")
+        if (result.handsOffWheel) activeKeys.add("handsOffWheel")
         if (result.dangerousPosture) activeKeys.add("dangerousPosture")
         if (result.childSlouching) activeKeys.add("childSlouching")
 
@@ -1666,7 +1679,7 @@ class MainActivity : Activity() {
 
     private fun updateScore(result: OutputResult) {
         val hasDetection = result.driverUsingPhone || result.driverEyesClosed ||
-            result.driverDistracted || result.driverYawning ||
+            result.handsOffWheel || result.driverDistracted || result.driverYawning ||
             result.driverEatingDrinking || result.dangerousPosture ||
             result.childSlouching
 
@@ -1674,6 +1687,7 @@ class MainActivity : Activity() {
             var penalty = 0f
             if (result.driverUsingPhone) penalty += SCORE_PENALTIES["phone"]!!
             if (result.driverEyesClosed) penalty += SCORE_PENALTIES["eyes"]!!
+            if (result.handsOffWheel) penalty += SCORE_PENALTIES["hands_off"]!!
             if (result.driverDistracted) penalty += SCORE_PENALTIES["distracted"]!!
             if (result.driverYawning) penalty += SCORE_PENALTIES["yawning"]!!
             if (result.driverEatingDrinking) penalty += SCORE_PENALTIES["eating"]!!
@@ -1694,13 +1708,14 @@ class MainActivity : Activity() {
     private fun updateStreak(result: OutputResult) {
         val now = System.currentTimeMillis()
         val hasDetection = result.driverUsingPhone || result.driverEyesClosed ||
-            result.driverDistracted || result.driverYawning ||
+            result.handsOffWheel || result.driverDistracted || result.driverYawning ||
             result.driverEatingDrinking || result.dangerousPosture ||
             result.childSlouching
 
         if (hasDetection) {
             if (result.driverUsingPhone) detectionCounts["Phone"] = (detectionCounts["Phone"] ?: 0) + 1
             if (result.driverEyesClosed) detectionCounts["Eyes Closed"] = (detectionCounts["Eyes Closed"] ?: 0) + 1
+            if (result.handsOffWheel) detectionCounts["Hands Off"] = (detectionCounts["Hands Off"] ?: 0) + 1
             if (result.driverYawning) detectionCounts["Yawning"] = (detectionCounts["Yawning"] ?: 0) + 1
             if (result.driverDistracted) detectionCounts["Distracted"] = (detectionCounts["Distracted"] ?: 0) + 1
             if (result.driverEatingDrinking) detectionCounts["Eating"] = (detectionCounts["Eating"] ?: 0) + 1
@@ -1756,6 +1771,7 @@ class MainActivity : Activity() {
             } else when {
                 result.driverUsingPhone -> { message = (if (isJa) PHONE_MESSAGES_JA else PHONE_MESSAGES).random(); color = colorDanger }
                 result.driverEyesClosed -> { message = (if (isJa) EYES_MESSAGES_JA else EYES_MESSAGES).random(); color = colorDanger }
+                result.handsOffWheel -> { message = (if (isJa) HANDS_OFF_MESSAGES_JA else HANDS_OFF_MESSAGES).random(); color = colorDanger }
                 result.driverDistracted -> { message = (if (isJa) DISTRACTED_MESSAGES_JA else DISTRACTED_MESSAGES).random(); color = colorCaution }
                 result.driverYawning -> { message = (if (isJa) YAWNING_MESSAGES_JA else YAWNING_MESSAGES).random(); color = colorCaution }
                 result.driverEatingDrinking -> { message = (if (isJa) EATING_MESSAGES_JA else EATING_MESSAGES).random(); color = colorCaution }
@@ -1795,6 +1811,7 @@ class MainActivity : Activity() {
         val active = mutableListOf<String>()
         if (result.driverUsingPhone) active.add("Phone")
         if (result.driverEyesClosed) active.add("Eyes Closed")
+        if (result.handsOffWheel) active.add("Hands Off")
         if (result.driverYawning) active.add("Yawning")
         if (result.driverDistracted) active.add("Distracted")
         if (result.driverEatingDrinking) active.add("Eating")

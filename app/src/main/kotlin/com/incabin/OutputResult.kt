@@ -31,6 +31,9 @@ data class OutputResult(
     @SerializedName("driver_eating_drinking")
     val driverEatingDrinking: Boolean,
 
+    @SerializedName("hands_off_wheel")
+    val handsOffWheel: Boolean = false,
+
     @SerializedName("dangerous_posture")
     val dangerousPosture: Boolean,
 
@@ -75,6 +78,7 @@ data class OutputResult(
         sb.append(",\"driver_yawning\":").append(driverYawning)
         sb.append(",\"driver_distracted\":").append(driverDistracted)
         sb.append(",\"driver_eating_drinking\":").append(driverEatingDrinking)
+        sb.append(",\"hands_off_wheel\":").append(handsOffWheel)
         sb.append(",\"dangerous_posture\":").append(dangerousPosture)
         sb.append(",\"child_present\":").append(childPresent)
         sb.append(",\"child_slouching\":").append(childSlouching)
@@ -114,6 +118,7 @@ data class OutputResult(
         "driver_yawning" to driverYawning,
         "driver_distracted" to driverDistracted,
         "driver_eating_drinking" to driverEatingDrinking,
+        "hands_off_wheel" to handsOffWheel,
         "dangerous_posture" to dangerousPosture,
         "child_present" to childPresent,
         "child_slouching" to childSlouching,
@@ -135,7 +140,8 @@ data class OutputResult(
         private val REQUIRED_FIELDS = listOf(
             "timestamp", "passenger_count", "child_count", "adult_count",
             "driver_using_phone", "driver_eyes_closed", "driver_yawning",
-            "driver_distracted", "driver_eating_drinking", "dangerous_posture",
+            "driver_distracted", "driver_eating_drinking", "hands_off_wheel",
+            "dangerous_posture",
             "child_present", "child_slouching", "risk_level", "distraction_duration_s",
             "driver_detected"
         )
@@ -188,7 +194,8 @@ data class OutputResult(
 
             val boolFields = listOf(
                 "driver_using_phone", "driver_eyes_closed", "driver_yawning",
-                "driver_distracted", "driver_eating_drinking", "dangerous_posture",
+                "driver_distracted", "driver_eating_drinking", "hands_off_wheel",
+                "dangerous_posture",
                 "child_present", "child_slouching", "driver_detected"
             )
             for (field in boolFields) {
@@ -251,6 +258,7 @@ data class OutputResult(
             driverYawning = false,
             driverDistracted = false,
             driverEatingDrinking = false,
+            handsOffWheel = false,
             dangerousPosture = false,
             childPresent = false,
             childSlouching = false,

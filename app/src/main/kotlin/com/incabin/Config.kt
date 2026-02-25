@@ -38,6 +38,7 @@ object Config {
     const val DISTRACTED_MIN_FRAMES = 2       // ~2s — allow quick mirror/blind-spot glances
     const val EATING_MIN_FRAMES = 2           // ~2s — allow quick sips
     const val POSTURE_MIN_FRAMES = 2          // ~2s — allow brief adjustments
+    const val HANDS_OFF_MIN_FRAMES = 3         // ~3s — confirm hands truly off wheel
     const val YAWNING_MIN_FRAMES = 2           // ~2s — filter single-frame mouth-open
     const val CHILD_SLOUCH_MIN_FRAMES = 3     // ~3s — kids shift constantly
 
@@ -106,6 +107,7 @@ object Config {
     const val RISK_WEIGHT_DISTRACTED = 2
     const val RISK_WEIGHT_POSTURE = 2
     const val RISK_WEIGHT_EATING = 1
+    const val RISK_WEIGHT_HANDS_OFF = 3
     const val RISK_WEIGHT_SLOUCH = 1
     const val RISK_HIGH_THRESHOLD = 3
     const val RISK_MEDIUM_THRESHOLD = 1

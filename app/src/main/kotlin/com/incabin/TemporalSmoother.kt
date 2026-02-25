@@ -24,6 +24,7 @@ class TemporalSmoother(
     private var _distractedStreak: Int = 0
     private var _eatingStreak: Int = 0
     private var _postureStreak: Int = 0
+    private var _handsOffStreak: Int = 0
     private var _childSlouchStreak: Int = 0
 
     /** True when the buffer has accumulated at least [windowSize] frames. */
@@ -39,6 +40,7 @@ class TemporalSmoother(
         val STANDARD_FIELDS = listOf(
             "driver_using_phone",
             "driver_eating_drinking",
+            "hands_off_wheel",
             "dangerous_posture",
             "child_present",
             "child_slouching"
@@ -80,7 +82,7 @@ class TemporalSmoother(
         var earValidCount = 0; var eyesClosedCount = 0
         var marValidCount = 0; var yawningCount = 0
         var yawValidCount = 0; var distractedCount = 0
-        var phoneCount = 0; var eatingCount = 0; var postureCount = 0
+        var phoneCount = 0; var eatingCount = 0; var handsOffCount = 0; var postureCount = 0
         var childPresentCount = 0; var childSlouchCount = 0
         var driverDetectedCount = 0
         // Passenger/child/adult count mode via small frequency arrays (max ~10)
@@ -97,6 +99,7 @@ class TemporalSmoother(
             if (frame.headYaw != null) { yawValidCount++; if (frame.driverDistracted) distractedCount++ }
             if (frame.driverUsingPhone) phoneCount++
             if (frame.driverEatingDrinking) eatingCount++
+            if (frame.handsOffWheel) handsOffCount++
             if (frame.dangerousPosture) postureCount++
             if (frame.childPresent) childPresentCount++
             if (frame.childSlouching) childSlouchCount++
@@ -140,6 +143,10 @@ class TemporalSmoother(
         val rawEating = (eatingCount.toFloat() / n) >= threshold
         if (rawEating) _eatingStreak++ else _eatingStreak = 0
         val smoothedEating = _eatingStreak >= Config.EATING_MIN_FRAMES
+
+        val rawHandsOff = (handsOffCount.toFloat() / n) >= threshold
+        if (rawHandsOff) _handsOffStreak++ else _handsOffStreak = 0
+        val smoothedHandsOff = _handsOffStreak >= Config.HANDS_OFF_MIN_FRAMES
 
         val rawPosture = (postureCount.toFloat() / n) >= threshold
         if (rawPosture) _postureStreak++ else _postureStreak = 0
@@ -198,7 +205,8 @@ class TemporalSmoother(
             childSlouching = smoothedChildSlouching,
             driverYawning = smoothedYawning,
             driverDistracted = smoothedDistracted,
-            driverEatingDrinking = smoothedEating
+            driverEatingDrinking = smoothedEating,
+            handsOffWheel = smoothedHandsOff
         )
 
         // --- Build smoothed result ---
@@ -213,6 +221,7 @@ class TemporalSmoother(
             driverYawning = smoothedYawning,
             driverDistracted = smoothedDistracted,
             driverEatingDrinking = smoothedEating,
+            handsOffWheel = smoothedHandsOff,
             dangerousPosture = smoothedPosture,
             childPresent = smoothedChildPresent,
             childSlouching = smoothedChildSlouching,

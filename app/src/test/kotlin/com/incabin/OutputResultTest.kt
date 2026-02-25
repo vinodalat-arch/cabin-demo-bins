@@ -23,6 +23,7 @@ class OutputResultTest {
             "driver_yawning" to false,
             "driver_distracted" to false,
             "driver_eating_drinking" to false,
+            "hands_off_wheel" to false,
             "dangerous_posture" to false,
             "child_present" to false,
             "child_slouching" to false,

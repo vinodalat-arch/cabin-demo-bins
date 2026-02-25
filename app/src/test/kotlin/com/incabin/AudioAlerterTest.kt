@@ -19,14 +19,15 @@ class AudioAlerterTest {
 
     // --- Helpers ---
 
-    private val CLEAR = DangerSnapshot(false, false, false, false, false, false, false)
+    private val CLEAR = DangerSnapshot(false, false, false, false, false, false, false, false)
     private val NOW = 100_000L
 
     private fun snap(
-        phone: Boolean = false, eyes: Boolean = false, yawning: Boolean = false,
+        phone: Boolean = false, eyes: Boolean = false, handsOff: Boolean = false,
+        yawning: Boolean = false,
         distracted: Boolean = false, eating: Boolean = false, posture: Boolean = false,
         slouching: Boolean = false
-    ) = DangerSnapshot(phone, eyes, yawning, distracted, eating, posture, slouching)
+    ) = DangerSnapshot(phone, eyes, handsOff, yawning, distracted, eating, posture, slouching)
 
     private fun build(
         current: DangerSnapshot, prev: DangerSnapshot,
@@ -400,9 +401,19 @@ class AudioAlerterTest {
     // -------------------------------------------------------------------------
 
     @Test
+    fun test_new_critical_danger_hands_off_wheel() {
+        val alerts = build(current = snap(handsOff = true), prev = CLEAR)
+        assertEquals(1, alerts.size)
+        assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
+        assertEquals("Hands off wheel, please grip the steering", alerts[0].text)
+        assertEquals("hands_off_wheel", alerts[0].dangerField)
+    }
+
+    @Test
     fun test_priority_for_critical_fields() {
         assertEquals(AlertPriority.CRITICAL, AudioAlerter.priorityForField("driver_using_phone"))
         assertEquals(AlertPriority.CRITICAL, AudioAlerter.priorityForField("driver_eyes_closed"))
+        assertEquals(AlertPriority.CRITICAL, AudioAlerter.priorityForField("hands_off_wheel"))
     }
 
     @Test

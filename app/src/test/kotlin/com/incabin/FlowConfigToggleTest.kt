@@ -87,8 +87,8 @@ class FlowConfigToggleTest {
 
     @Test
     fun test_language_english_alert_messages() {
-        val clear = DangerSnapshot(false, false, false, false, false, false, false)
-        val phone = DangerSnapshot(true, false, false, false, false, false, false)
+        val clear = DangerSnapshot(false, false, false, false, false, false, false, false)
+        val phone = DangerSnapshot(true, false, false, false, false, false, false, false)
         val alerts = AudioAlerter.buildAlerts(
             phone, clear, 0, 0, 100_000L,
             mutableMapOf(), mutableMapOf(), isJapanese = false
@@ -99,8 +99,8 @@ class FlowConfigToggleTest {
 
     @Test
     fun test_language_japanese_alert_messages() {
-        val clear = DangerSnapshot(false, false, false, false, false, false, false)
-        val phone = DangerSnapshot(true, false, false, false, false, false, false)
+        val clear = DangerSnapshot(false, false, false, false, false, false, false, false)
+        val phone = DangerSnapshot(true, false, false, false, false, false, false, false)
         val alerts = AudioAlerter.buildAlerts(
             phone, clear, 0, 0, 100_000L,
             mutableMapOf(), mutableMapOf(), isJapanese = true
@@ -143,6 +143,18 @@ class FlowConfigToggleTest {
         val risk = computeRisk(
             driverUsingPhone = true, driverEyesClosed = false,
             dangerousPosture = false, childSlouching = false
+        )
+        assertEquals("high", risk)
+    }
+
+    @Test
+    fun test_risk_weights_hands_off_equals_high() {
+        // Hands off weight = 3 >= RISK_HIGH_THRESHOLD(3) → "high"
+        assertEquals(3, Config.RISK_WEIGHT_HANDS_OFF)
+        val risk = computeRisk(
+            driverUsingPhone = false, driverEyesClosed = false,
+            dangerousPosture = false, childSlouching = false,
+            handsOffWheel = true
         )
         assertEquals("high", risk)
     }

@@ -67,6 +67,7 @@ class OutputResultSerializationTest {
         assertTrue(json.contains("\"driver_yawning\""))
         assertTrue(json.contains("\"driver_distracted\""))
         assertTrue(json.contains("\"driver_eating_drinking\""))
+        assertTrue(json.contains("\"hands_off_wheel\""))
         assertTrue(json.contains("\"dangerous_posture\""))
         assertTrue(json.contains("\"child_present\""))
         assertTrue(json.contains("\"child_slouching\""))
@@ -218,9 +219,9 @@ class OutputResultSerializationTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_toMap_has_20_fields() {
+    fun test_toMap_has_21_fields() {
         val map = makeResult().toMap()
-        assertEquals(20, map.size)
+        assertEquals(21, map.size)
     }
 
     @Test
@@ -229,7 +230,8 @@ class OutputResultSerializationTest {
         val expectedKeys = setOf(
             "timestamp", "passenger_count", "child_count", "adult_count",
             "driver_using_phone", "driver_eyes_closed", "driver_yawning",
-            "driver_distracted", "driver_eating_drinking", "dangerous_posture",
+            "driver_distracted", "driver_eating_drinking", "hands_off_wheel",
+            "dangerous_posture",
             "child_present", "child_slouching", "risk_level",
             "ear_value", "mar_value", "head_yaw", "head_pitch",
             "distraction_duration_s", "driver_name", "driver_detected"

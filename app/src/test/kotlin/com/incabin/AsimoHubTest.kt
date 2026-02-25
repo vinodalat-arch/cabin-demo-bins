@@ -37,6 +37,7 @@ class AsimoHubTest {
     private fun makeResult(
         phone: Boolean = false,
         eyes: Boolean = false,
+        handsOff: Boolean = false,
         yawn: Boolean = false,
         distracted: Boolean = false,
         eating: Boolean = false,
@@ -49,6 +50,7 @@ class AsimoHubTest {
         passengerCount = 1,
         driverUsingPhone = phone,
         driverEyesClosed = eyes,
+        handsOffWheel = handsOff,
         driverYawning = yawn,
         driverDistracted = distracted,
         driverEatingDrinking = eating,
@@ -87,25 +89,31 @@ class AsimoHubTest {
     }
 
     @Test
-    fun test_distracted_third_priority() {
+    fun test_hands_off_wheel_third_priority() {
+        val result = makeResult(handsOff = true, distracted = true, yawn = true)
+        assertEquals("handsOffWheel", AsimoHub.resolveDetectionKey(result))
+    }
+
+    @Test
+    fun test_distracted_fourth_priority() {
         val result = makeResult(distracted = true, yawn = true, eating = true)
         assertEquals("driverDistracted", AsimoHub.resolveDetectionKey(result))
     }
 
     @Test
-    fun test_yawning_fourth_priority() {
+    fun test_yawning_fifth_priority() {
         val result = makeResult(yawn = true, eating = true, posture = true)
         assertEquals("driverYawning", AsimoHub.resolveDetectionKey(result))
     }
 
     @Test
-    fun test_eating_fifth_priority() {
+    fun test_eating_sixth_priority() {
         val result = makeResult(eating = true, posture = true, slouch = true)
         assertEquals("driverEatingDrinking", AsimoHub.resolveDetectionKey(result))
     }
 
     @Test
-    fun test_posture_sixth_priority() {
+    fun test_posture_seventh_priority() {
         val result = makeResult(posture = true, slouch = true)
         assertEquals("dangerousPosture", AsimoHub.resolveDetectionKey(result))
     }
@@ -200,6 +208,11 @@ class AsimoHubTest {
     }
 
     @Test
+    fun test_label_en_hands_off_wheel() {
+        assertEquals("HANDS OFF WHEEL", AsimoHub.getDetectionLabel("handsOffWheel", "en"))
+    }
+
+    @Test
     fun test_label_en_no_driver() {
         assertEquals("NO DRIVER DETECTED", AsimoHub.getDetectionLabel("noDriverDetected", "en"))
     }
@@ -249,6 +262,11 @@ class AsimoHubTest {
     }
 
     @Test
+    fun test_label_ja_hands_off_wheel() {
+        assertEquals("ハンドル未把持", AsimoHub.getDetectionLabel("handsOffWheel", "ja"))
+    }
+
+    @Test
     fun test_label_ja_no_driver() {
         assertEquals("運転者未検出", AsimoHub.getDetectionLabel("noDriverDetected", "ja"))
     }
@@ -274,6 +292,11 @@ class AsimoHubTest {
     @Test
     fun test_eyes_is_danger_field() {
         assertTrue(AsimoHub.isDangerField("driverEyesClosed"))
+    }
+
+    @Test
+    fun test_hands_off_wheel_is_danger_field() {
+        assertTrue(AsimoHub.isDangerField("handsOffWheel"))
     }
 
     @Test
@@ -459,9 +482,9 @@ class AsimoHubTest {
     @Test
     fun test_all_pose_priority_fields_have_labels() {
         val poseFields = listOf(
-            "driverUsingPhone", "driverEyesClosed", "driverDistracted",
-            "driverYawning", "driverEatingDrinking", "dangerousPosture",
-            "childSlouching"
+            "driverUsingPhone", "driverEyesClosed", "handsOffWheel",
+            "driverDistracted", "driverYawning", "driverEatingDrinking",
+            "dangerousPosture", "childSlouching"
         )
         for (field in poseFields) {
             assertTrue(

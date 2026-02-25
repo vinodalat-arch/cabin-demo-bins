@@ -21,14 +21,15 @@ class FlowEscalationTest {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private val CLEAR = DangerSnapshot(false, false, false, false, false, false, false)
+    private val CLEAR = DangerSnapshot(false, false, false, false, false, false, false, false)
     private val NOW = 100_000L
 
     private fun snap(
-        phone: Boolean = false, eyes: Boolean = false, yawning: Boolean = false,
+        phone: Boolean = false, eyes: Boolean = false, handsOff: Boolean = false,
+        yawning: Boolean = false,
         distracted: Boolean = false, eating: Boolean = false, posture: Boolean = false,
         slouching: Boolean = false
-    ) = DangerSnapshot(phone, eyes, yawning, distracted, eating, posture, slouching)
+    ) = DangerSnapshot(phone, eyes, handsOff, yawning, distracted, eating, posture, slouching)
 
     private fun build(
         current: DangerSnapshot, prev: DangerSnapshot,

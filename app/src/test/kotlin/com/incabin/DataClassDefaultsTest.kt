@@ -51,6 +51,11 @@ class DataClassDefaultsTest {
     }
 
     @Test
+    fun test_pose_result_default_no_hands_off_wheel() {
+        assertFalse(PoseResult().handsOffWheel)
+    }
+
+    @Test
     fun test_pose_result_default_empty_persons() {
         assertTrue(PoseResult().persons.isEmpty())
     }

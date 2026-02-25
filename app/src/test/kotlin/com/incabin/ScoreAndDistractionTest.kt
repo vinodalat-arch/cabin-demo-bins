@@ -14,6 +14,7 @@ class ScoreAndDistractionTest {
     private fun makeResult(
         phone: Boolean = false,
         eyes: Boolean = false,
+        handsOff: Boolean = false,
         yawn: Boolean = false,
         distracted: Boolean = false,
         eating: Boolean = false,
@@ -24,6 +25,7 @@ class ScoreAndDistractionTest {
         passengerCount = 1,
         driverUsingPhone = phone,
         driverEyesClosed = eyes,
+        handsOffWheel = handsOff,
         driverYawning = yawn,
         driverDistracted = distracted,
         driverEatingDrinking = eating,
@@ -107,6 +109,11 @@ class ScoreAndDistractionTest {
     }
 
     @Test
+    fun test_hands_off_wheel_is_distraction() {
+        assertTrue(AsimoHub.isDistracted(makeResult(handsOff = true)))
+    }
+
+    @Test
     fun test_posture_is_NOT_distraction() {
         assertFalse(AsimoHub.isDistracted(makeResult(posture = true)))
     }
@@ -156,6 +163,11 @@ class ScoreAndDistractionTest {
     }
 
     @Test
+    fun test_penalty_hands_off_wheel_is_2() {
+        assertEquals(2.0f, AsimoHub.computeScorePenalty(makeResult(handsOff = true)), 0.001f)
+    }
+
+    @Test
     fun test_penalty_child_slouch_is_0_5() {
         assertEquals(0.5f, AsimoHub.computeScorePenalty(makeResult(slouch = true)), 0.001f)
     }
@@ -163,11 +175,11 @@ class ScoreAndDistractionTest {
     @Test
     fun test_penalty_all_active_sums_correctly() {
         val result = makeResult(
-            phone = true, eyes = true, distracted = true, yawn = true,
+            phone = true, eyes = true, handsOff = true, distracted = true, yawn = true,
             eating = true, posture = true, slouch = true
         )
-        // 2.0 + 2.0 + 1.5 + 1.0 + 1.0 + 1.0 + 0.5 = 9.0
-        assertEquals(9.0f, AsimoHub.computeScorePenalty(result), 0.001f)
+        // 2.0 + 2.0 + 2.0 + 1.5 + 1.0 + 1.0 + 1.0 + 0.5 = 11.0
+        assertEquals(11.0f, AsimoHub.computeScorePenalty(result), 0.001f)
     }
 
     @Test

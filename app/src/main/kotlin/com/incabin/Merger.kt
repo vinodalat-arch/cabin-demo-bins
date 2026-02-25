@@ -20,7 +20,8 @@ fun computeRisk(
     childSlouching: Boolean,
     driverYawning: Boolean = false,
     driverDistracted: Boolean = false,
-    driverEatingDrinking: Boolean = false
+    driverEatingDrinking: Boolean = false,
+    handsOffWheel: Boolean = false
 ): String {
     var score = 0
     if (driverUsingPhone)     score += Config.RISK_WEIGHT_PHONE
@@ -30,6 +31,7 @@ fun computeRisk(
     if (driverYawning)        score += Config.RISK_WEIGHT_YAWNING
     if (driverDistracted)     score += Config.RISK_WEIGHT_DISTRACTED
     if (driverEatingDrinking) score += Config.RISK_WEIGHT_EATING
+    if (handsOffWheel)        score += Config.RISK_WEIGHT_HANDS_OFF
 
     return when {
         score >= Config.RISK_HIGH_THRESHOLD   -> "high"
@@ -51,7 +53,7 @@ fun mergeResults(faceResult: FaceResult, poseResult: PoseResult): OutputResult {
         poseResult.driverUsingPhone, faceResult.driverEyesClosed,
         poseResult.dangerousPosture, poseResult.childSlouching,
         faceResult.driverYawning, faceResult.driverDistracted,
-        poseResult.driverEatingDrinking
+        poseResult.driverEatingDrinking, poseResult.handsOffWheel
     )
 
     // Derive adult_count: total persons - driver (if detected) - children
@@ -68,6 +70,7 @@ fun mergeResults(faceResult: FaceResult, poseResult: PoseResult): OutputResult {
         driverYawning = faceResult.driverYawning,
         driverDistracted = faceResult.driverDistracted,
         driverEatingDrinking = poseResult.driverEatingDrinking,
+        handsOffWheel = poseResult.handsOffWheel,
         dangerousPosture = poseResult.dangerousPosture,
         childPresent = poseResult.childPresent,
         childSlouching = poseResult.childSlouching,

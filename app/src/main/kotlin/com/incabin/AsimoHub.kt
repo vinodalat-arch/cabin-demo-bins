@@ -13,6 +13,7 @@ object AsimoHub {
     private val POSE_PRIORITY_FIELDS = listOf(
         "driverUsingPhone",
         "driverEyesClosed",
+        "handsOffWheel",
         "driverDistracted",
         "driverYawning",
         "driverEatingDrinking",
@@ -25,6 +26,7 @@ object AsimoHub {
         "noDriverDetected" to "No Driver Detected",
         "driverUsingPhone" to "Phone Detected",
         "driverEyesClosed" to "Eyes Closed",
+        "handsOffWheel" to "Hands Off Wheel",
         "driverYawning" to "Yawning",
         "driverDistracted" to "Distracted",
         "driverEatingDrinking" to "Eating / Drinking",
@@ -36,6 +38,7 @@ object AsimoHub {
         "noDriverDetected" to "運転者未検出",
         "driverUsingPhone" to "スマホ検出",
         "driverEyesClosed" to "目を閉じている",
+        "handsOffWheel" to "ハンドル未把持",
         "driverYawning" to "あくび",
         "driverDistracted" to "よそ見",
         "driverEatingDrinking" to "飲食中",
@@ -44,7 +47,7 @@ object AsimoHub {
     )
 
     // Critical (danger-colored) fields
-    val DANGER_FIELDS = setOf("driverUsingPhone", "driverEyesClosed")
+    val DANGER_FIELDS = setOf("driverUsingPhone", "driverEyesClosed", "handsOffWheel")
 
     // Glow color categories
     enum class GlowCategory { DANGER, CAUTION, SAFE }
@@ -60,6 +63,7 @@ object AsimoHub {
         val fieldValues = mapOf(
             "driverUsingPhone" to result.driverUsingPhone,
             "driverEyesClosed" to result.driverEyesClosed,
+            "handsOffWheel" to result.handsOffWheel,
             "driverDistracted" to result.driverDistracted,
             "driverYawning" to result.driverYawning,
             "driverEatingDrinking" to result.driverEatingDrinking,
@@ -151,8 +155,8 @@ object AsimoHub {
      */
     fun isDistracted(result: OutputResult): Boolean =
         result.driverUsingPhone || result.driverEyesClosed ||
-            result.driverYawning || result.driverDistracted ||
-            result.driverEatingDrinking
+            result.handsOffWheel || result.driverYawning ||
+            result.driverDistracted || result.driverEatingDrinking
 
     /**
      * Computes the score penalty for a given result.
@@ -162,6 +166,7 @@ object AsimoHub {
         var penalty = 0f
         if (result.driverUsingPhone) penalty += 2.0f
         if (result.driverEyesClosed) penalty += 2.0f
+        if (result.handsOffWheel) penalty += 2.0f
         if (result.driverDistracted) penalty += 1.5f
         if (result.driverYawning) penalty += 1.0f
         if (result.driverEatingDrinking) penalty += 1.0f

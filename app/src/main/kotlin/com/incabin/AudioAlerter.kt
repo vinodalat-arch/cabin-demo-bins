@@ -34,6 +34,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         val DANGER_FIELDS = listOf(
             "driver_using_phone",
             "driver_eyes_closed",
+            "hands_off_wheel",
             "driver_yawning",
             "driver_distracted",
             "driver_eating_drinking",
@@ -44,6 +45,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         val FRIENDLY_NAMES = mapOf(
             "driver_using_phone" to "Phone detected, please put it down",
             "driver_eyes_closed" to "Eyes closed, please stay alert",
+            "hands_off_wheel" to "Hands off wheel, please grip the steering",
             "driver_yawning" to "Yawning detected, consider a break",
             "driver_distracted" to "Distracted, please watch the road",
             "driver_eating_drinking" to "Eating while driving, please focus",
@@ -54,6 +56,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         val FRIENDLY_NAMES_JA = mapOf(
             "driver_using_phone" to "スマートフォンを検出、置いてください",
             "driver_eyes_closed" to "目を閉じています、注意してください",
+            "hands_off_wheel" to "ハンドルから手を離しています",
             "driver_yawning" to "あくびを検出、休憩を取ってください",
             "driver_distracted" to "よそ見を検出、前を見てください",
             "driver_eating_drinking" to "飲食を検出、運転に集中してください",
@@ -62,7 +65,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         )
 
         fun priorityForField(field: String): AlertPriority = when (field) {
-            "driver_using_phone", "driver_eyes_closed" -> AlertPriority.CRITICAL
+            "driver_using_phone", "driver_eyes_closed", "hands_off_wheel" -> AlertPriority.CRITICAL
             else -> AlertPriority.WARNING
         }
 
@@ -198,17 +201,19 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
 
     /** Snapshot of one frame's danger booleans, indexed by DANGER_FIELDS order. */
     data class DangerSnapshot(
-        val phone: Boolean, val eyes: Boolean, val yawning: Boolean,
+        val phone: Boolean, val eyes: Boolean, val handsOff: Boolean,
+        val yawning: Boolean,
         val distracted: Boolean, val eating: Boolean, val posture: Boolean,
         val slouching: Boolean
     ) {
         fun get(index: Int): Boolean = when (index) {
-            0 -> phone; 1 -> eyes; 2 -> yawning; 3 -> distracted
-            4 -> eating; 5 -> posture; 6 -> slouching; else -> false
+            0 -> phone; 1 -> eyes; 2 -> handsOff; 3 -> yawning; 4 -> distracted
+            5 -> eating; 6 -> posture; 7 -> slouching; else -> false
         }
         fun getByField(field: String): Boolean = when (field) {
             "driver_using_phone" -> phone
             "driver_eyes_closed" -> eyes
+            "hands_off_wheel" -> handsOff
             "driver_yawning" -> yawning
             "driver_distracted" -> distracted
             "driver_eating_drinking" -> eating
@@ -216,7 +221,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             "child_slouching" -> slouching
             else -> false
         }
-        fun any(): Boolean = phone || eyes || yawning || distracted || eating || posture || slouching
+        fun any(): Boolean = phone || eyes || handsOff || yawning || distracted || eating || posture || slouching
     }
 
     // --- State ---
@@ -371,6 +376,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     private fun isDangerActive(result: OutputResult, field: String): Boolean = when (field) {
         "driver_using_phone" -> result.driverUsingPhone
         "driver_eyes_closed" -> result.driverEyesClosed
+        "hands_off_wheel" -> result.handsOffWheel
         "driver_yawning" -> result.driverYawning
         "driver_distracted" -> result.driverDistracted
         "driver_eating_drinking" -> result.driverEatingDrinking
@@ -422,7 +428,8 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
 
         val duration = result.distractionDurationS
         val current = DangerSnapshot(
-            result.driverUsingPhone, result.driverEyesClosed, result.driverYawning,
+            result.driverUsingPhone, result.driverEyesClosed, result.handsOffWheel,
+            result.driverYawning,
             result.driverDistracted, result.driverEatingDrinking,
             result.dangerousPosture, result.childSlouching
         )

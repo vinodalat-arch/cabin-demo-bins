@@ -35,6 +35,7 @@ struct PoseResult {
     bool child_present = false;
     bool child_slouching = false;
     bool driver_eating_drinking = false;
+    bool hands_off_wheel = false;
     std::vector<OverlayPerson> persons;
 
     /**

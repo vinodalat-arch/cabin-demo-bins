@@ -52,7 +52,8 @@ private:
 
     // Pre-allocated buffers
     std::vector<uint8_t> resize_buf_;       // 112*112*3
-    std::vector<float> input_tensor_buf_;   // 3*112*112
+    std::vector<float> input_tensor_buf_;   // 3*112*112 (FP32 preprocessing)
+    std::vector<Ort::Float16_t> input_tensor_fp16_;  // 3*112*112 (FP16 for model input)
 
     std::vector<uint8_t> loadModelFromAssets(AAssetManager* mgr, const char* filename);
     void resizeBilinear(const uint8_t* src, int src_w, int src_h,

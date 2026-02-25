@@ -166,6 +166,19 @@ class MergerTest {
     }
 
     @Test
+    fun test_hands_off_wheel_returns_high() {
+        // score = hands_off(3) >= 3 -> "high"
+        val risk = computeRisk(
+            driverUsingPhone = false,
+            driverEyesClosed = false,
+            dangerousPosture = false,
+            childSlouching = false,
+            handsOffWheel = true
+        )
+        assertEquals("high", risk)
+    }
+
+    @Test
     fun test_all_new_fields_returns_high() {
         // score = yawning(2) + distracted(2) + eating(1) = 5
         val risk = computeRisk(

@@ -53,7 +53,8 @@ FaceRecognizer::FaceRecognizer(AAssetManager* asset_manager, int num_threads,
                                const std::string& thread_affinity)
     : env_(ORT_LOGGING_LEVEL_WARNING, "InCabinFaceRec"),
       resize_buf_(FACE_INPUT_SIZE * FACE_INPUT_SIZE * 3),
-      input_tensor_buf_(3 * FACE_INPUT_SIZE * FACE_INPUT_SIZE) {
+      input_tensor_buf_(3 * FACE_INPUT_SIZE * FACE_INPUT_SIZE),
+      input_tensor_fp16_(3 * FACE_INPUT_SIZE * FACE_INPUT_SIZE) {
 
     session_options_.SetIntraOpNumThreads(num_threads);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -140,7 +141,13 @@ bool FaceRecognizer::computeEmbedding(const uint8_t* bgr_crop, int crop_w, int c
     // Preprocess
     preprocess(resize_buf_.data(), input_tensor_buf_.data());
 
-    // Run inference
+    // Convert FP32 preprocessed data to FP16 for model input
+    const size_t input_size = 3 * FACE_INPUT_SIZE * FACE_INPUT_SIZE;
+    for (size_t i = 0; i < input_size; i++) {
+        input_tensor_fp16_[i] = Ort::Float16_t(input_tensor_buf_[i]);
+    }
+
+    // Run inference with FP16 I/O
     try {
         Ort::AllocatorWithDefaultOptions allocator;
         auto input_name_ptr = session_->GetInputNameAllocated(0, allocator);
@@ -150,10 +157,9 @@ bool FaceRecognizer::computeEmbedding(const uint8_t* bgr_crop, int crop_w, int c
 
         auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         std::vector<int64_t> input_shape = {1, 3, FACE_INPUT_SIZE, FACE_INPUT_SIZE};
-        size_t input_size = 3 * FACE_INPUT_SIZE * FACE_INPUT_SIZE;
 
-        Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
-            memory_info, input_tensor_buf_.data(), input_size,
+        Ort::Value input_tensor = Ort::Value::CreateTensor<Ort::Float16_t>(
+            memory_info, input_tensor_fp16_.data(), input_size,
             input_shape.data(), input_shape.size());
 
         auto output_tensors = session_->Run(
@@ -172,8 +178,11 @@ bool FaceRecognizer::computeEmbedding(const uint8_t* bgr_crop, int crop_w, int c
             return false;
         }
 
-        const float* output_data = output_tensor.GetTensorData<float>();
-        std::copy(output_data, output_data + FACE_EMBEDDING_DIM, out.data.begin());
+        // Read FP16 output and convert back to FP32
+        const Ort::Float16_t* output_fp16 = output_tensor.GetTensorData<Ort::Float16_t>();
+        for (int i = 0; i < FACE_EMBEDDING_DIM; i++) {
+            out.data[i] = output_fp16[i].ToFloat();
+        }
         out.normalize();
 
         return true;

@@ -55,6 +55,9 @@ data class PoseResult(
     @SerializedName("driver_eating_drinking")
     val driverEatingDrinking: Boolean = false,
 
+    @SerializedName("hands_off_wheel")
+    val handsOffWheel: Boolean = false,
+
     val persons: List<OverlayPerson> = emptyList()
 )
 
