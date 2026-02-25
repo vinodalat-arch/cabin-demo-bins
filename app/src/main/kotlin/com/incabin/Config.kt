@@ -69,6 +69,9 @@ object Config {
     // Passenger info detail: "minimal" or "detailed" (toggleable at runtime; persisted in SharedPreferences)
     @JvmStatic @Volatile var PASSENGER_INFO_DETAIL = "minimal"
 
+    // ASIMO mascot size: "s", "m", or "l" (toggleable at runtime; persisted in SharedPreferences)
+    @JvmStatic @Volatile var ASIMO_SIZE = "m"
+
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2
     const val V4L2_MAX_CONSECUTIVE_FAILURES = 3

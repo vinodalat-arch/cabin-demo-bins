@@ -43,6 +43,7 @@ class MainActivity : Activity() {
         private const val PREF_SEAT_SIDE = "seat_side"
         private const val PREF_WIFI_URL = "wifi_camera_url"
         private const val PREF_PASSENGER_DETAIL = "passenger_info_detail"
+        private const val PREF_ASIMO_SIZE = "asimo_size"
 
         // 5-tap gesture
         private const val TAP_WINDOW_MS = 3000L
@@ -233,6 +234,9 @@ class MainActivity : Activity() {
     private lateinit var langJaBtn: TextView
     private lateinit var paxMinimalBtn: TextView
     private lateinit var paxDetailedBtn: TextView
+    private lateinit var asimoSizeSmallBtn: TextView
+    private lateinit var asimoSizeMediumBtn: TextView
+    private lateinit var asimoSizeLargeBtn: TextView
     private var settingsVisible = false
 
     // --- 5-tap gesture ---
@@ -400,6 +404,9 @@ class MainActivity : Activity() {
         previewToggle = findViewById(R.id.previewToggle)
         audioToggle = findViewById(R.id.audioToggle)
         wifiCamButton = findViewById(R.id.wifiCamButton)
+        asimoSizeSmallBtn = findViewById(R.id.asimoSizeSmallBtn)
+        asimoSizeMediumBtn = findViewById(R.id.asimoSizeMediumBtn)
+        asimoSizeLargeBtn = findViewById(R.id.asimoSizeLargeBtn)
 
         currentRiskColor = colorSafe
 
@@ -411,12 +418,14 @@ class MainActivity : Activity() {
         Config.DRIVER_SEAT_SIDE = prefs.getString(PREF_SEAT_SIDE, "left") ?: "left"
         Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
         Config.PASSENGER_INFO_DETAIL = prefs.getString(PREF_PASSENGER_DETAIL, "minimal") ?: "minimal"
+        Config.ASIMO_SIZE = prefs.getString(PREF_ASIMO_SIZE, "m") ?: "m"
         updatePreviewToggleUI()
         updateAudioToggleUI()
         updateSeatSegmentUI()
         updateLangSegmentUI()
         updateWifiCamButtonUI()
         updatePaxDetailSegmentUI()
+        updateAsimoSizeSegmentUI()
 
         // --- Main controls ---
         toggleButton.setOnClickListener {
@@ -499,6 +508,28 @@ class MainActivity : Activity() {
                 updateAsimoSize()
             }
             Log.i(TAG, "Preview toggled: ${Config.ENABLE_PREVIEW}")
+        }
+
+        asimoSizeSmallBtn.setOnClickListener {
+            Config.ASIMO_SIZE = "s"
+            prefs.edit().putString(PREF_ASIMO_SIZE, "s").apply()
+            updateAsimoSizeSegmentUI()
+            if (isRunning) updateAsimoSize()
+            Log.i(TAG, "ASIMO size: s")
+        }
+        asimoSizeMediumBtn.setOnClickListener {
+            Config.ASIMO_SIZE = "m"
+            prefs.edit().putString(PREF_ASIMO_SIZE, "m").apply()
+            updateAsimoSizeSegmentUI()
+            if (isRunning) updateAsimoSize()
+            Log.i(TAG, "ASIMO size: m")
+        }
+        asimoSizeLargeBtn.setOnClickListener {
+            Config.ASIMO_SIZE = "l"
+            prefs.edit().putString(PREF_ASIMO_SIZE, "l").apply()
+            updateAsimoSizeSegmentUI()
+            if (isRunning) updateAsimoSize()
+            Log.i(TAG, "ASIMO size: l")
         }
 
         wifiCamButton.setOnClickListener {
@@ -694,6 +725,20 @@ class MainActivity : Activity() {
             paxDetailedBtn.setTextColor(Color.WHITE)
             paxMinimalBtn.setBackgroundColor(Color.TRANSPARENT)
             paxMinimalBtn.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun updateAsimoSizeSegmentUI() {
+        val buttons = listOf(asimoSizeSmallBtn, asimoSizeMediumBtn, asimoSizeLargeBtn)
+        val keys = listOf("s", "m", "l")
+        for (i in buttons.indices) {
+            if (keys[i] == Config.ASIMO_SIZE) {
+                buttons[i].setBackgroundResource(R.drawable.bg_segmented_selected)
+                buttons[i].setTextColor(Color.WHITE)
+            } else {
+                buttons[i].setBackgroundColor(Color.TRANSPARENT)
+                buttons[i].setTextColor(colorTextSecondary)
+            }
         }
     }
 
@@ -1360,22 +1405,26 @@ class MainActivity : Activity() {
     private fun updateAsimoSize() {
         val isCompact = Config.ENABLE_PREVIEW
 
-        // Robot size
+        // Robot size — user setting (S/M/L) when full, compact when preview is on
         val robotSize = if (isCompact) {
-            resources.getDimensionPixelSize(R.dimen.asimo_size_small)
-        } else {
-            resources.getDimensionPixelSize(R.dimen.asimo_size_large)
+            resources.getDimensionPixelSize(R.dimen.asimo_size_compact)
+        } else when (Config.ASIMO_SIZE) {
+            "s" -> resources.getDimensionPixelSize(R.dimen.asimo_size_s)
+            "l" -> resources.getDimensionPixelSize(R.dimen.asimo_size_l)
+            else -> resources.getDimensionPixelSize(R.dimen.asimo_size_m)
         }
         val robotLp = asimoMascot.layoutParams
         robotLp.width = robotSize
         robotLp.height = robotSize
         asimoMascot.layoutParams = robotLp
 
-        // Glow frame size
+        // Glow frame size — matches mascot tier
         val glowSize = if (isCompact) {
-            resources.getDimensionPixelSize(R.dimen.asimo_glow_size_small)
-        } else {
-            resources.getDimensionPixelSize(R.dimen.asimo_glow_size_large)
+            resources.getDimensionPixelSize(R.dimen.asimo_glow_compact)
+        } else when (Config.ASIMO_SIZE) {
+            "s" -> resources.getDimensionPixelSize(R.dimen.asimo_glow_s)
+            "l" -> resources.getDimensionPixelSize(R.dimen.asimo_glow_l)
+            else -> resources.getDimensionPixelSize(R.dimen.asimo_glow_m)
         }
         val glowLp = asimoGlowFrame.layoutParams
         glowLp.width = glowSize

@@ -196,8 +196,8 @@
                     <!-- Glow ring + robot stacked -->
                     <FrameLayout
                         android:id="@+id/asimoGlowFrame"
-                        android:layout_width="@dimen/asimo_glow_size_large"
-                        android:layout_height="@dimen/asimo_glow_size_large">
+                        android:layout_width="@dimen/asimo_glow_m"
+                        android:layout_height="@dimen/asimo_glow_m">
 
                         <com.incabin.AsimoBgGlowView
                             android:id="@+id/asimoGlowView"
@@ -206,8 +206,8 @@
 
                         <ImageView
                             android:id="@+id/asimoMascot"
-                            android:layout_width="@dimen/asimo_size_large"
-                            android:layout_height="@dimen/asimo_size_large"
+                            android:layout_width="@dimen/asimo_size_m"
+                            android:layout_height="@dimen/asimo_size_m"
                             android:layout_gravity="center"
                             android:scaleType="fitCenter"
                             android:src="@drawable/asimo_all_clear"
@@ -686,6 +686,62 @@
                         android:textColor="@color/text_secondary"
                         android:textAllCaps="false"
                         android:stateListAnimator="@null" />
+                </LinearLayout>
+
+                <!-- ASIMO Size -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ASIMO Size"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        android:id="@+id/asimoSizeSmallBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="S"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/asimoSizeMediumBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="M"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/asimoSizeLargeBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="L"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
                 </LinearLayout>
 
                 <!-- WiFi Camera button -->

@@ -20,13 +20,17 @@
     <dimen name="button_height_large">56dp</dimen>
     <dimen name="button_radius">10dp</dimen>
 
-    <!-- ASIMO mascot -->
-    <dimen name="asimo_size_large">520dp</dimen>
-    <dimen name="asimo_size_small">200dp</dimen>
+    <!-- ASIMO mascot — S/M/L user setting (compact = preview-on miniature) -->
+    <dimen name="asimo_size_s">260dp</dimen>
+    <dimen name="asimo_size_m">520dp</dimen>
+    <dimen name="asimo_size_l">720dp</dimen>
+    <dimen name="asimo_size_compact">200dp</dimen>
 
-    <!-- ASIMO glow -->
-    <dimen name="asimo_glow_size_large">620dp</dimen>
-    <dimen name="asimo_glow_size_small">240dp</dimen>
+    <!-- ASIMO glow — matches mascot tier -->
+    <dimen name="asimo_glow_s">310dp</dimen>
+    <dimen name="asimo_glow_m">620dp</dimen>
+    <dimen name="asimo_glow_l">860dp</dimen>
+    <dimen name="asimo_glow_compact">240dp</dimen>
 
     <!-- Speech bubble -->
     <dimen name="bubble_max_width">520dp</dimen>
