@@ -21,15 +21,15 @@
     <dimen name="button_radius">10dp</dimen>
 
     <!-- ASIMO mascot -->
-    <dimen name="asimo_size_large">260dp</dimen>
-    <dimen name="asimo_size_small">100dp</dimen>
+    <dimen name="asimo_size_large">520dp</dimen>
+    <dimen name="asimo_size_small">200dp</dimen>
 
     <!-- ASIMO glow -->
-    <dimen name="asimo_glow_size_large">310dp</dimen>
-    <dimen name="asimo_glow_size_small">120dp</dimen>
+    <dimen name="asimo_glow_size_large">620dp</dimen>
+    <dimen name="asimo_glow_size_small">240dp</dimen>
 
     <!-- Speech bubble -->
-    <dimen name="bubble_max_width">340dp</dimen>
+    <dimen name="bubble_max_width">520dp</dimen>
     <dimen name="bubble_radius">14dp</dimen>
     <dimen name="bubble_padding_h">18dp</dimen>
     <dimen name="bubble_padding_v">10dp</dimen>
