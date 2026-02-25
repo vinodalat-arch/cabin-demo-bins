@@ -602,12 +602,22 @@ class InCabinService : Service() {
             FrameHolder.postResult(finalResult)
 
             // Step 8.6: Post per-passenger posture data for UI display (display-only, not in OutputResult)
+            // Also trigger audio alerts for passenger posture changes
             try {
                 var paxIndex = 0
                 val postures = poseResult.persons
                     .filter { !it.isDriver }
                     .map { FrameHolder.PassengerPosture(++paxIndex, it.badPosture) }
                 FrameHolder.postPassengerPostures(postures)
+
+                // Audio alert for passenger posture (pipeline-isolated, separate from driver alerts)
+                if (audioEnabled) {
+                    try {
+                        audioAlerter?.checkPassengerPostures(postures)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Passenger posture audio alert failed", e)
+                    }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to post passenger postures", e)
             }

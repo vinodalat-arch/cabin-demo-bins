@@ -503,6 +503,57 @@ class AudioAlerterTest {
     }
 
     // -------------------------------------------------------------------------
+    // shouldAlertPassengerPosture Tests (5 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_passenger_posture_onset_alert() {
+        // New bad posture → should alert
+        assertTrue(AudioAlerter.shouldAlertPassengerPosture(
+            index = 1, hasBadPosture = true,
+            prevSet = emptySet(), nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_passenger_posture_no_change_no_alert() {
+        // Already bad → no alert (not a transition)
+        assertFalse(AudioAlerter.shouldAlertPassengerPosture(
+            index = 1, hasBadPosture = true,
+            prevSet = setOf(1), nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_passenger_posture_good_no_alert() {
+        // Good posture → no alert
+        assertFalse(AudioAlerter.shouldAlertPassengerPosture(
+            index = 1, hasBadPosture = false,
+            prevSet = emptySet(), nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_passenger_posture_cooldown_no_alert() {
+        // Within cooldown → no alert
+        val cooldown = mapOf("passenger_posture_1" to NOW - 5000L)
+        assertFalse(AudioAlerter.shouldAlertPassengerPosture(
+            index = 1, hasBadPosture = true,
+            prevSet = emptySet(), nowMs = NOW, cooldownMap = cooldown
+        ))
+    }
+
+    @Test
+    fun test_passenger_posture_after_cooldown_alert() {
+        // Past cooldown → should alert
+        val cooldown = mapOf("passenger_posture_1" to NOW - 11_000L)
+        assertTrue(AudioAlerter.shouldAlertPassengerPosture(
+            index = 1, hasBadPosture = true,
+            prevSet = emptySet(), nowMs = NOW, cooldownMap = cooldown
+        ))
+    }
+
+    // -------------------------------------------------------------------------
     // All-clear suppressed when driver disappears (1 test)
     // -------------------------------------------------------------------------
 

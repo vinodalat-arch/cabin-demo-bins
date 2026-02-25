@@ -89,6 +89,25 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
 
         /**
+         * Pure function: should we alert for a passenger's bad posture?
+         * Fires on transition to bad posture (not already in prevSet) and outside cooldown.
+         */
+        fun shouldAlertPassengerPosture(
+            index: Int,
+            hasBadPosture: Boolean,
+            prevSet: Set<Int>,
+            nowMs: Long,
+            cooldownMap: Map<String, Long>
+        ): Boolean {
+            if (!hasBadPosture) return false
+            if (index in prevSet) return false
+            val key = "passenger_posture_$index"
+            val lastCooldown = cooldownMap[key]
+            if (lastCooldown != null && (nowMs - lastCooldown) < Config.ALERT_COOLDOWN_MS) return false
+            return true
+        }
+
+        /**
          * Builds alert messages from a state transition. Mutates [cooldownMap] and
          * [escalationMap] in place but has no other side effects — safe for unit testing.
          */
@@ -251,6 +270,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     private var prevDuration = 0
     private val cooldownMap = HashMap<String, Long>()
     private val escalationMap = HashMap<String, EscalationState>()
+    private var prevPassengerBadPosture = mutableSetOf<Int>()
     private var currentTtsLang = "en"
     private val retryHandler = Handler(Looper.getMainLooper())
 
@@ -575,6 +595,31 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     }
 
     /**
+     * Check per-passenger posture transitions and enqueue TTS alerts for newly bad postures.
+     * Separated from driver DangerSnapshot path — no schema changes.
+     */
+    fun checkPassengerPostures(postures: List<FrameHolder.PassengerPosture>) {
+        val now = SystemClock.elapsedRealtime()
+        val isJapanese = Config.LANGUAGE == "ja"
+        val currentBad = mutableSetOf<Int>()
+
+        for (p in postures) {
+            if (p.hasBadPosture) currentBad.add(p.index)
+
+            if (shouldAlertPassengerPosture(p.index, p.hasBadPosture, prevPassengerBadPosture, now, cooldownMap)) {
+                val text = if (isJapanese) "同乗者${p.index}: 姿勢不良を検出"
+                           else "Co-passenger ${p.index}: bad posture detected"
+                val alert = AlertMessage(AlertPriority.WARNING, text, null, false, now)
+                enqueueWithPriority(alert)
+                cooldownMap["passenger_posture_${p.index}"] = now
+                Log.i(TAG, "Passenger posture alert: $text")
+            }
+        }
+
+        prevPassengerBadPosture = currentBad
+    }
+
+    /**
      * Reset alert state so the next frame is treated as "first frame" (store-only).
      * Call when re-enabling audio alerts after a period of silence to avoid
      * false onset/all-clear from stale prevDangers.
@@ -585,6 +630,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         prevDuration = 0
         cooldownMap.clear()
         escalationMap.clear()
+        prevPassengerBadPosture.clear()
     }
 
     fun close() {
