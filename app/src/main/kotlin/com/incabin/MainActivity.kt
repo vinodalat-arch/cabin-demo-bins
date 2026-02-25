@@ -523,20 +523,11 @@ class MainActivity : Activity() {
             }
         }
 
-        // --- Zero-touch auto-start ---
-        // A. Detect already-running service (started by BootReceiver)
+        // --- Detect already-running service (started by BootReceiver) ---
         if (FrameHolder.isServiceRunning()) {
             Log.i(TAG, "Service already running (boot auto-start), syncing UI")
             isRunning = true
             startMonitoringUiOnly()
-        } else if (platformProfile.isAutomotiveBsp) {
-            // B. Auto-start on launch for automotive BSP (service handles DeviceSetup internally)
-            Log.i(TAG, "Automotive BSP: auto-starting service")
-            handler.postDelayed({
-                if (!isRunning) {
-                    startMonitoring()
-                }
-            }, 500L)
         }
     }
 
