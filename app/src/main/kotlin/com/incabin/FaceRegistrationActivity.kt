@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,7 +17,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Activity for registering face embeddings.
- * Uses programmatic UI (no layout XML) with premium palette.
+ * Premium two-panel landscape layout (XML) matching the main dashboard's dark luxury theme.
  *
  * Self-contained camera ownership: opens its own camera (V4L2, Camera2, or MJPEG)
  * and uses FaceDetectorLite for face detection. Does NOT depend on InCabinService
@@ -47,10 +46,7 @@ class FaceRegistrationActivity : Activity() {
     private lateinit var faceListLayout: LinearLayout
     private lateinit var captureProgress: ProgressBar
 
-    // Palette
-    private var colorBg = 0
-    private var colorSurface = 0
-    private var colorSurfaceElevated = 0
+    // Palette colors (resolved for programmatic face list rows)
     private var colorTextPrimary = 0
     private var colorTextSecondary = 0
     private var colorTextMuted = 0
@@ -96,10 +92,7 @@ class FaceRegistrationActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Resolve palette
-        colorBg = ContextCompat.getColor(this, R.color.background)
-        colorSurface = ContextCompat.getColor(this, R.color.surface)
-        colorSurfaceElevated = ContextCompat.getColor(this, R.color.surface_elevated)
+        // Resolve palette colors for programmatic use (face list rows, status color changes)
         colorTextPrimary = ContextCompat.getColor(this, R.color.text_primary)
         colorTextSecondary = ContextCompat.getColor(this, R.color.text_secondary)
         colorTextMuted = ContextCompat.getColor(this, R.color.text_muted)
@@ -108,13 +101,33 @@ class FaceRegistrationActivity : Activity() {
         colorCaution = ContextCompat.getColor(this, R.color.caution)
         colorDanger = ContextCompat.getColor(this, R.color.danger)
 
-        buildUI()
+        setContentView(R.layout.activity_face_registration)
+
+        // Bind views
+        previewImage = findViewById(R.id.previewImage)
+        statusText = findViewById(R.id.statusText)
+        cameraStatusText = findViewById(R.id.cameraStatusText)
+        nameInput = findViewById(R.id.nameInput)
+        captureButton = findViewById(R.id.captureButton)
+        saveButton = findViewById(R.id.saveButton)
+        faceListLayout = findViewById(R.id.faceListLayout)
+        captureProgress = findViewById(R.id.captureProgress)
+
+        // Button listeners
+        captureButton.setOnClickListener { onCapture() }
+        saveButton.setOnClickListener { onSave() }
+        findViewById<Button>(R.id.backButton).setOnClickListener { finish() }
+
+        // Disabled state: reduce alpha
+        updateButtonAlpha(captureButton, captureButton.isEnabled)
+        updateButtonAlpha(saveButton, saveButton.isEnabled)
 
         try {
             faceStore = FaceStore.getInstance(this)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init FaceStore", e)
             statusText.text = "Error: Could not load face store"
+            statusText.setTextColor(colorDanger)
         }
 
         try {
@@ -122,6 +135,7 @@ class FaceRegistrationActivity : Activity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init FaceDetectorLite", e)
             statusText.text = "Error: Face detection unavailable"
+            statusText.setTextColor(colorDanger)
         }
 
         refreshFaceList()
@@ -331,7 +345,11 @@ class FaceRegistrationActivity : Activity() {
             handler.post {
                 if (!isFinishing && !isDestroyed) {
                     previewImage.setImageBitmap(bitmap)
+                    val wasEnabled = captureButton.isEnabled
                     captureButton.isEnabled = detection != null
+                    if (captureButton.isEnabled != wasEnabled) {
+                        updateButtonAlpha(captureButton, captureButton.isEnabled)
+                    }
                     if (detection != null && statusText.text == "Position face in frame") {
                         statusText.text = "Face detected! Tap Capture."
                         statusText.setTextColor(colorSafe)
@@ -347,7 +365,7 @@ class FaceRegistrationActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
-    // UI
+    // UI helpers
     // ---------------------------------------------------------------------
 
     private fun updateCameraStatusUI(text: String) {
@@ -358,146 +376,8 @@ class FaceRegistrationActivity : Activity() {
         }
     }
 
-    private fun buildUI() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(24), dp(24), dp(24))
-            setBackgroundColor(colorBg)
-        }
-
-        // Title
-        root.addView(TextView(this).apply {
-            text = "Face Registration"
-            textSize = 20f
-            setTextColor(colorTextPrimary)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(16))
-        })
-
-        // Preview
-        previewImage = ImageView(this).apply {
-            setBackgroundColor(colorSurface)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "Face preview"
-        }
-        root.addView(previewImage, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(300)
-        ).apply { bottomMargin = dp(4) })
-
-        // Camera status
-        cameraStatusText = TextView(this).apply {
-            text = "Camera: initializing..."
-            textSize = 12f
-            setTextColor(colorTextMuted)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, dp(4))
-        }
-        root.addView(cameraStatusText)
-
-        // Capture progress bar (hidden until multi-shot capture)
-        captureProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = MULTI_SHOT_COUNT
-            progress = 0
-            visibility = View.GONE
-        }
-        root.addView(captureProgress, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(4) })
-
-        // Status
-        statusText = TextView(this).apply {
-            text = "Position face in frame"
-            textSize = 14f
-            setTextColor(colorTextSecondary)
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(8))
-        }
-        root.addView(statusText)
-
-        // Name input
-        nameInput = EditText(this).apply {
-            hint = "Enter name"
-            textSize = 16f
-            setTextColor(colorTextPrimary)
-            setHintTextColor(colorTextMuted)
-            setBackgroundColor(colorSurfaceElevated)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        root.addView(nameInput, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(8); bottomMargin = dp(8) })
-
-        // Button row
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-
-        captureButton = makeButton("Capture").apply {
-            isEnabled = false
-            setOnClickListener { onCapture() }
-        }
-        buttonRow.addView(captureButton, LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-        ).apply { marginEnd = dp(8) })
-
-        saveButton = makeButton("Save").apply {
-            isEnabled = false
-            setOnClickListener { onSave() }
-        }
-        buttonRow.addView(saveButton, LinearLayout.LayoutParams(
-            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-        ).apply { marginStart = dp(8) })
-
-        root.addView(buttonRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(8); bottomMargin = dp(16) })
-
-        // Registered faces header
-        root.addView(TextView(this).apply {
-            text = "Registered Faces"
-            textSize = 16f
-            setTextColor(colorTextSecondary)
-            setPadding(0, dp(8), 0, dp(8))
-        })
-
-        // Scrollable face list
-        val scrollView = ScrollView(this)
-        faceListLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        scrollView.addView(faceListLayout)
-        root.addView(scrollView, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
-
-        // Back button
-        root.addView(makeButton("Back").apply {
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(8) })
-
-        setContentView(root)
-    }
-
-    private fun makeButton(label: String): Button {
-        return Button(this).apply {
-            text = label
-            textSize = 13f
-            setTextColor(colorTextSecondary)
-            isAllCaps = false
-            stateListAnimator = null
-            background = GradientDrawable().apply {
-                setColor(colorSurfaceElevated)
-                cornerRadius = dp(8).toFloat()
-            }
-            minimumHeight = dp(44)
-        }
+    private fun updateButtonAlpha(button: Button, enabled: Boolean) {
+        button.alpha = if (enabled) 1.0f else 0.4f
     }
 
     // ---------------------------------------------------------------------
@@ -556,6 +436,7 @@ class FaceRegistrationActivity : Activity() {
         statusText.text = "Capturing 1/$MULTI_SHOT_COUNT..."
         statusText.setTextColor(colorAccent)
         captureButton.isEnabled = false
+        updateButtonAlpha(captureButton, false)
         captureProgress.visibility = View.VISIBLE
         captureProgress.progress = 0
 
@@ -612,7 +493,9 @@ class FaceRegistrationActivity : Activity() {
                 recognizer?.close()
                 if (!isFinishing && !isDestroyed) {
                     handler.post {
-                        captureButton.isEnabled = lastFaceDetection != null
+                        val enabled = lastFaceDetection != null
+                        captureButton.isEnabled = enabled
+                        updateButtonAlpha(captureButton, enabled)
                         captureProgress.visibility = View.GONE
                     }
                 }
@@ -633,6 +516,10 @@ class FaceRegistrationActivity : Activity() {
             handler.post {
                 capturedEmbedding = averaged
                 saveButton.isEnabled = true
+                updateButtonAlpha(saveButton, true)
+                // Switch save button to accent style
+                saveButton.setBackgroundResource(R.drawable.bg_button_accent)
+                saveButton.setTextColor(0xFFFFFFFF.toInt())
                 statusText.text = "Face captured ($MULTI_SHOT_COUNT shots)! Enter a name and tap Save."
                 statusText.setTextColor(colorSafe)
             }
@@ -703,6 +590,10 @@ class FaceRegistrationActivity : Activity() {
             faceStore?.register(name, embedding)
             capturedEmbedding = null
             saveButton.isEnabled = false
+            updateButtonAlpha(saveButton, false)
+            // Reset save button to neutral style
+            saveButton.setBackgroundResource(R.drawable.bg_button)
+            saveButton.setTextColor(colorTextSecondary)
             nameInput.text.clear()
             statusText.text = "Saved: $name"
             statusText.setTextColor(colorSafe)
@@ -723,16 +614,21 @@ class FaceRegistrationActivity : Activity() {
                 text = "No faces registered"
                 textSize = 14f
                 setTextColor(colorTextMuted)
-                setPadding(0, dp(8), 0, dp(8))
+                val pad = resources.getDimensionPixelSize(R.dimen.space_sm)
+                setPadding(0, pad, 0, pad)
             })
             return
         }
+
+        val rowHeight = (48 * resources.displayMetrics.density).toInt()
+        val hPad = resources.getDimensionPixelSize(R.dimen.space_sm)
 
         for (name in names) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(4), 0, dp(4))
+                minimumHeight = rowHeight
+                setPadding(0, hPad, 0, hPad)
             }
 
             row.addView(TextView(this).apply {
@@ -741,8 +637,13 @@ class FaceRegistrationActivity : Activity() {
                 setTextColor(colorTextPrimary)
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
-            row.addView(makeButton("Delete").apply {
+            row.addView(Button(this).apply {
+                text = "Delete"
                 textSize = 12f
+                setTextColor(colorDanger)
+                isAllCaps = false
+                stateListAnimator = null
+                setBackgroundResource(R.drawable.bg_button)
                 setOnClickListener { confirmDelete(name) }
             })
 
@@ -766,9 +667,5 @@ class FaceRegistrationActivity : Activity() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to show delete dialog", e)
         }
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
     }
 }

@@ -76,6 +76,7 @@ class InCabinService : Service() {
     private var recognitionFrameCounter = 0
     private var cachedDriverName: String? = null
     private var lastFaceDetected = false
+    private var lastWelcomedDriverName: String? = null
 
     // --- Thread safety: guards processFrame() vs onDestroy() (C1, H6) ---
     private val pipelineLock = ReentrantLock()
@@ -228,6 +229,7 @@ class InCabinService : Service() {
             faceRecognizer = null
             faceStore = null
             cachedDriverName = null
+            lastWelcomedDriverName = null
 
             audioAlerter?.close()
             audioAlerter = null
@@ -395,6 +397,7 @@ class InCabinService : Service() {
         recognitionFrameCounter = 0
         cachedDriverName = null
         lastFaceDetected = false
+        lastWelcomedDriverName = null
         prevAudioEnabled = Config.ENABLE_AUDIO_ALERTS
 
         // Start pipeline watchdog
@@ -583,6 +586,14 @@ class InCabinService : Service() {
                 distractionDurationS = durationVal,
                 driverName = recognizedName
             )
+
+            // Step 6.5: Welcome greeting on first driver name recognition in this session
+            if (recognizedName != null && recognizedName != lastWelcomedDriverName) {
+                lastWelcomedDriverName = recognizedName
+                val isJapanese = Config.LANGUAGE == "ja"
+                val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
+                audioAlerter?.enqueueWelcome(welcomeText)
+            }
 
             // Step 7: Audio alerter (core — must run even if overlay fails)
             val audioEnabled = Config.ENABLE_AUDIO_ALERTS

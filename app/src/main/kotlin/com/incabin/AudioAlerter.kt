@@ -623,6 +623,15 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     }
 
     /**
+     * Enqueue a welcome message (e.g. "Welcome, Alice") at INFO priority.
+     * Used for driver greeting on first recognition in a session.
+     */
+    fun enqueueWelcome(text: String) {
+        val msg = AlertMessage(AlertPriority.INFO, text, null, false, SystemClock.elapsedRealtime())
+        enqueueWithPriority(msg)
+    }
+
+    /**
      * Reset alert state so the next frame is treated as "first frame" (store-only).
      * Call when re-enabling audio alerts after a period of silence to avoid
      * false onset/all-clear from stale prevDangers.
