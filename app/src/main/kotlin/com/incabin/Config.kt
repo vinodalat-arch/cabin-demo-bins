@@ -72,6 +72,9 @@ object Config {
     // ASIMO mascot size: "s", "m", or "l" (toggleable at runtime; persisted in SharedPreferences)
     @JvmStatic @Volatile var ASIMO_SIZE = "m"
 
+    // Bottom widget: "none", "stats", or "tips" (toggleable at runtime; persisted in SharedPreferences)
+    @JvmStatic @Volatile var BOTTOM_WIDGET = "none"
+
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2
     const val V4L2_MAX_CONSECUTIVE_FAILURES = 3

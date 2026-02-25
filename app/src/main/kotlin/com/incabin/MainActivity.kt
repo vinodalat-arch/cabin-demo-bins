@@ -44,6 +44,27 @@ class MainActivity : Activity() {
         private const val PREF_WIFI_URL = "wifi_camera_url"
         private const val PREF_PASSENGER_DETAIL = "passenger_info_detail"
         private const val PREF_ASIMO_SIZE = "asimo_size"
+        private const val PREF_BOTTOM_WIDGET = "bottom_widget"
+
+        // Tips rotation interval
+        private const val TIPS_ROTATION_MS = 10_000L
+
+        // Wellness tips — English
+        private val TIPS_GENERAL_EN = listOf(
+            "Stay hydrated on long drives.",
+            "Adjust your mirrors before you go.",
+            "Take a break every 2 hours.",
+            "Keep both hands on the wheel.",
+            "Good posture reduces fatigue."
+        )
+        // Wellness tips — Japanese
+        private val TIPS_GENERAL_JA = listOf(
+            "長距離運転は水分補給を忘れずに。",
+            "出発前にミラーを調整しましょう。",
+            "2時間ごとに休憩を取りましょう。",
+            "両手でハンドルを握りましょう。",
+            "正しい姿勢は疲労を軽減します。"
+        )
 
         // 5-tap gesture
         private const val TAP_WINDOW_MS = 3000L
@@ -224,7 +245,23 @@ class MainActivity : Activity() {
     private lateinit var tickerLine2: TextView
     private lateinit var tickerLine3: TextView
 
+    // --- Bottom widget views ---
+    private lateinit var statsWidget: LinearLayout
+    private lateinit var tipsWidget: LinearLayout
+    private lateinit var statPhone: TextView
+    private lateinit var statEyes: TextView
+    private lateinit var statYawn: TextView
+    private lateinit var statDistracted: TextView
+    private lateinit var statEating: TextView
+    private lateinit var statPosture: TextView
+    private lateinit var statChild: TextView
+    private lateinit var statFooter: TextView
+    private lateinit var tipsText: TextView
+
     // --- Settings panel ---
+    private lateinit var widgetOffBtn: TextView
+    private lateinit var widgetStatsBtn: TextView
+    private lateinit var widgetTipsBtn: TextView
     private lateinit var settingsPanel: LinearLayout
     private lateinit var settingsScrim: View
     private lateinit var settingsCloseBtn: TextView
@@ -282,6 +319,15 @@ class MainActivity : Activity() {
     private var asimoAnimating: Boolean = false
     private var currentAsimoDetectionKey: String = ""
 
+    // --- Tips rotation ---
+    private var tipsIndex = 0
+    private val tipsRotationRunnable = object : Runnable {
+        override fun run() {
+            updateTipsContent()
+            handler.postDelayed(this, TIPS_ROTATION_MS)
+        }
+    }
+
     // --- Animation state ---
     private var currentRiskColor = 0
     private var riskAnimator: ValueAnimator? = null
@@ -305,6 +351,7 @@ class MainActivity : Activity() {
                         updateStreak(result)
                         updateAiStatus(result)
                         updateTicker(result)
+                        updateBottomWidget(result)
                         updateAsimoPose(result)
                         totalFrames++
                         scoreSum += drivingScore
@@ -390,7 +437,23 @@ class MainActivity : Activity() {
         asimoGlowView = findViewById(R.id.asimoGlowView)
         asimoDetectionLabel = findViewById(R.id.asimoDetectionLabel)
 
+        // Bind views — bottom widgets
+        statsWidget = findViewById(R.id.statsWidget)
+        tipsWidget = findViewById(R.id.tipsWidget)
+        statPhone = findViewById(R.id.statPhone)
+        statEyes = findViewById(R.id.statEyes)
+        statYawn = findViewById(R.id.statYawn)
+        statDistracted = findViewById(R.id.statDistracted)
+        statEating = findViewById(R.id.statEating)
+        statPosture = findViewById(R.id.statPosture)
+        statChild = findViewById(R.id.statChild)
+        statFooter = findViewById(R.id.statFooter)
+        tipsText = findViewById(R.id.tipsText)
+
         // Bind views — settings panel
+        widgetOffBtn = findViewById(R.id.widgetOffBtn)
+        widgetStatsBtn = findViewById(R.id.widgetStatsBtn)
+        widgetTipsBtn = findViewById(R.id.widgetTipsBtn)
         settingsPanel = findViewById(R.id.settingsPanel)
         settingsScrim = findViewById(R.id.settingsScrim)
         settingsCloseBtn = findViewById(R.id.settingsCloseBtn)
@@ -419,6 +482,7 @@ class MainActivity : Activity() {
         Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
         Config.PASSENGER_INFO_DETAIL = prefs.getString(PREF_PASSENGER_DETAIL, "minimal") ?: "minimal"
         Config.ASIMO_SIZE = prefs.getString(PREF_ASIMO_SIZE, "m") ?: "m"
+        Config.BOTTOM_WIDGET = prefs.getString(PREF_BOTTOM_WIDGET, "none") ?: "none"
         updatePreviewToggleUI()
         updateAudioToggleUI()
         updateSeatSegmentUI()
@@ -426,6 +490,7 @@ class MainActivity : Activity() {
         updateWifiCamButtonUI()
         updatePaxDetailSegmentUI()
         updateAsimoSizeSegmentUI()
+        updateBottomWidgetSegmentUI()
 
         // --- Main controls ---
         toggleButton.setOnClickListener {
@@ -532,6 +597,28 @@ class MainActivity : Activity() {
             Log.i(TAG, "ASIMO size: l")
         }
 
+        widgetOffBtn.setOnClickListener {
+            Config.BOTTOM_WIDGET = "none"
+            prefs.edit().putString(PREF_BOTTOM_WIDGET, "none").apply()
+            updateBottomWidgetSegmentUI()
+            updateBottomWidgetVisibility()
+            Log.i(TAG, "Bottom widget: none")
+        }
+        widgetStatsBtn.setOnClickListener {
+            Config.BOTTOM_WIDGET = "stats"
+            prefs.edit().putString(PREF_BOTTOM_WIDGET, "stats").apply()
+            updateBottomWidgetSegmentUI()
+            updateBottomWidgetVisibility()
+            Log.i(TAG, "Bottom widget: stats")
+        }
+        widgetTipsBtn.setOnClickListener {
+            Config.BOTTOM_WIDGET = "tips"
+            prefs.edit().putString(PREF_BOTTOM_WIDGET, "tips").apply()
+            updateBottomWidgetSegmentUI()
+            updateBottomWidgetVisibility()
+            Log.i(TAG, "Bottom widget: tips")
+        }
+
         wifiCamButton.setOnClickListener {
             if (isRunning) {
                 Toast.makeText(this, "Stop monitoring before changing camera", Toast.LENGTH_SHORT).show()
@@ -576,6 +663,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         riskAnimator?.cancel()
+        stopTipsRotation()
         if (::asimoGlowView.isInitialized) asimoGlowView.stopPulse()
         deviceSetup?.cancel()
         handler.removeCallbacksAndMessages(null)
@@ -740,6 +828,115 @@ class MainActivity : Activity() {
                 buttons[i].setTextColor(colorTextSecondary)
             }
         }
+    }
+
+    private fun updateBottomWidgetSegmentUI() {
+        val buttons = listOf(widgetOffBtn, widgetStatsBtn, widgetTipsBtn)
+        val keys = listOf("none", "stats", "tips")
+        for (i in buttons.indices) {
+            if (keys[i] == Config.BOTTOM_WIDGET) {
+                buttons[i].setBackgroundResource(R.drawable.bg_segmented_selected)
+                buttons[i].setTextColor(Color.WHITE)
+            } else {
+                buttons[i].setBackgroundColor(Color.TRANSPARENT)
+                buttons[i].setTextColor(colorTextSecondary)
+            }
+        }
+    }
+
+    private fun updateBottomWidgetVisibility() {
+        when (Config.BOTTOM_WIDGET) {
+            "stats" -> {
+                statsWidget.visibility = View.VISIBLE
+                tipsWidget.visibility = View.GONE
+                stopTipsRotation()
+            }
+            "tips" -> {
+                statsWidget.visibility = View.GONE
+                tipsWidget.visibility = View.VISIBLE
+                if (isRunning) startTipsRotation()
+            }
+            else -> {
+                statsWidget.visibility = View.GONE
+                tipsWidget.visibility = View.GONE
+                stopTipsRotation()
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Bottom Widget: Session Stats
+    // ---------------------------------------------------------------------
+
+    private fun updateBottomWidget(result: OutputResult) {
+        when (Config.BOTTOM_WIDGET) {
+            "stats" -> updateStatsWidget()
+            "tips" -> updateTipsContext(result)
+        }
+    }
+
+    private fun updateStatsWidget() {
+        statPhone.text = "Phone: ${detectionCounts["Phone"] ?: 0}"
+        statEyes.text = "Eyes Closed: ${detectionCounts["Eyes Closed"] ?: 0}"
+        statYawn.text = "Yawning: ${detectionCounts["Yawning"] ?: 0}"
+        statDistracted.text = "Distracted: ${detectionCounts["Distracted"] ?: 0}"
+        statEating.text = "Eating: ${detectionCounts["Eating"] ?: 0}"
+        statPosture.text = "Posture: ${detectionCounts["Posture"] ?: 0}"
+        statChild.text = "Child Slouch: ${detectionCounts["Child Slouch"] ?: 0}"
+        val avgScore = if (totalFrames > 0) (scoreSum / totalFrames).toInt() else 100
+        statFooter.text = "Frames: $totalFrames  |  Avg Score: $avgScore"
+    }
+
+    // ---------------------------------------------------------------------
+    // Bottom Widget: Driver Wellness Tips
+    // ---------------------------------------------------------------------
+
+    private var lastContextTip: String? = null
+
+    private fun updateTipsContext(result: OutputResult) {
+        val isJa = Config.LANGUAGE == "ja"
+        val sessionMin = ((System.currentTimeMillis() - sessionStartMs) / 60_000).toInt()
+        val streakMin = ((System.currentTimeMillis() - lastDetectionMs) / 60_000).toInt()
+
+        // Context-aware tip (override rotation if relevant)
+        val contextTip: String? = when {
+            sessionMin >= 120 -> if (isJa) "2時間以上運転中。休憩をおすすめします。" else "Driving 2+ hours. Time for a break!"
+            sessionMin in 20..119 && sessionMin % 20 == 0 -> if (isJa) "${sessionMin}分運転中。ストレッチを考えて。" else "Driving $sessionMin min \u2014 consider a stretch."
+            streakMin >= 5 -> if (isJa) "${streakMin}分間集中！その調子！" else "$streakMin min distraction-free!"
+            (detectionCounts["Phone"] ?: 0) >= 3 -> if (isJa) "スマホ${detectionCounts["Phone"]}回検出。グローブボックスへ。" else "Phone detected ${detectionCounts["Phone"]} times \u2014 try the glovebox."
+            else -> null
+        }
+
+        if (contextTip != null && contextTip != lastContextTip) {
+            lastContextTip = contextTip
+            crossfadeTip(contextTip)
+        }
+    }
+
+    private fun startTipsRotation() {
+        handler.removeCallbacks(tipsRotationRunnable)
+        if (Config.BOTTOM_WIDGET == "tips") {
+            updateTipsContent()
+            handler.postDelayed(tipsRotationRunnable, TIPS_ROTATION_MS)
+        }
+    }
+
+    private fun stopTipsRotation() {
+        handler.removeCallbacks(tipsRotationRunnable)
+    }
+
+    private fun updateTipsContent() {
+        val tips = if (Config.LANGUAGE == "ja") TIPS_GENERAL_JA else TIPS_GENERAL_EN
+        val tip = tips[tipsIndex % tips.size]
+        tipsIndex++
+        crossfadeTip(tip)
+    }
+
+    private fun crossfadeTip(tip: String) {
+        tipsText.animate().alpha(0f).setDuration(75).withEndAction {
+            tipsText.text = tip
+            tipsText.animate().alpha(1f).setDuration(150).start()
+        }.start()
     }
 
     // ---------------------------------------------------------------------
@@ -1049,6 +1246,11 @@ class MainActivity : Activity() {
 
         tickerContainer.visibility = View.VISIBLE
 
+        // Show bottom widget + start tips rotation
+        tipsIndex = 0
+        updateBottomWidgetVisibility()
+        startTipsRotation()
+
         // Reset risk banner
         currentRiskColor = colorSafe
         setRiskPillColor(colorSafe)
@@ -1106,6 +1308,9 @@ class MainActivity : Activity() {
         leftDivider.visibility = View.GONE
         aiStatusText.visibility = View.GONE
         tickerContainer.visibility = View.GONE
+        stopTipsRotation()
+        statsWidget.visibility = View.GONE
+        tipsWidget.visibility = View.GONE
 
         // Show idle overlay
         idleOverlay.visibility = View.VISIBLE

@@ -363,11 +363,122 @@
                     android:orientation="vertical"
                     android:layout_marginBottom="@dimen/space_md" />
 
-                <!-- Spacer -->
-                <View
-                    android:layout_width="0dp"
+                <!-- Bottom widget area (Session Stats or Driver Tips) -->
+                <FrameLayout
+                    android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_weight="1" />
+                    android:layout_weight="1">
+
+                    <!-- Session Stats widget -->
+                    <LinearLayout
+                        android:id="@+id/statsWidget"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Session Stats"
+                            android:textColor="@color/text_muted"
+                            android:letterSpacing="0.10"
+                            android:layout_marginBottom="@dimen/space_sm" />
+
+                        <TextView
+                            android:id="@+id/statPhone"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Phone: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statEyes"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Eyes Closed: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statYawn"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Yawning: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statDistracted"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Distracted: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statEating"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Eating: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statPosture"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Posture: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statChild"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Child Slouch: 0"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/statFooter"
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Frames: 0  |  Avg Score: 100"
+                            android:textColor="@color/text_muted"
+                            android:layout_marginTop="@dimen/space_sm" />
+                    </LinearLayout>
+
+                    <!-- Driver Wellness Tips widget -->
+                    <LinearLayout
+                        android:id="@+id/tipsWidget"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            style="@style/TextMicro"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Driver Tips"
+                            android:textColor="@color/text_muted"
+                            android:letterSpacing="0.10"
+                            android:layout_marginBottom="@dimen/space_sm" />
+
+                        <TextView
+                            android:id="@+id/tipsText"
+                            style="@style/TextBody"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Stay hydrated on long drives."
+                            android:textColor="@color/text_secondary"
+                            android:lineSpacingExtra="2dp" />
+                    </LinearLayout>
+                </FrameLayout>
 
                 <!-- Ticker: last 3 events -->
                 <LinearLayout
@@ -740,6 +851,62 @@
                         android:layout_weight="1"
                         android:gravity="center"
                         android:text="L"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <!-- Bottom Widget -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Bottom Widget"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        android:id="@+id/widgetOffBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="OFF"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/widgetStatsBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="STATS"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/widgetTipsBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="TIPS"
                         android:textSize="15sp"
                         android:textColor="@color/text_secondary" />
                 </LinearLayout>
