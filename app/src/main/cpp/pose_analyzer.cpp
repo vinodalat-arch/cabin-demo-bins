@@ -496,18 +496,39 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
     result.driver_eating_drinking = detectObjectsInCrop(
         bgr_data, width, height, driver, FOOD_DRINK_CLASSES, 0.2f, FOOD_CONFIDENCE);
 
-    // 7. Hands-off-wheel detection: both wrists visible and in upper half of driver bbox
-    // Uses driver bbox as reference — works even when hips/shoulders aren't detected.
-    // Steering wheel is in the lower portion; wrists in upper half = hands off wheel.
+    // 7. Hands-off-wheel detection
+    // Multiple strategies: wrists in upper 60% of bbox, or elbows raised above bbox midpoint.
     {
         const auto& lw = driver.keypoints[KP_LEFT_WRIST];
         const auto& rw = driver.keypoints[KP_RIGHT_WRIST];
+        const auto& le = driver.keypoints[KP_LEFT_ELBOW];
+        const auto& re = driver.keypoints[KP_RIGHT_ELBOW];
+        float bbox_h = driver.y2 - driver.y1;
+        float bbox_upper60_y = driver.y1 + bbox_h * 0.6f;
+        float bbox_mid_y = driver.y1 + bbox_h * 0.5f;
+
+        // Diagnostic logging for tuning
+        LOGI("HandsOff: lw(%.0f,%.0f,%.2f) rw(%.0f,%.0f,%.2f) le(%.0f,%.0f,%.2f) re(%.0f,%.0f,%.2f) "
+             "bbox(%.0f-%.0f) upper60=%.0f mid=%.0f",
+             lw.x, lw.y, lw.conf, rw.x, rw.y, rw.conf,
+             le.x, le.y, le.conf, re.x, re.y, re.conf,
+             driver.y1, driver.y2, bbox_upper60_y, bbox_mid_y);
+
         bool both_wrists_visible = lw.conf >= KP_CONF_THRESHOLD && rw.conf >= KP_CONF_THRESHOLD;
         if (both_wrists_visible) {
-            float bbox_mid_y = (driver.y1 + driver.y2) / 2.0f;
-            // Both wrists above the vertical midpoint of the driver bbox
-            if (lw.y < bbox_mid_y && rw.y < bbox_mid_y) {
+            // Strategy A: both wrists in upper 60% of driver bbox
+            if (lw.y < bbox_upper60_y && rw.y < bbox_upper60_y) {
                 result.hands_off_wheel = true;
+            }
+        }
+        // Strategy B: elbows raised (fallback when wrists not confident, e.g. palms facing camera)
+        if (!result.hands_off_wheel) {
+            bool both_elbows_visible = le.conf >= KP_CONF_THRESHOLD && re.conf >= KP_CONF_THRESHOLD;
+            if (both_elbows_visible) {
+                // Both elbows above bbox midpoint = arms raised, hands off wheel
+                if (le.y < bbox_mid_y && re.y < bbox_mid_y) {
+                    result.hands_off_wheel = true;
+                }
             }
         }
     }
