@@ -62,7 +62,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="0:00"
-                        android:textSize="10sp" />
+                        android:textSize="15sp" />
 
                     <TextView
                         android:id="@+id/bestStreakText"
@@ -70,8 +70,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Best 0:00"
-                        android:textSize="9sp"
-                        android:layout_marginTop="1dp" />
+                        android:textSize="14sp"
+                        android:layout_marginTop="2dp" />
 
                     <TextView
                         android:id="@+id/sessionTimeText"
@@ -79,8 +79,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="0:00"
-                        android:textSize="9sp"
-                        android:layout_marginTop="1dp" />
+                        android:textSize="14sp"
+                        android:layout_marginTop="2dp" />
                 </LinearLayout>
 
                 <!-- Divider -->
@@ -95,8 +95,8 @@
                 <!-- Camera status (dot only, tap for tooltip) -->
                 <View
                     android:id="@+id/cameraStatusDot"
-                    android:layout_width="10dp"
-                    android:layout_height="10dp"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
                     android:background="@color/danger"
                     android:layout_marginBottom="@dimen/space_sm" />
 
@@ -121,7 +121,7 @@
                     android:layout_height="@dimen/button_height"
                     android:background="@drawable/bg_button_accent"
                     android:text="@string/start_service"
-                    android:textSize="12sp"
+                    android:textSize="15sp"
                     android:textStyle="bold"
                     android:textColor="#FFFFFFFF"
                     android:letterSpacing="0.08"
@@ -178,7 +178,7 @@
                             android:paddingEnd="@dimen/bubble_padding_h"
                             android:paddingTop="@dimen/bubble_padding_v"
                             android:paddingBottom="@dimen/bubble_padding_v"
-                            android:textSize="13sp"
+                            android:textSize="16sp"
                             android:textColor="@color/text_primary"
                             android:gravity="center"
                             android:text="Smart eyes are ready!" />
@@ -224,7 +224,7 @@
                         android:paddingEnd="@dimen/space_md"
                         android:paddingTop="@dimen/space_xs"
                         android:paddingBottom="@dimen/space_xs"
-                        android:textSize="13sp"
+                        android:textSize="16sp"
                         android:textColor="@color/danger"
                         android:letterSpacing="0.08"
                         android:visibility="gone"
@@ -246,7 +246,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="HONDA"
-                        android:textSize="32sp"
+                        android:textSize="42sp"
                         android:textStyle="bold"
                         android:textColor="@color/text_primary"
                         android:letterSpacing="0.30"
@@ -254,17 +254,17 @@
 
                     <!-- Accent rule -->
                     <View
-                        android:layout_width="48dp"
-                        android:layout_height="2dp"
+                        android:layout_width="64dp"
+                        android:layout_height="3dp"
                         android:background="@color/accent"
-                        android:layout_marginTop="@dimen/space_sm"
-                        android:layout_marginBottom="@dimen/space_sm" />
+                        android:layout_marginTop="@dimen/space_md"
+                        android:layout_marginBottom="@dimen/space_md" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="SMART CABIN"
-                        android:textSize="13sp"
+                        android:textSize="18sp"
                         android:textColor="@color/text_secondary"
                         android:letterSpacing="0.25"
                         android:fontFamily="sans-serif-light" />
@@ -488,216 +488,233 @@
 
             <TextView
                 android:id="@+id/settingsCloseBtn"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:gravity="center"
                 android:text="\u2715"
-                android:textSize="18sp"
+                android:textSize="22sp"
                 android:textColor="@color/text_secondary"
                 android:background="?android:attr/selectableItemBackgroundBorderless" />
         </LinearLayout>
 
-        <!-- Driver Seat Side -->
-        <TextView
-            style="@style/TextCaption"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Driver Seat"
-            android:layout_marginBottom="@dimen/space_sm" />
-
-        <LinearLayout
+        <!-- Scrollable settings content -->
+        <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:orientation="horizontal"
-            android:background="@drawable/bg_segmented_button"
-            android:layout_marginBottom="@dimen/space_xl">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:fillViewport="true">
 
-            <TextView
-                android:id="@+id/seatLeftBtn"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="LEFT"
-                android:textSize="13sp"
-                android:textColor="@color/text_primary" />
-
-            <View
-                android:layout_width="1dp"
-                android:layout_height="match_parent"
-                android:background="@color/divider" />
-
-            <TextView
-                android:id="@+id/seatRightBtn"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="RIGHT"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
-        </LinearLayout>
-
-        <!-- Language -->
-        <TextView
-            style="@style/TextCaption"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Language"
-            android:layout_marginBottom="@dimen/space_sm" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:orientation="horizontal"
-            android:background="@drawable/bg_segmented_button"
-            android:layout_marginBottom="@dimen/space_xl">
-
-            <TextView
-                android:id="@+id/langEnBtn"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="EN"
-                android:textSize="13sp"
-                android:textColor="@color/text_primary" />
-
-            <View
-                android:layout_width="1dp"
-                android:layout_height="match_parent"
-                android:background="@color/divider" />
-
-            <TextView
-                android:id="@+id/langJaBtn"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="JA"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
-        </LinearLayout>
-
-        <!-- Passenger Info Detail -->
-        <TextView
-            style="@style/TextCaption"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Passenger Info"
-            android:layout_marginBottom="@dimen/space_sm" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:orientation="horizontal"
-            android:background="@drawable/bg_segmented_button"
-            android:layout_marginBottom="@dimen/space_xl">
-
-            <TextView
-                android:id="@+id/paxMinimalBtn"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="MINIMAL"
-                android:textSize="13sp"
-                android:textColor="@color/text_primary" />
-
-            <View
-                android:layout_width="1dp"
-                android:layout_height="match_parent"
-                android:background="@color/divider" />
-
-            <TextView
-                android:id="@+id/paxDetailedBtn"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="DETAILED"
-                android:textSize="13sp"
-                android:textColor="@color/text_secondary" />
-        </LinearLayout>
-
-        <!-- Audio Alerts toggle -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="@dimen/space_xl">
-
-            <TextView
-                style="@style/TextCaption"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Audio Alerts" />
+                android:orientation="vertical">
 
-            <Button
-                android:id="@+id/audioToggle"
-                android:layout_width="72dp"
-                android:layout_height="36dp"
-                android:background="@drawable/bg_button"
-                android:text="ON"
-                android:textSize="12sp"
-                android:textColor="@color/text_primary"
-                android:textAllCaps="false"
-                android:stateListAnimator="@null" />
-        </LinearLayout>
+                <!-- Driver Seat Side -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Driver Seat"
+                    android:layout_marginBottom="@dimen/space_sm" />
 
-        <!-- Camera Preview toggle -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="@dimen/space_xl">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
 
-            <TextView
-                style="@style/TextCaption"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Camera Preview" />
+                    <TextView
+                        android:id="@+id/seatLeftBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="LEFT"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
 
-            <Button
-                android:id="@+id/previewToggle"
-                android:layout_width="72dp"
-                android:layout_height="36dp"
-                android:background="@drawable/bg_button"
-                android:text="OFF"
-                android:textSize="12sp"
-                android:textColor="@color/text_secondary"
-                android:textAllCaps="false"
-                android:stateListAnimator="@null" />
-        </LinearLayout>
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
 
-        <!-- WiFi Camera button -->
-        <Button
-            android:id="@+id/wifiCamButton"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/button_height"
-            android:background="@drawable/bg_button"
-            android:text="WiFi Camera..."
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary"
-            android:textAllCaps="false"
-            android:layout_marginBottom="@dimen/space_md"
-            android:stateListAnimator="@null" />
+                    <TextView
+                        android:id="@+id/seatRightBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="RIGHT"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
 
-        <!-- Face Registry button -->
-        <Button
-            android:id="@+id/registerButton"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/button_height"
-            android:background="@drawable/bg_button"
-            android:text="Manage Faces..."
-            android:textSize="13sp"
-            android:textColor="@color/text_secondary"
-            android:textAllCaps="false"
-            android:stateListAnimator="@null" />
+                <!-- Language -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Language"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        android:id="@+id/langEnBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="EN"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/langJaBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="JA"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <!-- Passenger Info Detail -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Passenger Info"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        android:id="@+id/paxMinimalBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="MINIMAL"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/paxDetailedBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="DETAILED"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <!-- Audio Alerts toggle -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        style="@style/TextCaption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Audio Alerts" />
+
+                    <Button
+                        android:id="@+id/audioToggle"
+                        android:layout_width="84dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_button"
+                        android:text="ON"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:textAllCaps="false"
+                        android:stateListAnimator="@null" />
+                </LinearLayout>
+
+                <!-- Camera Preview toggle -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        style="@style/TextCaption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Camera Preview" />
+
+                    <Button
+                        android:id="@+id/previewToggle"
+                        android:layout_width="84dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_button"
+                        android:text="OFF"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:textAllCaps="false"
+                        android:stateListAnimator="@null" />
+                </LinearLayout>
+
+                <!-- WiFi Camera button -->
+                <Button
+                    android:id="@+id/wifiCamButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:background="@drawable/bg_button"
+                    android:text="WiFi Camera..."
+                    android:textSize="15sp"
+                    android:textColor="@color/text_secondary"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="@dimen/space_md"
+                    android:stateListAnimator="@null" />
+
+                <!-- Face Registry button -->
+                <Button
+                    android:id="@+id/registerButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:background="@drawable/bg_button"
+                    android:text="Manage Faces..."
+                    android:textSize="15sp"
+                    android:textColor="@color/text_secondary"
+                    android:textAllCaps="false"
+                    android:stateListAnimator="@null" />
+
+            </LinearLayout>
+        </ScrollView>
     </LinearLayout>
 
 </FrameLayout>

@@ -136,12 +136,12 @@ class ConfigConstantsTest {
 
     @Test
     fun test_sustained_detection_thresholds() {
-        assertEquals(3, Config.EYES_CLOSED_MIN_FRAMES)
-        assertEquals(3, Config.DISTRACTED_MIN_FRAMES)
-        assertEquals(3, Config.EATING_MIN_FRAMES)
-        assertEquals(3, Config.POSTURE_MIN_FRAMES)
+        assertEquals(2, Config.EYES_CLOSED_MIN_FRAMES)
+        assertEquals(2, Config.DISTRACTED_MIN_FRAMES)
+        assertEquals(2, Config.EATING_MIN_FRAMES)
+        assertEquals(2, Config.POSTURE_MIN_FRAMES)
         assertEquals(2, Config.YAWNING_MIN_FRAMES)
-        assertEquals(5, Config.CHILD_SLOUCH_MIN_FRAMES)
+        assertEquals(3, Config.CHILD_SLOUCH_MIN_FRAMES)
     }
 
     @Test

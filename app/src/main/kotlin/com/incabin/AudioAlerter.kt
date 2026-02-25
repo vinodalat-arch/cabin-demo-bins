@@ -42,23 +42,23 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         )
 
         val FRIENDLY_NAMES = mapOf(
-            "driver_using_phone" to "Phone",
-            "driver_eyes_closed" to "Eyes closed",
-            "driver_yawning" to "Yawning",
-            "driver_distracted" to "Distracted",
-            "driver_eating_drinking" to "Eating",
-            "dangerous_posture" to "Posture",
-            "child_slouching" to "Child slouching"
+            "driver_using_phone" to "Phone detected, please put it down",
+            "driver_eyes_closed" to "Eyes closed, please stay alert",
+            "driver_yawning" to "Yawning detected, consider a break",
+            "driver_distracted" to "Distracted, please watch the road",
+            "driver_eating_drinking" to "Eating while driving, please focus",
+            "dangerous_posture" to "Dangerous posture detected",
+            "child_slouching" to "Child is slouching, please check"
         )
 
         val FRIENDLY_NAMES_JA = mapOf(
-            "driver_using_phone" to "スマホ",
-            "driver_eyes_closed" to "目を閉じています",
-            "driver_yawning" to "あくび",
-            "driver_distracted" to "よそ見",
-            "driver_eating_drinking" to "飲食",
-            "dangerous_posture" to "姿勢",
-            "child_slouching" to "子供の姿勢"
+            "driver_using_phone" to "スマートフォンを検出、置いてください",
+            "driver_eyes_closed" to "目を閉じています、注意してください",
+            "driver_yawning" to "あくびを検出、休憩を取ってください",
+            "driver_distracted" to "よそ見を検出、前を見てください",
+            "driver_eating_drinking" to "飲食を検出、運転に集中してください",
+            "dangerous_posture" to "危険な姿勢を検出",
+            "child_slouching" to "子供の姿勢が悪いです、確認してください"
         )
 
         fun priorityForField(field: String): AlertPriority = when (field) {

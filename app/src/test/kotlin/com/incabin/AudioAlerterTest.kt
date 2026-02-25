@@ -46,7 +46,7 @@ class AudioAlerterTest {
         val alerts = build(current = snap(phone = true), prev = CLEAR)
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
-        assertEquals("Phone", alerts[0].text)
+        assertEquals("Phone detected, please put it down", alerts[0].text)
         assertEquals("driver_using_phone", alerts[0].dangerField)
         assertFalse(alerts[0].playBeepFirst)
     }
@@ -56,7 +56,7 @@ class AudioAlerterTest {
         val alerts = build(current = snap(eyes = true), prev = CLEAR)
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
-        assertEquals("Eyes closed", alerts[0].text)
+        assertEquals("Eyes closed, please stay alert", alerts[0].text)
     }
 
     @Test
@@ -64,35 +64,35 @@ class AudioAlerterTest {
         val alerts = build(current = snap(yawning = true), prev = CLEAR)
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.WARNING, alerts[0].priority)
-        assertEquals("Yawning", alerts[0].text)
+        assertEquals("Yawning detected, consider a break", alerts[0].text)
     }
 
     @Test
     fun test_new_warning_danger_eating() {
         val alerts = build(current = snap(eating = true), prev = CLEAR)
         assertEquals(1, alerts.size)
-        assertEquals("Eating", alerts[0].text)
+        assertEquals("Eating while driving, please focus", alerts[0].text)
     }
 
     @Test
     fun test_new_warning_danger_posture() {
         val alerts = build(current = snap(posture = true), prev = CLEAR)
         assertEquals(1, alerts.size)
-        assertEquals("Posture", alerts[0].text)
+        assertEquals("Dangerous posture detected", alerts[0].text)
     }
 
     @Test
     fun test_new_warning_danger_child_slouching() {
         val alerts = build(current = snap(slouching = true), prev = CLEAR)
         assertEquals(1, alerts.size)
-        assertEquals("Child slouching", alerts[0].text)
+        assertEquals("Child is slouching, please check", alerts[0].text)
     }
 
     @Test
     fun test_new_warning_danger_distracted() {
         val alerts = build(current = snap(distracted = true), prev = CLEAR)
         assertEquals(1, alerts.size)
-        assertEquals("Distracted", alerts[0].text)
+        assertEquals("Distracted, please watch the road", alerts[0].text)
     }
 
     @Test
@@ -115,9 +115,9 @@ class AudioAlerterTest {
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
         // "Phone" (critical) should come before "Yawning" (warning)
-        assertTrue(alerts[0].text.startsWith("Phone"))
-        assertTrue(alerts[0].text.contains("Yawning"))
-        assertEquals("Phone. Yawning", alerts[0].text)
+        assertTrue(alerts[0].text.startsWith("Phone detected"))
+        assertTrue(alerts[0].text.contains("Yawning detected"))
+        assertEquals("Phone detected, please put it down. Yawning detected, consider a break", alerts[0].text)
     }
 
     @Test
@@ -128,7 +128,7 @@ class AudioAlerterTest {
         )
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
-        assertEquals("Phone. Eyes closed", alerts[0].text)
+        assertEquals("Phone detected, please put it down. Eyes closed, please stay alert", alerts[0].text)
     }
 
     @Test
@@ -139,7 +139,7 @@ class AudioAlerterTest {
         )
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.WARNING, alerts[0].priority)
-        assertEquals("Yawning. Distracted", alerts[0].text)
+        assertEquals("Yawning detected, consider a break. Distracted, please watch the road", alerts[0].text)
     }
 
     // -------------------------------------------------------------------------
@@ -205,7 +205,7 @@ class AudioAlerterTest {
             cooldownMap = cooldownMap
         )
         assertEquals(1, alerts.size)
-        assertEquals("Phone", alerts[0].text)
+        assertEquals("Phone detected, please put it down", alerts[0].text)
     }
 
     @Test
@@ -322,7 +322,7 @@ class AudioAlerterTest {
             escalationMap = escalationMap
         )
         assertEquals(1, alerts.size)
-        assertEquals("Eyes closed", alerts[0].text) // onset, not escalation
+        assertEquals("Eyes closed, please stay alert", alerts[0].text) // onset, not escalation
     }
 
     @Test
@@ -355,7 +355,7 @@ class AudioAlerterTest {
             isJapanese = true
         )
         assertEquals(1, alerts.size)
-        assertEquals("スマホ", alerts[0].text)
+        assertEquals("スマートフォンを検出、置いてください", alerts[0].text)
     }
 
     @Test

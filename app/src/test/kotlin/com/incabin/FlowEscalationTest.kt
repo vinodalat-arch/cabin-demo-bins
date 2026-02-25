@@ -115,8 +115,8 @@ class FlowEscalationTest {
         assertEquals(1, alerts.size)
         assertEquals(AlertPriority.CRITICAL, alerts[0].priority)
         // Both CRITICAL parts joined: "Phone. Eyes closed"
-        assertTrue("Should contain Phone", alerts[0].text.contains("Phone"))
-        assertTrue("Should contain Eyes closed", alerts[0].text.contains("Eyes closed"))
+        assertTrue("Should contain Phone", alerts[0].text.contains("Phone detected"))
+        assertTrue("Should contain Eyes closed", alerts[0].text.contains("Eyes closed, please stay alert"))
     }
 
     // -------------------------------------------------------------------------
@@ -145,7 +145,7 @@ class FlowEscalationTest {
         // Phone off then back on after 11s (cooldown expired)
         val alerts = build(snap(phone = true), CLEAR, 0, 0, NOW + 11_000, cooldownMap, escalationMap)
         assertEquals(1, alerts.size)
-        assertEquals("Phone", alerts[0].text)
+        assertEquals("Phone detected, please put it down", alerts[0].text)
     }
 
     // -------------------------------------------------------------------------
@@ -184,7 +184,7 @@ class FlowEscalationTest {
         )
         assertEquals(1, alerts.size)
         // The alert is for the new eyes onset, not escalation
-        assertTrue("Should be eyes onset, not escalation", alerts[0].text.contains("Eyes closed"))
+        assertTrue("Should be eyes onset, not escalation", alerts[0].text.contains("Eyes closed, please stay alert"))
     }
 
     // -------------------------------------------------------------------------

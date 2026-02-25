@@ -94,7 +94,7 @@ class FlowConfigToggleTest {
             mutableMapOf(), mutableMapOf(), isJapanese = false
         )
         assertEquals(1, alerts.size)
-        assertEquals("Phone", alerts[0].text)
+        assertEquals("Phone detected, please put it down", alerts[0].text)
     }
 
     @Test
@@ -106,7 +106,7 @@ class FlowConfigToggleTest {
             mutableMapOf(), mutableMapOf(), isJapanese = true
         )
         assertEquals(1, alerts.size)
-        assertEquals("スマホ", alerts[0].text)
+        assertEquals("スマートフォンを検出、置いてください", alerts[0].text)
     }
 
     // -------------------------------------------------------------------------

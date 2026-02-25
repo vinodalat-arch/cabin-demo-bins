@@ -82,6 +82,7 @@ class TemporalSmoother(
         var yawValidCount = 0; var distractedCount = 0
         var phoneCount = 0; var eatingCount = 0; var postureCount = 0
         var childPresentCount = 0; var childSlouchCount = 0
+        var driverDetectedCount = 0
         // Passenger/child/adult count mode via small frequency arrays (max ~10)
         val passengerFreq = IntArray(16)  // index = passenger count, value = frequency
         val childCountFreq = IntArray(16)
@@ -99,6 +100,7 @@ class TemporalSmoother(
             if (frame.dangerousPosture) postureCount++
             if (frame.childPresent) childPresentCount++
             if (frame.childSlouching) childSlouchCount++
+            if (frame.driverDetected) driverDetectedCount++
             val pc = frame.passengerCount.coerceIn(0, passengerFreq.size - 1)
             passengerFreq[pc]++
             if (pc > maxPassengerCount) maxPassengerCount = pc
@@ -148,6 +150,9 @@ class TemporalSmoother(
         val rawChildSlouching = (childSlouchCount.toFloat() / n) >= threshold
         if (rawChildSlouching) _childSlouchStreak++ else _childSlouchStreak = 0
         val smoothedChildSlouching = _childSlouchStreak >= Config.CHILD_SLOUCH_MIN_FRAMES
+
+        // --- Smooth driver_detected (majority voting — single YOLO miss shouldn't reset state) ---
+        val smoothedDriverDetected = (driverDetectedCount.toFloat() / n) >= threshold
 
         // --- Passenger count mode (highest count wins on tie) ---
         val smoothedPassengerCount: Int = run {
@@ -211,7 +216,8 @@ class TemporalSmoother(
             dangerousPosture = smoothedPosture,
             childPresent = smoothedChildPresent,
             childSlouching = smoothedChildSlouching,
-            riskLevel = smoothedRisk
+            riskLevel = smoothedRisk,
+            driverDetected = smoothedDriverDetected
         )
     }
 }

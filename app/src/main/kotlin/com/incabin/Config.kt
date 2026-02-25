@@ -34,12 +34,12 @@ object Config {
     const val SMOOTHER_WINDOW = 3
     const val SMOOTHER_THRESHOLD = 0.6f
     const val FAST_CLEAR_FRAMES = 2
-    const val EYES_CLOSED_MIN_FRAMES = 3      // ~3s at 1fps before reporting eyes_closed
-    const val DISTRACTED_MIN_FRAMES = 3       // ~3s — allow quick mirror/blind-spot glances
-    const val EATING_MIN_FRAMES = 3           // ~3s — allow quick sips
-    const val POSTURE_MIN_FRAMES = 3          // ~3s — allow brief adjustments
+    const val EYES_CLOSED_MIN_FRAMES = 2      // ~2s at 1fps before reporting eyes_closed
+    const val DISTRACTED_MIN_FRAMES = 2       // ~2s — allow quick mirror/blind-spot glances
+    const val EATING_MIN_FRAMES = 2           // ~2s — allow quick sips
+    const val POSTURE_MIN_FRAMES = 2          // ~2s — allow brief adjustments
     const val YAWNING_MIN_FRAMES = 2           // ~2s — filter single-frame mouth-open
-    const val CHILD_SLOUCH_MIN_FRAMES = 5     // ~5s — kids shift constantly
+    const val CHILD_SLOUCH_MIN_FRAMES = 3     // ~3s — kids shift constantly
 
     // Audio — escalation ladder
     const val ALERT_COOLDOWN_MS = 10_000L

@@ -8,34 +8,34 @@
     <dimen name="space_xl">24dp</dimen>
 
     <!-- Panel widths -->
-    <dimen name="left_panel_width">80dp</dimen>
-    <dimen name="right_panel_width">320dp</dimen>
-    <dimen name="settings_panel_width">300dp</dimen>
+    <dimen name="left_panel_width">100dp</dimen>
+    <dimen name="right_panel_width">380dp</dimen>
+    <dimen name="settings_panel_width">340dp</dimen>
 
     <!-- Score arc -->
-    <dimen name="score_arc_size">64dp</dimen>
+    <dimen name="score_arc_size">80dp</dimen>
 
     <!-- Buttons -->
-    <dimen name="button_height">44dp</dimen>
-    <dimen name="button_height_large">48dp</dimen>
-    <dimen name="button_radius">8dp</dimen>
+    <dimen name="button_height">52dp</dimen>
+    <dimen name="button_height_large">56dp</dimen>
+    <dimen name="button_radius">10dp</dimen>
 
     <!-- ASIMO mascot -->
-    <dimen name="asimo_size_large">200dp</dimen>
-    <dimen name="asimo_size_small">80dp</dimen>
+    <dimen name="asimo_size_large">260dp</dimen>
+    <dimen name="asimo_size_small">100dp</dimen>
 
     <!-- ASIMO glow -->
-    <dimen name="asimo_glow_size_large">240dp</dimen>
-    <dimen name="asimo_glow_size_small">100dp</dimen>
+    <dimen name="asimo_glow_size_large">310dp</dimen>
+    <dimen name="asimo_glow_size_small">120dp</dimen>
 
     <!-- Speech bubble -->
-    <dimen name="bubble_max_width">280dp</dimen>
-    <dimen name="bubble_radius">12dp</dimen>
-    <dimen name="bubble_padding_h">14dp</dimen>
-    <dimen name="bubble_padding_v">8dp</dimen>
+    <dimen name="bubble_max_width">340dp</dimen>
+    <dimen name="bubble_radius">14dp</dimen>
+    <dimen name="bubble_padding_h">18dp</dimen>
+    <dimen name="bubble_padding_v">10dp</dimen>
 
     <!-- Risk pill -->
-    <dimen name="risk_pill_radius">12dp</dimen>
-    <dimen name="risk_pill_padding_h">12dp</dimen>
-    <dimen name="risk_pill_padding_v">8dp</dimen>
+    <dimen name="risk_pill_radius">14dp</dimen>
+    <dimen name="risk_pill_padding_h">16dp</dimen>
+    <dimen name="risk_pill_padding_v">10dp</dimen>
 </resources>
