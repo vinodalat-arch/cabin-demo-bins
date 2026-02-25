@@ -63,6 +63,10 @@ class InCabinService : Service() {
     private var audioAlerter: AudioAlerter? = null
     private val overlayRenderer = OverlayRenderer()
 
+    // --- Device setup (automotive BSP only) ---
+    private var deviceSetup: DeviceSetup? = null
+    @Volatile private var initialized = false
+
     // --- Pipeline watchdog ---
     private var watchdog: PipelineWatchdog? = null
 
@@ -119,19 +123,85 @@ class InCabinService : Service() {
             }
         }
 
+        // Must call startForeground within 5s of startForegroundService
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA)
         } else {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
-        initializeComponents()
-        startCamera()
+
+        // Guard against double-init (BootReceiver + Activity may both start us)
+        if (initialized) {
+            Log.i(TAG, "Service already initialized, ignoring duplicate start")
+            return START_STICKY
+        }
+        initialized = true
+
+        // Detect platform once
+        platformProfile = PlatformProfile.detect()
+
+        if (platformProfile.isAutomotiveBsp) {
+            runDeviceSetupThenStart()
+        } else {
+            initializeComponents()
+            startCamera()
+        }
         Log.i(TAG, "Service started")
 
         return START_STICKY
     }
 
+    /**
+     * On automotive BSPs, run DeviceSetup (rmmod, camera poll, chmod, pm grant)
+     * before initializing inference components and starting the camera.
+     * DeviceSetup runs on its own background thread — no ANR risk.
+     */
+    private fun runDeviceSetupThenStart() {
+        val setup = DeviceSetup()
+        deviceSetup = setup
+
+        // Quick check: if camera is already available, skip setup
+        if (setup.isCameraAvailable()) {
+            Log.i(TAG, "Camera already available on automotive BSP, skipping DeviceSetup")
+            CrashLog.info(TAG, "Camera already available, skipping DeviceSetup")
+            initializeComponents()
+            startCamera()
+            return
+        }
+
+        Log.i(TAG, "Starting DeviceSetup for automotive BSP")
+        CrashLog.info(TAG, "Starting DeviceSetup")
+        FrameHolder.postCameraStatus(FrameHolder.CameraStatus.CONNECTING)
+
+        setup.startSetup(packageName, object : DeviceSetup.Callback {
+            override fun onStageChanged(stage: DeviceSetup.Stage, message: String) {
+                Log.i(TAG, "DeviceSetup stage: $stage - $message")
+                CrashLog.info(TAG, "DeviceSetup: $stage - $message")
+            }
+
+            override fun onSetupComplete() {
+                Log.i(TAG, "DeviceSetup complete, initializing components")
+                CrashLog.info(TAG, "DeviceSetup complete")
+                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.READY)
+                initializeComponents()
+                startCamera()
+            }
+
+            override fun onSetupFailed(message: String) {
+                Log.w(TAG, "DeviceSetup failed: $message — attempting best-effort start")
+                CrashLog.warn(TAG, "DeviceSetup failed: $message — best-effort start")
+                // Best effort: camera might already be available, or user can fix manually
+                initializeComponents()
+                startCamera()
+            }
+        })
+    }
+
     override fun onDestroy() {
+        // Cancel DeviceSetup if still running
+        deviceSetup?.cancel()
+        deviceSetup = null
+
         watchdog?.stop()
         watchdog = null
 
@@ -168,6 +238,7 @@ class InCabinService : Service() {
             pipelineLock.unlock()
         }
 
+        initialized = false
         Log.i(TAG, "Service destroyed")
         super.onDestroy()
     }
@@ -198,8 +269,6 @@ class InCabinService : Service() {
     // -------------------------------------------------------------------------
 
     private fun initializeComponents() {
-        // --- Platform Detection ---
-        platformProfile = PlatformProfile.detect()
         Log.i(TAG, "=== Platform: ${platformProfile.platform} ===")
 
         // Apply per-platform thresholds
