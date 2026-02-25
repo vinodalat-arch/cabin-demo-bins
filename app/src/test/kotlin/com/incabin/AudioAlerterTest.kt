@@ -439,4 +439,82 @@ class AudioAlerterTest {
     fun test_snapshot_any_false() {
         assertFalse(CLEAR.any())
     }
+
+    // -------------------------------------------------------------------------
+    // shouldAlertNoDriver Tests (7 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_no_driver_transition_with_passengers() {
+        assertTrue(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = false, passengerCount = 2,
+            prevDriverDetected = true, nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_no_driver_no_passengers_no_alert() {
+        assertFalse(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = false, passengerCount = 0,
+            prevDriverDetected = true, nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_no_driver_first_frame_no_alert() {
+        assertFalse(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = false, passengerCount = 2,
+            prevDriverDetected = null, nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_no_driver_already_absent_no_alert() {
+        assertFalse(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = false, passengerCount = 2,
+            prevDriverDetected = false, nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    @Test
+    fun test_no_driver_within_cooldown_no_alert() {
+        val cooldown = mapOf("no_driver_detected" to NOW - 5000L)
+        assertFalse(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = false, passengerCount = 2,
+            prevDriverDetected = true, nowMs = NOW, cooldownMap = cooldown
+        ))
+    }
+
+    @Test
+    fun test_no_driver_after_cooldown_alert() {
+        val cooldown = mapOf("no_driver_detected" to NOW - 11_000L)
+        assertTrue(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = false, passengerCount = 1,
+            prevDriverDetected = true, nowMs = NOW, cooldownMap = cooldown
+        ))
+    }
+
+    @Test
+    fun test_no_driver_driver_present_no_alert() {
+        assertFalse(AudioAlerter.shouldAlertNoDriver(
+            driverDetected = true, passengerCount = 2,
+            prevDriverDetected = true, nowMs = NOW, cooldownMap = emptyMap()
+        ))
+    }
+
+    // -------------------------------------------------------------------------
+    // All-clear suppressed when driver disappears (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_all_clear_suppressed_when_driver_absent() {
+        // Dangers cleared because driver left — should NOT fire "All clear"
+        val alerts = AudioAlerter.buildAlerts(
+            current = CLEAR, prev = snap(phone = true),
+            duration = 0, prevDuration = 0, nowMs = NOW,
+            cooldownMap = mutableMapOf(), escalationMap = mutableMapOf(),
+            isJapanese = false, driverDetected = false
+        )
+        assertTrue(alerts.isEmpty())
+    }
 }

@@ -70,6 +70,25 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
 
         /**
+         * Pure function: should we alert "No driver detected"?
+         * Fires on transition from driver-present to driver-absent with passengers remaining.
+         */
+        fun shouldAlertNoDriver(
+            driverDetected: Boolean,
+            passengerCount: Int,
+            prevDriverDetected: Boolean?,
+            nowMs: Long,
+            cooldownMap: Map<String, Long>
+        ): Boolean {
+            if (driverDetected) return false
+            if (passengerCount <= 0) return false
+            if (prevDriverDetected != true) return false // only on transition, not first frame
+            val lastCooldown = cooldownMap["no_driver_detected"]
+            if (lastCooldown != null && (nowMs - lastCooldown) < Config.ALERT_COOLDOWN_MS) return false
+            return true
+        }
+
+        /**
          * Builds alert messages from a state transition. Mutates [cooldownMap] and
          * [escalationMap] in place but has no other side effects — safe for unit testing.
          */
@@ -81,12 +100,14 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
             nowMs: Long,
             cooldownMap: MutableMap<String, Long>,
             escalationMap: MutableMap<String, EscalationState>,
-            isJapanese: Boolean = false
+            isJapanese: Boolean = false,
+            driverDetected: Boolean = true
         ): List<AlertMessage> {
             val nameMap = if (isJapanese) FRIENDLY_NAMES_JA else FRIENDLY_NAMES
 
             // --- All-clear flush ---
-            if (prev.any() && !current.any()) {
+            // Suppress "All clear" when dangers drop because driver left frame
+            if (prev.any() && !current.any() && driverDetected) {
                 cooldownMap.clear()
                 escalationMap.clear()
                 val text = if (isJapanese) "安全です" else "All clear"
@@ -226,6 +247,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
 
     // --- State ---
     private var prevDangers: DangerSnapshot? = null
+    private var prevDriverDetected: Boolean? = null
     private var prevDuration = 0
     private val cooldownMap = HashMap<String, Long>()
     private val escalationMap = HashMap<String, EscalationState>()
@@ -382,6 +404,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         "driver_eating_drinking" -> result.driverEatingDrinking
         "dangerous_posture" -> result.dangerousPosture
         "child_slouching" -> result.childSlouching
+        "no_driver_detected" -> !result.driverDetected && result.passengerCount > 0
         else -> false
     }
 
@@ -437,21 +460,36 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         // First frame: store state only
         if (prevDangers == null) {
             prevDangers = current
+            prevDriverDetected = result.driverDetected
             return
         }
 
         val prev = prevDangers!!
         val now = SystemClock.elapsedRealtime()
+        val isJapanese = Config.LANGUAGE == "ja"
+
+        // --- No-driver alert (before DangerSnapshot logic) ---
+        if (shouldAlertNoDriver(result.driverDetected, result.passengerCount, prevDriverDetected, now, cooldownMap)) {
+            val noDriverText = if (isJapanese) "運転者未検出" else "No driver detected"
+            val noDriverAlert = AlertMessage(AlertPriority.WARNING, noDriverText, "no_driver_detected", false, now)
+            enqueueWithPriority(noDriverAlert)
+            cooldownMap["no_driver_detected"] = now
+            try {
+                postAlertNotification(noDriverText, "medium")
+            } catch (e: Exception) {
+                Log.w(TAG, "Notification posting failed, TTS unaffected", e)
+            }
+        }
 
         // All-clear flush: drain queue + stop TTS before building the all-clear message
-        val isAllClear = prev.any() && !current.any()
+        // Suppress "All clear" when dangers drop because driver left frame
+        val isAllClear = prev.any() && !current.any() && result.driverDetected
         if (isAllClear) {
             drainQueue()
             tts.stop()
         }
 
-        val isJapanese = Config.LANGUAGE == "ja"
-        val alerts = buildAlerts(current, prev, duration, prevDuration, now, cooldownMap, escalationMap, isJapanese)
+        val alerts = buildAlerts(current, prev, duration, prevDuration, now, cooldownMap, escalationMap, isJapanese, result.driverDetected)
 
         // Enqueue alerts
         for (alert in alerts) {
@@ -478,6 +516,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         }
 
         prevDangers = current
+        prevDriverDetected = result.driverDetected
         prevDuration = duration
     }
 
@@ -542,6 +581,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
      */
     fun resetState() {
         prevDangers = null
+        prevDriverDetected = null
         prevDuration = 0
         cooldownMap.clear()
         escalationMap.clear()

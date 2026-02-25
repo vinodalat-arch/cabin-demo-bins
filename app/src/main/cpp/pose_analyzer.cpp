@@ -378,6 +378,7 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
         op.y2 = persons[i].y2;
         op.confidence = persons[i].confidence;
         op.is_driver = (i == driver_idx);
+        op.bad_posture = checkPosture(persons[i].keypoints, POSTURE_LEAN_THRESHOLD);
         for (int k = 0; k < NUM_KEYPOINTS; k++) {
             op.keypoints[k].x = persons[i].keypoints[k].x;
             op.keypoints[k].y = persons[i].keypoints[k].y;
@@ -525,6 +526,8 @@ std::string PoseResult::toJson() const {
         snprintf(fbuf, sizeof(fbuf), "%.4f", p.confidence); json += fbuf;
         json += ",\"is_driver\":";
         json += p.is_driver ? "true" : "false";
+        json += ",\"bad_posture\":";
+        json += p.bad_posture ? "true" : "false";
         json += ",\"keypoints\":[";
         for (int k = 0; k < NUM_KEYPOINTS; k++) {
             if (k > 0) json += ',';

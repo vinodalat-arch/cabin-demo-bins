@@ -244,6 +244,7 @@ class MainActivity : Activity() {
     private lateinit var passengerText: TextView
     private lateinit var distractionText: TextView
     private lateinit var detectionsContainer: LinearLayout
+    private lateinit var passengerPostureContainer: LinearLayout
     private lateinit var aiStatusText: TextView
     private lateinit var scoreArc: ScoreArcView
     private lateinit var scoreContainer: FrameLayout
@@ -364,6 +365,7 @@ class MainActivity : Activity() {
                         updateAiStatus(result)
                         updateTicker(result)
                         updateBottomWidget(result)
+                        updatePassengerPostures()
                         updateAsimoPose(result)
                         totalFrames++
                         scoreSum += drivingScore
@@ -425,6 +427,7 @@ class MainActivity : Activity() {
         passengerText = findViewById(R.id.passengerText)
         distractionText = findViewById(R.id.distractionText)
         detectionsContainer = findViewById(R.id.detectionsContainer)
+        passengerPostureContainer = findViewById(R.id.passengerPostureContainer)
         aiStatusText = findViewById(R.id.aiStatusText)
         scoreArc = findViewById(R.id.scoreArc)
         scoreContainer = findViewById(R.id.scoreContainer)
@@ -1332,6 +1335,7 @@ class MainActivity : Activity() {
         handler.removeCallbacks(previewPoller)
         previewImage.setImageBitmap(null)
         detectionsContainer.removeAllViews()
+        passengerPostureContainer.removeAllViews()
         Log.i(TAG, "Monitoring stopped")
     }
 
@@ -1536,6 +1540,31 @@ class MainActivity : Activity() {
         }
         detectionsContainer.addView(tv)
         tv.animate().alpha(1f).setDuration(200).start()
+    }
+
+    // --- Passenger posture display ---
+    private var currentPassengerPostures = emptyList<FrameHolder.PassengerPosture>()
+
+    private fun updatePassengerPostures() {
+        val postures = FrameHolder.getPassengerPostures()
+        if (postures == currentPassengerPostures) return
+        currentPassengerPostures = postures
+
+        passengerPostureContainer.removeAllViews()
+        for (p in postures) {
+            if (!p.hasBadPosture) continue
+            val isJa = Config.LANGUAGE == "ja"
+            val label = if (isJa) "\u25CF  乗客${p.index}: 姿勢不良" else "\u25CF  Passenger ${p.index}: Bad Posture"
+            val tv = TextView(this).apply {
+                text = label
+                textSize = 14f
+                setTextColor(colorCaution)
+                setPadding(0, dpToPx(1), 0, dpToPx(1))
+                alpha = 0f
+            }
+            passengerPostureContainer.addView(tv)
+            tv.animate().alpha(1f).setDuration(200).start()
+        }
     }
 
     // ---------------------------------------------------------------------

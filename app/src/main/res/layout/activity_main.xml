@@ -361,6 +361,14 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
+                    android:layout_marginBottom="@dimen/space_xs" />
+
+                <!-- Passenger posture container -->
+                <LinearLayout
+                    android:id="@+id/passengerPostureContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
                     android:layout_marginBottom="@dimen/space_md" />
 
                 <!-- Bottom widget area (Session Stats or Driver Tips) -->

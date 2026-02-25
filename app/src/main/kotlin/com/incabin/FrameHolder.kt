@@ -25,6 +25,16 @@ object FrameHolder {
     /** Result-only channel: delivers OutputResult to UI without waiting for bitmap. */
     private val latestResult = AtomicReference<OutputResult?>(null)
 
+    /** Per-passenger posture data for UI display (not part of OutputResult schema). */
+    data class PassengerPosture(val index: Int, val hasBadPosture: Boolean)
+    private val latestPassengerPostures = AtomicReference<List<PassengerPosture>>(emptyList())
+
+    fun postPassengerPostures(postures: List<PassengerPosture>) {
+        latestPassengerPostures.set(postures)
+    }
+
+    fun getPassengerPostures(): List<PassengerPosture> = latestPassengerPostures.get()
+
     /** BGR face crop for registration UI. */
     data class CaptureData(val bgrCrop: ByteArray, val cropWidth: Int, val cropHeight: Int)
     private val latestCapture = AtomicReference<CaptureData?>(null)
@@ -98,6 +108,7 @@ object FrameHolder {
         latest.set(null)
         latestResult.set(null)
         latestCapture.set(null)
+        latestPassengerPostures.set(emptyList())
         cameraStatus.set(CameraStatus.NOT_CONNECTED)
         serviceHeartbeatMs.set(0L)
         serviceRunning.set(false)

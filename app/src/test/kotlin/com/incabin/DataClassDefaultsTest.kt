@@ -180,6 +180,11 @@ class DataClassDefaultsTest {
         assertEquals(0.9f, p.keypoints[0].conf, 0.001f)
     }
 
+    @Test
+    fun test_overlay_person_default_no_bad_posture() {
+        assertFalse(OverlayPerson().badPosture)
+    }
+
     // -------------------------------------------------------------------------
     // FrameHolder.CameraStatus enum (2 tests)
     // -------------------------------------------------------------------------

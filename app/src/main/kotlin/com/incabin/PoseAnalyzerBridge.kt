@@ -23,6 +23,8 @@ data class OverlayPerson(
     val confidence: Float = 0f,
     @SerializedName("is_driver")
     val isDriver: Boolean = false,
+    @SerializedName("bad_posture")
+    val badPosture: Boolean = false,
     val keypoints: List<OverlayKeypoint> = emptyList()
 )
 

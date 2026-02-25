@@ -23,6 +23,7 @@ struct OverlayPerson {
     float y2 = 0.0f;
     float confidence = 0.0f;
     bool is_driver = false;
+    bool bad_posture = false;
     OverlayKeypoint keypoints[NUM_KEYPOINTS];
 };
 

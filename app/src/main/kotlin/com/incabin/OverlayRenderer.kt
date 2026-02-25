@@ -91,9 +91,10 @@ class OverlayRenderer {
             canvas.drawRect(person.x1, person.y1, person.x2, person.y2, boxPaint)
 
             // Label
-            val label = if (person.isDriver) (driverName ?: "Driver") else "Passenger"
+            val baseLabel = if (person.isDriver) (driverName ?: "Driver") else "Passenger"
             val conf = (person.confidence * 100).toInt()
-            val text = "$label ${conf}%"
+            val suffix = if (!person.isDriver && person.badPosture) " (Bad Posture)" else ""
+            val text = "$baseLabel ${conf}%$suffix"
             val textWidth = labelTextPaint.measureText(text)
             canvas.drawRect(person.x1, person.y1 - 34f, person.x1 + textWidth + 8f, person.y1, labelBgPaint)
             canvas.drawText(text, person.x1 + 4f, person.y1 - 8f, labelTextPaint)
