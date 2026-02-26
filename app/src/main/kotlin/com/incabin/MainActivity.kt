@@ -300,6 +300,9 @@ class MainActivity : Activity() {
     private lateinit var asimoSizeSmallBtn: TextView
     private lateinit var asimoSizeMediumBtn: TextView
     private lateinit var asimoSizeLargeBtn: TextView
+    private lateinit var fps1Btn: TextView
+    private lateinit var fps2Btn: TextView
+    private lateinit var fps3Btn: TextView
     private var settingsVisible = false
 
     // --- 5-tap gesture ---
@@ -504,6 +507,9 @@ class MainActivity : Activity() {
         asimoSizeSmallBtn = findViewById(R.id.asimoSizeSmallBtn)
         asimoSizeMediumBtn = findViewById(R.id.asimoSizeMediumBtn)
         asimoSizeLargeBtn = findViewById(R.id.asimoSizeLargeBtn)
+        fps1Btn = findViewById(R.id.fps1Btn)
+        fps2Btn = findViewById(R.id.fps2Btn)
+        fps3Btn = findViewById(R.id.fps3Btn)
 
         currentRiskColor = colorSafe
 
@@ -520,6 +526,7 @@ class MainActivity : Activity() {
         updatePaxDetailSegmentUI()
         updateAsimoSizeSegmentUI()
         updateBottomWidgetSegmentUI()
+        updateFpsSegmentUI()
 
         // --- Main controls ---
         toggleButton.setOnClickListener {
@@ -664,6 +671,25 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Changes apply after restart", Toast.LENGTH_SHORT).show()
             }
             Log.i(TAG, "Inference mode: remote")
+        }
+
+        fps1Btn.setOnClickListener {
+            Config.INFERENCE_FPS = 1
+            prefs.edit().putInt(ConfigPrefs.PREF_INFERENCE_FPS, 1).apply()
+            updateFpsSegmentUI()
+            Log.i(TAG, "Inference FPS: 1")
+        }
+        fps2Btn.setOnClickListener {
+            Config.INFERENCE_FPS = 2
+            prefs.edit().putInt(ConfigPrefs.PREF_INFERENCE_FPS, 2).apply()
+            updateFpsSegmentUI()
+            Log.i(TAG, "Inference FPS: 2")
+        }
+        fps3Btn.setOnClickListener {
+            Config.INFERENCE_FPS = 3
+            prefs.edit().putInt(ConfigPrefs.PREF_INFERENCE_FPS, 3).apply()
+            updateFpsSegmentUI()
+            Log.i(TAG, "Inference FPS: 3")
         }
 
         vlmServerButton.setOnClickListener {
@@ -1071,6 +1097,13 @@ class MainActivity : Activity() {
         } else {
             inferenceModeLocal.setTextColor(colorTextPrimary)
             inferenceModeRemote.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun updateFpsSegmentUI() {
+        val buttons = listOf(fps1Btn to 1, fps2Btn to 2, fps3Btn to 3)
+        for ((btn, value) in buttons) {
+            btn.setTextColor(if (Config.INFERENCE_FPS == value) colorTextPrimary else colorTextSecondary)
         }
     }
 

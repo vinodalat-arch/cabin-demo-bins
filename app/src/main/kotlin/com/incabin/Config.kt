@@ -70,8 +70,13 @@ object Config {
     // VLM server URL (e.g., "http://192.168.1.100:8000")
     @JvmStatic @Volatile var VLM_SERVER_URL = ""
 
-    // VLM polling interval (ms)
-    const val VLM_POLL_INTERVAL_MS = 1000L
+    // Inference FPS: 1, 2, or 3 — shared between local and VLM modes
+    // Local: controls INFERENCE_INTERVAL_MS = 1000/fps
+    // VLM: controls poll interval = 1000/fps
+    @JvmStatic @Volatile var INFERENCE_FPS = 1
+
+    /** Compute the poll/inference interval in milliseconds from current FPS. */
+    @JvmStatic fun inferenceIntervalMs(): Long = (1000L / INFERENCE_FPS.coerceIn(1, 3))
 
     // Driver seat side: "left" (LHD) or "right" (RHD)
     @JvmStatic @Volatile var DRIVER_SEAT_SIDE = "left"

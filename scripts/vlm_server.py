@@ -6,7 +6,7 @@ Provides two REST endpoints:
   GET /api/detect  — returns latest detection result from VLM
   GET /api/health  — returns server status
 
-The SA8155 polls /api/detect at ~1Hz and feeds the result through its
+The SA8155 polls /api/detect at ~1-3Hz and feeds the result through its
 existing downstream pipeline (smoother, distraction counter, alerts).
 
 Usage:
@@ -54,6 +54,8 @@ latest_result_lock = threading.Lock()
 server_start_time = time.time()
 frame_count = 0
 model_name = "mock"
+last_client_request_time: float = 0.0
+client_request_count: int = 0
 
 # ---------------------------------------------------------------------------
 # Detection result template
@@ -90,6 +92,9 @@ def default_result() -> dict:
 
 @app.get("/api/detect")
 def detect():
+    global last_client_request_time, client_request_count
+    last_client_request_time = time.time()
+    client_request_count += 1
     with latest_result_lock:
         if not latest_result:
             return JSONResponse(content=default_result())
@@ -103,10 +108,16 @@ def detect():
 def health():
     elapsed = time.time() - server_start_time
     fps = frame_count / elapsed if elapsed > 0 else 0
+    # Client is "connected" if we got a /api/detect request within the last 5s
+    client_age = time.time() - last_client_request_time if last_client_request_time > 0 else -1
+    client_connected = 0 < client_age < 5.0
     return JSONResponse(content={
         "status": "ok",
         "model": model_name,
         "fps": round(fps, 2),
+        "client_connected": client_connected,
+        "client_requests": client_request_count,
+        "client_last_seen_s": round(client_age, 1) if client_age >= 0 else None,
     })
 
 
@@ -114,7 +125,7 @@ def health():
 # Mock inference loop (for testing without a real VLM)
 # ---------------------------------------------------------------------------
 
-def mock_inference_loop(camera_id: int, fps: float = 1.0):
+def mock_inference_loop(camera_id: int, fps: float = 2.0):
     """Generate mock detection results, optionally reading camera frames."""
     global latest_result, frame_count
 
@@ -217,13 +228,119 @@ def test_all_inference_loop(fps: float = 1.0):
 
 
 # ---------------------------------------------------------------------------
+# Confidence thresholds — VLM confidence must exceed these to flag a detection
+# Tuned to reduce false positives: higher = more conservative
+# ---------------------------------------------------------------------------
+CONFIDENCE_THRESHOLDS = {
+    "driver_using_phone": 0.6,
+    "driver_eyes_closed": 0.5,
+    "driver_yawning": 0.5,
+    "driver_distracted": 0.5,
+    "driver_eating_drinking": 0.5,
+    "hands_off_wheel": 0.6,
+    "dangerous_posture": 0.5,
+    "child_present": 0.4,
+    "child_slouching": 0.5,
+}
+
+
+# ---------------------------------------------------------------------------
 # VLM inference loop (real model)
 # ---------------------------------------------------------------------------
 
-def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 0.5):
+# Enhanced prompt: asks for per-detection confidence (0.0-1.0) instead of booleans.
+# The server applies confidence thresholds before sending booleans to Android.
+VLM_PROMPT = """You are a driver monitoring system analyzing an in-cabin camera image.
+Analyze the image and return a JSON object with confidence scores (0.0 to 1.0) for each detection.
+
+For each field, 0.0 means definitely not happening, 1.0 means absolutely certain:
+
+{
+  "driver_detected": true/false,
+  "driver_detected_confidence": 0.0-1.0,
+  "passenger_count": <integer>,
+  "driver_using_phone": 0.0-1.0,
+  "driver_eyes_closed": 0.0-1.0,
+  "driver_yawning": 0.0-1.0,
+  "driver_distracted": 0.0-1.0,
+  "driver_eating_drinking": 0.0-1.0,
+  "hands_off_wheel": 0.0-1.0,
+  "dangerous_posture": 0.0-1.0,
+  "child_present": 0.0-1.0,
+  "child_slouching": 0.0-1.0
+}
+
+Detection criteria:
+- driver_using_phone: Hand holding/touching a phone or device near the face or steering area
+- driver_eyes_closed: Both eyelids fully or mostly shut (not just blinking)
+- driver_yawning: Mouth wide open in a yawn pattern (not talking/singing)
+- driver_distracted: Head turned significantly away from forward direction (>30 degrees)
+- driver_eating_drinking: Holding food, drink, bottle, cup near mouth or eating
+- hands_off_wheel: BOTH hands clearly not on or near the steering wheel
+- dangerous_posture: Leaning heavily sideways, slumped forward, or head drooping
+- child_present: A child (small person, child seat) visible in the vehicle
+- child_slouching: Child leaning or slouching out of proper seating position
+
+Return ONLY the JSON object, no explanation or markdown."""
+
+
+def apply_confidence_thresholds(vlm_result: dict) -> dict:
+    """Convert VLM confidence scores to booleans using thresholds."""
+    result = default_result()
+
+    # Direct fields
+    result["driver_detected"] = vlm_result.get("driver_detected", True)
+    result["passenger_count"] = max(1, int(vlm_result.get("passenger_count", 1)))
+
+    # Confidence → boolean via thresholds
+    for field, threshold in CONFIDENCE_THRESHOLDS.items():
+        confidence = vlm_result.get(field, 0.0)
+        if isinstance(confidence, (int, float)):
+            result[field] = float(confidence) >= threshold
+        elif isinstance(confidence, bool):
+            # VLM returned a boolean directly — use as-is
+            result[field] = confidence
+
+    # Child counting
+    child_conf = vlm_result.get("child_present", 0.0)
+    if isinstance(child_conf, (int, float)) and float(child_conf) >= CONFIDENCE_THRESHOLDS["child_present"]:
+        result["child_count"] = 1
+        result["child_present"] = True
+    elif isinstance(child_conf, bool) and child_conf:
+        result["child_count"] = 1
+        result["child_present"] = True
+
+    # Compute risk level from thresholded booleans
+    score = 0
+    if result.get("driver_using_phone"): score += 3
+    if result.get("driver_eyes_closed"): score += 3
+    if result.get("hands_off_wheel"): score += 3
+    if result.get("driver_distracted"): score += 2
+    if result.get("driver_yawning"): score += 2
+    if result.get("dangerous_posture"): score += 2
+    if result.get("driver_eating_drinking"): score += 1
+    if result.get("child_slouching"): score += 1
+    result["risk_level"] = "high" if score >= 3 else "medium" if score >= 1 else "low"
+
+    return result
+
+
+def extract_json_from_text(text: str) -> dict:
+    """Extract JSON from VLM output, handling markdown code fences."""
+    text = text.strip()
+    # Remove markdown code fences if present
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Remove first and last fence lines
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    return json.loads(text)
+
+
+def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
     """
     Run actual VLM inference on camera frames.
-    This is a reference implementation — adapt to your specific VLM setup.
+    Uses enhanced prompt with confidence scoring and adaptive frame pacing.
     """
     global latest_result, frame_count, model_name
     model_name = vlm_model
@@ -255,43 +372,31 @@ def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 0.5):
         print(f"ERROR: Cannot open camera {camera_id}")
         return
 
-    PROMPT = """Analyze this driver monitoring camera image. Return a JSON object with these boolean fields:
-- driver_using_phone: is the driver holding/using a phone?
-- driver_eyes_closed: are the driver's eyes closed?
-- driver_yawning: is the driver yawning?
-- driver_distracted: is the driver looking away from the road?
-- driver_eating_drinking: is the driver eating or drinking?
-- hands_off_wheel: are both hands off the steering wheel?
-- dangerous_posture: does the driver have dangerous posture?
-- child_present: is there a child in the vehicle?
-- child_slouching: is the child slouching?
-- passenger_count: total number of people visible (integer)
-- driver_detected: is a driver visible? (boolean)
-Return ONLY the JSON, no explanation."""
-
-    interval = 1.0 / fps
-    print(f"VLM inference loop started (fps={fps})")
+    target_interval = 1.0 / fps
+    print(f"VLM inference loop started (target_fps={fps}, adaptive pacing)")
+    inference_times = []
 
     try:
+        from PIL import Image
+        import io
+
         while True:
+            frame_start = time.time()
+
             ret, frame = cap.read()
             if not ret:
-                time.sleep(interval)
+                time.sleep(0.1)
                 continue
 
             try:
                 # Encode frame as JPEG for VLM input
                 _, jpeg = cv2.imencode('.jpg', frame)
-
-                # Build VLM input (adapt to your model's expected format)
-                from PIL import Image
-                import io
                 image = Image.open(io.BytesIO(jpeg.tobytes()))
 
                 messages = [
                     {"role": "user", "content": [
                         {"type": "image", "image": image},
-                        {"type": "text", "text": PROMPT},
+                        {"type": "text", "text": VLM_PROMPT},
                     ]}
                 ]
 
@@ -299,40 +404,44 @@ Return ONLY the JSON, no explanation."""
                 inputs = processor(text=[text], images=[image], return_tensors="pt").to(model.device)
 
                 with torch.no_grad():
-                    output_ids = model.generate(**inputs, max_new_tokens=256)
+                    output_ids = model.generate(**inputs, max_new_tokens=300)
 
-                output_text = processor.batch_decode(output_ids[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
+                output_text = processor.batch_decode(
+                    output_ids[:, inputs.input_ids.shape[1]:],
+                    skip_special_tokens=True
+                )[0]
 
-                # Parse VLM output as JSON
-                vlm_result = json.loads(output_text.strip())
-
-                # Build result with defaults for any missing fields
-                result = default_result()
-                for key in result:
-                    if key in vlm_result and key != "timestamp":
-                        result[key] = vlm_result[key]
-
-                # Compute risk level from detections
-                score = 0
-                if result.get("driver_using_phone"): score += 3
-                if result.get("driver_eyes_closed"): score += 3
-                if result.get("hands_off_wheel"): score += 3
-                if result.get("driver_distracted"): score += 2
-                if result.get("driver_yawning"): score += 2
-                if result.get("dangerous_posture"): score += 2
-                if result.get("driver_eating_drinking"): score += 1
-                if result.get("child_slouching"): score += 1
-                result["risk_level"] = "high" if score >= 3 else "medium" if score >= 1 else "low"
+                # Parse VLM output and apply confidence thresholds
+                vlm_result = extract_json_from_text(output_text)
+                result = apply_confidence_thresholds(vlm_result)
 
                 with latest_result_lock:
                     latest_result = result
 
                 frame_count += 1
 
+                # Track inference time for adaptive pacing stats
+                inference_ms = (time.time() - frame_start) * 1000
+                inference_times.append(inference_ms)
+                if len(inference_times) > 10:
+                    inference_times.pop(0)
+                avg_ms = sum(inference_times) / len(inference_times)
+                actual_fps = 1000.0 / avg_ms if avg_ms > 0 else 0
+
+                if frame_count % 10 == 0:
+                    print(f"[VLM Stats] frame={frame_count}, inference={inference_ms:.0f}ms, "
+                          f"avg={avg_ms:.0f}ms, actual_fps={actual_fps:.1f}")
+
+            except json.JSONDecodeError as e:
+                print(f"VLM JSON parse error: {e}")
             except Exception as e:
                 print(f"VLM inference error: {e}")
 
-            time.sleep(interval)
+            # Adaptive pacing: only sleep if inference was faster than target
+            elapsed = time.time() - frame_start
+            remaining = target_interval - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
     finally:
         cap.release()
 
@@ -348,7 +457,7 @@ def main():
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct",
                         help="VLM model name (default: Qwen/Qwen2.5-VL-7B-Instruct)")
     parser.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
-    parser.add_argument("--fps", type=float, default=1.0, help="Inference FPS (default: 1.0)")
+    parser.add_argument("--fps", type=float, default=2.0, help="Inference FPS (default: 2.0)")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
     parser.add_argument("--scenario", type=str, choices=["test-all"], default=None,
                         help="Run a test scenario: 'test-all' cycles through every detection")

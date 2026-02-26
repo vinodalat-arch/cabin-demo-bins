@@ -176,7 +176,7 @@ class CameraManager(
 
         try {
             val now = System.currentTimeMillis()
-            if (now - lastFrameTimeMs < Config.INFERENCE_INTERVAL_MS) {
+            if (now - lastFrameTimeMs < Config.inferenceIntervalMs()) {
                 return@OnImageAvailableListener
             }
             lastFrameTimeMs = now

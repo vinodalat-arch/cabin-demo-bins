@@ -91,7 +91,7 @@ class V4l2CameraManager(
                             continue
                         }
                     }
-                    Thread.sleep(Config.INFERENCE_INTERVAL_MS)
+                    Thread.sleep(Config.inferenceIntervalMs())
                 }
             } catch (_: InterruptedException) {
                 Log.i(TAG, "V4L2 capture thread interrupted")

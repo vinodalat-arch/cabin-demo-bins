@@ -217,9 +217,9 @@ class VlmClient(
                         connection.disconnect()
                     }
 
-                    // Sleep for poll interval between successful requests
+                    // Sleep for poll interval between successful requests (dynamic from FPS setting)
                     if (running) {
-                        Thread.sleep(Config.VLM_POLL_INTERVAL_MS)
+                        Thread.sleep(Config.inferenceIntervalMs())
                     }
                 } catch (e: InterruptedException) {
                     // stop() interrupted us
