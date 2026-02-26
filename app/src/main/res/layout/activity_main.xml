@@ -108,6 +108,23 @@
                     android:visibility="gone"
                     android:text="No camera" />
 
+                <!-- Inference mode badge (LOCAL / VLM) -->
+                <TextView
+                    android:id="@+id/inferenceBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_inference_badge"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp"
+                    android:text="LOCAL"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="#FFFFFFFF"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:visibility="gone" />
+
                 <!-- Spacer -->
                 <View
                     android:layout_width="0dp"
@@ -929,6 +946,60 @@
                         android:textSize="15sp"
                         android:textColor="@color/text_secondary" />
                 </LinearLayout>
+
+                <!-- Inference Mode -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Inference"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        android:id="@+id/inferenceModeLocal"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="LOCAL"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/inferenceModeRemote"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="REMOTE"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
+
+                <!-- VLM Server button (only relevant in remote mode) -->
+                <Button
+                    android:id="@+id/vlmServerButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:background="@drawable/bg_button"
+                    android:text="VLM Server..."
+                    android:textSize="15sp"
+                    android:textColor="@color/text_secondary"
+                    android:textAllCaps="false"
+                    android:layout_marginBottom="@dimen/space_md"
+                    android:stateListAnimator="@null" />
 
                 <!-- WiFi Camera button -->
                 <Button

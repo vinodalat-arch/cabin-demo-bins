@@ -65,6 +65,9 @@ class InCabinService : Service() {
     private var vehicleChannelManager: VehicleChannelManager? = null
     private val overlayRenderer = OverlayRenderer()
 
+    // --- Remote VLM client (mutually exclusive with local camera/models) ---
+    private var vlmClient: VlmClient? = null
+
     // --- Device setup (automotive BSP only) ---
     private var deviceSetup: DeviceSetup? = null
     @Volatile private var initialized = false
@@ -146,13 +149,17 @@ class InCabinService : Service() {
         // Detect platform once
         platformProfile = PlatformProfile.detect()
 
-        if (platformProfile.isAutomotiveBsp) {
+        if (Config.INFERENCE_MODE == "remote") {
+            // Remote VLM mode: skip all local model init and camera
+            initializeComponents()
+            startVlmClient()
+        } else if (platformProfile.isAutomotiveBsp) {
             runDeviceSetupThenStart()
         } else {
             initializeComponents()
             startCamera()
         }
-        Log.i(TAG, "Service started")
+        Log.i(TAG, "Service started (mode=${Config.INFERENCE_MODE})")
 
         return START_STICKY
     }
@@ -223,6 +230,9 @@ class InCabinService : Service() {
 
             cameraManager?.stop()
             cameraManager = null
+
+            vlmClient?.stop()
+            vlmClient = null
 
             faceAnalyzer?.close()
             faceAnalyzer = null
@@ -295,92 +305,98 @@ class InCabinService : Service() {
         val processHeapMb = Runtime.getRuntime().totalMemory() / (1024 * 1024)
         Log.i(TAG, "CPUs: ${Runtime.getRuntime().availableProcessors()}, RAM: ${totalRamMb} MB, Process heap: ${processHeapMb} MB")
 
-        // --- Asset Verification ---
-        Log.i(TAG, "=== Asset Verification ===")
-        for (assetName in ASSET_FILES) {
-            try {
-                val size = assets.open(assetName).use { it.available().toLong() }
-                Log.i(TAG, "Asset $assetName: $size bytes")
-            } catch (_: Exception) {
-                // FP32/FP16 variants: only warn (C++ falls back between them)
-                if (assetName.endsWith("-fp16.onnx") || assetName == "yolov8n-pose.onnx" || assetName == "yolov8n.onnx") {
-                    Log.d(TAG, "Asset $assetName: not found (variant, C++ will try fallback)")
-                } else {
-                    Log.e(TAG, "Asset $assetName: MISSING or unreadable")
-                }
-            }
-        }
-
-        // --- Component Init (parallel where possible) ---
-        Log.i(TAG, "=== Component Init ===")
         val initStartMs = System.currentTimeMillis()
 
-        // OpenCV must init before FaceAnalyzer (solvePnP dependency)
-        if (!OpenCVLoader.initLocal()) {
-            Log.e(TAG, "OpenCV initialization failed")
+        if (Config.INFERENCE_MODE == "local") {
+            // --- Asset Verification (local mode only) ---
+            Log.i(TAG, "=== Asset Verification ===")
+            for (assetName in ASSET_FILES) {
+                try {
+                    val size = assets.open(assetName).use { it.available().toLong() }
+                    Log.i(TAG, "Asset $assetName: $size bytes")
+                } catch (_: Exception) {
+                    // FP32/FP16 variants: only warn (C++ falls back between them)
+                    if (assetName.endsWith("-fp16.onnx") || assetName == "yolov8n-pose.onnx" || assetName == "yolov8n.onnx") {
+                        Log.d(TAG, "Asset $assetName: not found (variant, C++ will try fallback)")
+                    } else {
+                        Log.e(TAG, "Asset $assetName: MISSING or unreadable")
+                    }
+                }
+            }
+
+            // --- Component Init (parallel where possible, local mode only) ---
+            Log.i(TAG, "=== Component Init (local) ===")
+
+            // OpenCV must init before FaceAnalyzer (solvePnP dependency)
+            if (!OpenCVLoader.initLocal()) {
+                Log.e(TAG, "OpenCV initialization failed")
+            } else {
+                Log.i(TAG, "OpenCV ${org.opencv.core.Core.VERSION} initialized")
+            }
+
+            // PoseAnalyzerBridge, FaceRecognizerBridge are independent — init in parallel
+            val latch = CountDownLatch(2)
+
+            Thread({
+                try {
+                    val t0 = System.currentTimeMillis()
+                    poseAnalyzer = PoseAnalyzerBridge(
+                        assets,
+                        platformProfile.poseThreadCount,
+                        platformProfile.poseThreadAffinity
+                    )
+                    Log.i(TAG, "PoseAnalyzerBridge initialized (${System.currentTimeMillis() - t0}ms)")
+                } catch (e: Exception) {
+                    Log.e(TAG, "PoseAnalyzerBridge initialization failed", e)
+                } finally {
+                    latch.countDown()
+                }
+            }, "PoseAnalyzer-Init").start()
+
+            Thread({
+                try {
+                    val t0 = System.currentTimeMillis()
+                    faceRecognizer = FaceRecognizerBridge(
+                        assets,
+                        platformProfile.faceRecThreadCount,
+                        platformProfile.faceRecThreadAffinity
+                    )
+                    Log.i(TAG, "FaceRecognizerBridge initialized (${System.currentTimeMillis() - t0}ms)")
+                } catch (e: Exception) {
+                    Log.e(TAG, "FaceRecognizerBridge initialization failed", e)
+                } finally {
+                    latch.countDown()
+                }
+            }, "FaceRecognizer-Init").start()
+
+            // FaceAnalyzer on current thread (needs Context, already on service thread)
+            try {
+                val t0 = System.currentTimeMillis()
+                faceAnalyzer = FaceAnalyzer(this)
+                Log.i(TAG, "FaceAnalyzer initialized (${System.currentTimeMillis() - t0}ms)")
+            } catch (e: Exception) {
+                Log.e(TAG, "FaceAnalyzer initialization failed", e)
+            }
+
+            // Wait for parallel inits to finish (bounded to prevent hang on init failure)
+            val initCompleted = latch.await(Config.INIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            if (!initCompleted) {
+                Log.e(TAG, "Component init timed out after ${Config.INIT_TIMEOUT_MS}ms — continuing with partial init")
+                CrashLog.error(TAG, "Component init timed out after ${Config.INIT_TIMEOUT_MS}ms")
+            }
+
+            // FaceStore (fast disk I/O, init on main thread)
+            try {
+                faceStore = FaceStore.getInstance(this)
+                Log.i(TAG, "FaceStore initialized (${faceStore?.count() ?: 0} faces)")
+            } catch (e: Exception) {
+                Log.e(TAG, "FaceStore initialization failed", e)
+            }
         } else {
-            Log.i(TAG, "OpenCV ${org.opencv.core.Core.VERSION} initialized")
+            Log.i(TAG, "Remote VLM mode — skipping local model initialization")
         }
 
-        // PoseAnalyzerBridge, FaceRecognizerBridge are independent — init in parallel
-        val latch = CountDownLatch(2)
-
-        Thread({
-            try {
-                val t0 = System.currentTimeMillis()
-                poseAnalyzer = PoseAnalyzerBridge(
-                    assets,
-                    platformProfile.poseThreadCount,
-                    platformProfile.poseThreadAffinity
-                )
-                Log.i(TAG, "PoseAnalyzerBridge initialized (${System.currentTimeMillis() - t0}ms)")
-            } catch (e: Exception) {
-                Log.e(TAG, "PoseAnalyzerBridge initialization failed", e)
-            } finally {
-                latch.countDown()
-            }
-        }, "PoseAnalyzer-Init").start()
-
-        Thread({
-            try {
-                val t0 = System.currentTimeMillis()
-                faceRecognizer = FaceRecognizerBridge(
-                    assets,
-                    platformProfile.faceRecThreadCount,
-                    platformProfile.faceRecThreadAffinity
-                )
-                Log.i(TAG, "FaceRecognizerBridge initialized (${System.currentTimeMillis() - t0}ms)")
-            } catch (e: Exception) {
-                Log.e(TAG, "FaceRecognizerBridge initialization failed", e)
-            } finally {
-                latch.countDown()
-            }
-        }, "FaceRecognizer-Init").start()
-
-        // FaceAnalyzer on current thread (needs Context, already on service thread)
-        try {
-            val t0 = System.currentTimeMillis()
-            faceAnalyzer = FaceAnalyzer(this)
-            Log.i(TAG, "FaceAnalyzer initialized (${System.currentTimeMillis() - t0}ms)")
-        } catch (e: Exception) {
-            Log.e(TAG, "FaceAnalyzer initialization failed", e)
-        }
-
-        // Wait for parallel inits to finish (bounded to prevent hang on init failure)
-        val initCompleted = latch.await(Config.INIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        if (!initCompleted) {
-            Log.e(TAG, "Component init timed out after ${Config.INIT_TIMEOUT_MS}ms — continuing with partial init")
-            CrashLog.error(TAG, "Component init timed out after ${Config.INIT_TIMEOUT_MS}ms")
-        }
-
-        // FaceStore (fast disk I/O, init on main thread)
-        try {
-            faceStore = FaceStore.getInstance(this)
-            Log.i(TAG, "FaceStore initialized (${faceStore?.count() ?: 0} faces)")
-        } catch (e: Exception) {
-            Log.e(TAG, "FaceStore initialization failed", e)
-        }
-
+        // --- Common init (both local and remote modes) ---
         // TemporalSmoother (uses Config defaults: window=3, threshold=0.6)
         smoother = TemporalSmoother()
         Log.i(TAG, "TemporalSmoother initialized")
@@ -509,6 +525,90 @@ class InCabinService : Service() {
             Log.e(TAG, "Error stopping cameras during restart", e)
         }
         startCamera()
+    }
+
+    // -------------------------------------------------------------------------
+    // Remote VLM Client
+    // -------------------------------------------------------------------------
+
+    private fun startVlmClient() {
+        val url = Config.VLM_SERVER_URL
+        if (url.isBlank()) {
+            Log.e(TAG, "VLM server URL not configured")
+            return
+        }
+        vlmClient = VlmClient(url, ::onVlmResult)
+        vlmClient?.start()
+        FrameHolder.postCameraStatus(FrameHolder.CameraStatus.CONNECTING)
+        Log.i(TAG, "VLM client started: $url")
+    }
+
+    /**
+     * Callback from VlmClient: processes a remote detection result through the
+     * shared downstream pipeline (smoother → distraction → alerts → JSON → dashboard).
+     * This is a NEW, SEPARATE callback — processFrame() is NOT touched.
+     */
+    private fun onVlmResult(rawResult: OutputResult) {
+        if (!pipelineLock.tryLock()) return
+        try {
+            // Smooth (same as local pipeline step 4)
+            val smoothed = smoother?.smooth(rawResult) ?: rawResult
+
+            // Distraction duration (same as local pipeline step 5)
+            val durationVal = if (!smoothed.driverDetected) {
+                cleanFrameCount = 0
+                distractionDurationS.set(0)
+                0
+            } else if (DISTRACTION_FIELDS_CHECK(smoothed)) {
+                cleanFrameCount = 0
+                distractionDurationS.incrementAndGet()
+            } else {
+                cleanFrameCount++
+                if (cleanFrameCount >= Config.DISTRACTION_GRACE_FRAMES) {
+                    distractionDurationS.set(0)
+                    0
+                } else {
+                    distractionDurationS.get()
+                }
+            }
+
+            // Inject distraction_duration_s (VLM doesn't send driver_name via recognition,
+            // so we pass through whatever the server provides)
+            val finalResult = smoothed.copy(distractionDurationS = durationVal)
+
+            // Alert orchestrator (core — must run)
+            val audioEnabled = Config.ENABLE_AUDIO_ALERTS
+            if (audioEnabled) {
+                if (!prevAudioEnabled) {
+                    alertOrchestrator?.resetState()
+                }
+                alertOrchestrator?.evaluate(finalResult)
+            }
+            prevAudioEnabled = audioEnabled
+
+            // Log JSON output (core)
+            Log.i(TAG, finalResult.toJson())
+
+            // Post result for fast dashboard updates
+            FrameHolder.postResult(finalResult)
+
+            // Heartbeats (pipeline is alive)
+            watchdog?.recordHeartbeat()
+            FrameHolder.postHeartbeat()
+
+            // Periodic stats
+            frameCount++
+            if (frameCount % STATS_INTERVAL == 0) {
+                val javaHeapMb = Runtime.getRuntime().totalMemory() / (1024 * 1024)
+                Log.i(TAG, "[VLM Stats @$frameCount] frames=$frameCount, heap=${javaHeapMb}MB, " +
+                    "distraction=${finalResult.distractionDurationS}s")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "VLM result processing error", e)
+            CrashLog.logException(TAG, "VLM result processing error", e)
+        } finally {
+            pipelineLock.unlock()
+        }
     }
 
     // -------------------------------------------------------------------------

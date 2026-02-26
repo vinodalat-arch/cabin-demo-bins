@@ -228,14 +228,19 @@ class MainActivity : Activity() {
     private var colorTextMuted = 0
     private var colorSurface = 0
     private var colorSurfaceElevated = 0
+    private var colorVlmPurple = 0
 
     // --- UI references ---
     private lateinit var rootLayout: FrameLayout
+    private lateinit var inferenceBadge: TextView
     private lateinit var toggleButton: TextView
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
     private lateinit var audioToggle: Button
     private lateinit var wifiCamButton: Button
+    private lateinit var inferenceModeLocal: TextView
+    private lateinit var inferenceModeRemote: TextView
+    private lateinit var vlmServerButton: Button
     private lateinit var cameraStatusText: TextView
     private lateinit var cameraStatusDot: View
     private lateinit var driverNameText: TextView
@@ -413,6 +418,7 @@ class MainActivity : Activity() {
         colorTextMuted = ContextCompat.getColor(this, R.color.text_muted)
         colorSurface = ContextCompat.getColor(this, R.color.surface)
         colorSurfaceElevated = ContextCompat.getColor(this, R.color.surface_elevated)
+        colorVlmPurple = ContextCompat.getColor(this, R.color.vlm_purple)
 
         // Detect platform once
         platformProfile = PlatformProfile.detect()
@@ -422,6 +428,7 @@ class MainActivity : Activity() {
         toggleButton = findViewById(R.id.toggleButton)
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
+        inferenceBadge = findViewById(R.id.inferenceBadge)
         driverNameText = findViewById(R.id.driverNameText)
         driverPositionText = findViewById(R.id.driverPositionText)
         statusText = findViewById(R.id.statusText)
@@ -491,6 +498,9 @@ class MainActivity : Activity() {
         previewToggle = findViewById(R.id.previewToggle)
         audioToggle = findViewById(R.id.audioToggle)
         wifiCamButton = findViewById(R.id.wifiCamButton)
+        inferenceModeLocal = findViewById(R.id.inferenceModeLocal)
+        inferenceModeRemote = findViewById(R.id.inferenceModeRemote)
+        vlmServerButton = findViewById(R.id.vlmServerButton)
         asimoSizeSmallBtn = findViewById(R.id.asimoSizeSmallBtn)
         asimoSizeMediumBtn = findViewById(R.id.asimoSizeMediumBtn)
         asimoSizeLargeBtn = findViewById(R.id.asimoSizeLargeBtn)
@@ -505,6 +515,8 @@ class MainActivity : Activity() {
         updateSeatSegmentUI()
         updateLangSegmentUI()
         updateWifiCamButtonUI()
+        updateInferenceModeUI()
+        updateVlmServerButtonUI()
         updatePaxDetailSegmentUI()
         updateAsimoSizeSegmentUI()
         updateBottomWidgetSegmentUI()
@@ -634,6 +646,28 @@ class MainActivity : Activity() {
             updateBottomWidgetSegmentUI()
             updateBottomWidgetVisibility()
             Log.i(TAG, "Bottom widget: tips")
+        }
+
+        inferenceModeLocal.setOnClickListener {
+            Config.INFERENCE_MODE = "local"
+            prefs.edit().putString(ConfigPrefs.PREF_INFERENCE_MODE, "local").apply()
+            updateInferenceModeUI()
+            updateVlmServerButtonUI()
+            Log.i(TAG, "Inference mode: local")
+        }
+        inferenceModeRemote.setOnClickListener {
+            Config.INFERENCE_MODE = "remote"
+            prefs.edit().putString(ConfigPrefs.PREF_INFERENCE_MODE, "remote").apply()
+            updateInferenceModeUI()
+            updateVlmServerButtonUI()
+            if (isRunning) {
+                Toast.makeText(this, "Changes apply after restart", Toast.LENGTH_SHORT).show()
+            }
+            Log.i(TAG, "Inference mode: remote")
+        }
+
+        vlmServerButton.setOnClickListener {
+            showVlmServerDialog()
         }
 
         wifiCamButton.setOnClickListener {
@@ -1027,6 +1061,107 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
+    // Inference Mode Configuration
+    // ---------------------------------------------------------------------
+
+    private fun updateInferenceModeUI() {
+        if (Config.INFERENCE_MODE == "remote") {
+            inferenceModeRemote.setTextColor(colorTextPrimary)
+            inferenceModeLocal.setTextColor(colorTextSecondary)
+        } else {
+            inferenceModeLocal.setTextColor(colorTextPrimary)
+            inferenceModeRemote.setTextColor(colorTextSecondary)
+        }
+    }
+
+    private fun updateVlmServerButtonUI() {
+        if (Config.INFERENCE_MODE == "remote") {
+            vlmServerButton.visibility = View.VISIBLE
+            if (Config.VLM_SERVER_URL.isNotBlank()) {
+                vlmServerButton.text = "VLM: ON"
+                vlmServerButton.setTextColor(colorAccent)
+            } else {
+                vlmServerButton.text = "VLM Server..."
+                vlmServerButton.setTextColor(colorTextSecondary)
+            }
+        } else {
+            vlmServerButton.visibility = View.GONE
+        }
+    }
+
+    private fun showVlmServerDialog() {
+        val currentUrl = Config.VLM_SERVER_URL
+
+        val input = EditText(this).apply {
+            setText(currentUrl)
+            hint = "http://192.168.1.100:8000"
+            setHintTextColor(colorTextMuted)
+            setTextColor(colorTextPrimary)
+            setBackgroundColor(colorSurfaceElevated)
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+            textSize = 14f
+            isSingleLine = true
+            if (currentUrl.isNotBlank()) selectAll()
+        }
+
+        val hintText = if (isRunning)
+            "VLM server base URL\nChanges apply after restart"
+        else
+            "VLM server base URL (e.g. laptop on LAN)"
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(20), dpToPx(12), dpToPx(20), 0)
+            addView(input)
+            addView(TextView(this@MainActivity).apply {
+                text = hintText
+                setTextColor(colorTextMuted)
+                textSize = 11f
+                setPadding(0, dpToPx(6), 0, 0)
+            })
+        }
+
+        val prefs = getSharedPreferences(ConfigPrefs.PREFS_NAME, Context.MODE_PRIVATE)
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog)
+            .setTitle("VLM Server")
+            .setView(container)
+            .setPositiveButton("Save") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isNotBlank() && !url.startsWith("http://") && !url.startsWith("https://")) {
+                    Toast.makeText(this, "URL must start with http:// or https://", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                Config.VLM_SERVER_URL = url
+                prefs.edit().putString(ConfigPrefs.PREF_VLM_URL, url).apply()
+                updateVlmServerButtonUI()
+                Log.i(TAG, "VLM server URL: ${if (url.isBlank()) "(cleared)" else url}")
+
+                // Advisory health check on save
+                if (url.isNotBlank()) {
+                    Thread {
+                        val health = VlmClient.checkHealthOnce(url)
+                        runOnUiThread {
+                            val msg = if (health != null)
+                                "VLM Online \u2014 ${health.model ?: "unknown"}"
+                            else "VLM Offline"
+                            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    }.start()
+                }
+            }
+            .setNeutralButton("Clear") { _, _ ->
+                Config.VLM_SERVER_URL = ""
+                prefs.edit().putString(ConfigPrefs.PREF_VLM_URL, "").apply()
+                updateVlmServerButtonUI()
+                Log.i(TAG, "VLM server URL cleared")
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.show()
+    }
+
+    // ---------------------------------------------------------------------
     // Camera Status Indicator (dot + tooltip)
     // ---------------------------------------------------------------------
 
@@ -1039,6 +1174,15 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun updateInferenceBadge() {
+        val isRemote = Config.INFERENCE_MODE == "remote"
+        inferenceBadge.text = if (isRemote) "VLM" else "LOCAL"
+        val bg = inferenceBadge.background
+        if (bg is GradientDrawable) {
+            bg.setColor(if (isRemote) colorVlmPurple else colorAccent)
+        }
+    }
+
     private fun updateCameraStatus() {
         // Check for service stall (heartbeat older than threshold)
         if (isRunning && FrameHolder.isServiceRunning() &&
@@ -1048,26 +1192,27 @@ class MainActivity : Activity() {
             return
         }
 
+        val isRemote = Config.INFERENCE_MODE == "remote"
         val status = FrameHolder.getCameraStatus()
         when (status) {
             FrameHolder.CameraStatus.NOT_CONNECTED -> {
-                cameraStatusText.text = "No camera"
+                cameraStatusText.text = if (isRemote) "VLM: N/C" else "No camera"
                 setCameraStatusDotColor(colorDanger)
             }
             FrameHolder.CameraStatus.CONNECTING -> {
-                cameraStatusText.text = "Connecting..."
+                cameraStatusText.text = if (isRemote) "VLM: Connecting" else "Connecting..."
                 setCameraStatusDotColor(colorCaution)
             }
             FrameHolder.CameraStatus.READY -> {
-                cameraStatusText.text = "Ready"
+                cameraStatusText.text = if (isRemote) "VLM: Ready" else "Ready"
                 setCameraStatusDotColor(colorSafe)
             }
             FrameHolder.CameraStatus.ACTIVE -> {
-                cameraStatusText.text = "Active"
+                cameraStatusText.text = if (isRemote) "VLM: Active" else "Active"
                 setCameraStatusDotColor(colorSafe)
             }
             FrameHolder.CameraStatus.LOST -> {
-                cameraStatusText.text = "Lost"
+                cameraStatusText.text = if (isRemote) "VLM: Lost" else "Lost"
                 setCameraStatusDotColor(colorDanger)
             }
         }
@@ -1078,6 +1223,25 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------------
 
     private fun onStartButtonTap() {
+        if (Config.INFERENCE_MODE == "remote") {
+            // Remote VLM mode: sanity-check URL and server before starting
+            if (Config.VLM_SERVER_URL.isBlank()) {
+                Toast.makeText(this, "VLM server URL not configured", Toast.LENGTH_SHORT).show()
+                return
+            }
+            statusText.text = "Checking VLM server..."
+            Thread {
+                val health = VlmClient.checkHealthOnce(Config.VLM_SERVER_URL)
+                runOnUiThread {
+                    val msg = if (health != null)
+                        "VLM Online \u2014 ${health.model ?: "unknown"}"
+                    else "VLM server unreachable"
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    checkPermissionsAndStart()  // Always proceed — advisory only
+                }
+            }.start()
+            return
+        }
         if (platformProfile.isAutomotiveBsp) {
             // On automotive BSP: check if camera is already available first
             // to skip the full setup flow (ODK/chmod/grant) when unnecessary
@@ -1150,7 +1314,11 @@ class MainActivity : Activity() {
     }
 
     private fun checkPermissionsAndStart() {
-        val permissions = mutableListOf(Manifest.permission.CAMERA)
+        val permissions = mutableListOf<String>()
+        // Skip camera permission in remote VLM mode (no local camera used)
+        if (Config.INFERENCE_MODE != "remote") {
+            permissions.add(Manifest.permission.CAMERA)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -1172,6 +1340,11 @@ class MainActivity : Activity() {
         grantResults: IntArray
     ) {
         if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (Config.INFERENCE_MODE == "remote") {
+                // In remote mode, camera is not requested — just start
+                startMonitoring()
+                return
+            }
             val cameraGranted = grantResults.isNotEmpty() &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED
 
@@ -1233,6 +1406,12 @@ class MainActivity : Activity() {
         scoreContainer.visibility = View.VISIBLE
         scorePanel.visibility = View.VISIBLE
         leftDivider.visibility = View.VISIBLE
+
+        // Show inference mode badge with fade-in
+        updateInferenceBadge()
+        inferenceBadge.alpha = 0f
+        inferenceBadge.visibility = View.VISIBLE
+        inferenceBadge.animate().alpha(1f).setDuration(200).start()
 
         // Show aiStatusText only when preview is ON (bubble handles it otherwise)
         if (Config.ENABLE_PREVIEW) {
@@ -1325,6 +1504,7 @@ class MainActivity : Activity() {
         scorePanel.visibility = View.GONE
         leftDivider.visibility = View.GONE
         aiStatusText.visibility = View.GONE
+        inferenceBadge.visibility = View.GONE
         tickerContainer.visibility = View.GONE
         stopTipsRotation()
         statsWidget.visibility = View.GONE

@@ -64,6 +64,15 @@ object Config {
     // WiFi camera MJPEG stream URL (empty = disabled; persisted in SharedPreferences)
     @JvmStatic @Volatile var WIFI_CAMERA_URL = ""
 
+    // Inference mode: "local" or "remote" (persisted in SharedPreferences)
+    @JvmStatic @Volatile var INFERENCE_MODE = "local"
+
+    // VLM server URL (e.g., "http://192.168.1.100:8000")
+    @JvmStatic @Volatile var VLM_SERVER_URL = ""
+
+    // VLM polling interval (ms)
+    const val VLM_POLL_INTERVAL_MS = 1000L
+
     // Driver seat side: "left" (LHD) or "right" (RHD)
     @JvmStatic @Volatile var DRIVER_SEAT_SIDE = "left"
 

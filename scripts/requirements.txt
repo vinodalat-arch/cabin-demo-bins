@@ -1,0 +1,7 @@
+fastapi>=0.104.0
+uvicorn>=0.24.0
+opencv-python>=4.8.0
+# Optional — for real VLM inference:
+# transformers>=4.37.0
+# torch>=2.1.0
+# Pillow>=10.0.0
