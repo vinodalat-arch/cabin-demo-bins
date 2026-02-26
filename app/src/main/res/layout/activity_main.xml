@@ -178,7 +178,7 @@
                             android:paddingEnd="@dimen/bubble_padding_h"
                             android:paddingTop="@dimen/bubble_padding_v"
                             android:paddingBottom="@dimen/bubble_padding_v"
-                            android:textSize="16sp"
+                            android:textSize="24sp"
                             android:textColor="@color/text_primary"
                             android:gravity="center"
                             android:text="Smart eyes are ready!" />
@@ -224,7 +224,7 @@
                         android:paddingEnd="@dimen/space_md"
                         android:paddingTop="@dimen/space_xs"
                         android:paddingBottom="@dimen/space_xs"
-                        android:textSize="16sp"
+                        android:textSize="24sp"
                         android:textColor="@color/danger"
                         android:letterSpacing="0.08"
                         android:visibility="gone"

@@ -46,15 +46,31 @@ class MainActivity : Activity() {
             "Adjust your mirrors before you go.",
             "Take a break every 2 hours.",
             "Keep both hands on the wheel.",
-            "Good posture reduces fatigue."
+            "Good posture reduces fatigue.",
+            "Stretch at the next rest area.",
+            "Turn on headlights early in rain or fog.",
+            "Enjoy a refreshment stop — you've earned it.",
+            "Chewing gum helps maintain alertness.",
+            "Courteous driving keeps everyone safe.",
+            "Take a deep breath before starting your drive.",
+            "Slow down early for toll plazas.",
+            "A little fresh air through the window keeps you sharp."
         )
-        // Wellness tips — Japanese
+        // Wellness tips — Japanese (with cultural nuances)
         private val TIPS_GENERAL_JA = listOf(
             "長距離運転は水分補給を忘れずに。",
             "出発前にミラーを調整しましょう。",
             "2時間ごとに休憩を取りましょう。",
             "両手でハンドルを握りましょう。",
-            "正しい姿勢は疲労を軽減します。"
+            "正しい姿勢は疲労を軽減します。",
+            "高速のSA・PAで軽いストレッチを。",
+            "梅雨の時期はヘッドライト早めに点灯。",
+            "道の駅で地元の名物を楽しもう。",
+            "居眠り防止にガムや昆布が効果的。",
+            "思いやり運転で事故ゼロを目指そう。",
+            "運転前にお辞儀のように深呼吸を。",
+            "ETCレーンは余裕を持って減速を。",
+            "窓を少し開けて新鮮な空気で目を覚まそう。"
         )
 
         // 5-tap gesture
@@ -621,10 +637,6 @@ class MainActivity : Activity() {
         }
 
         wifiCamButton.setOnClickListener {
-            if (isRunning) {
-                Toast.makeText(this, "Stop monitoring before changing camera", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
             showWifiCameraDialog()
         }
 
@@ -969,13 +981,18 @@ class MainActivity : Activity() {
             if (currentUrl.isNotBlank()) selectAll()
         }
 
+        val hintText = if (isRunning)
+            "MJPEG stream URL (e.g. IP Webcam app)\nChanges apply after restart"
+        else
+            "MJPEG stream URL (e.g. IP Webcam app)"
+
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(20), dpToPx(12), dpToPx(20), 0)
             addView(input)
             // Subtitle hint
             addView(TextView(this@MainActivity).apply {
-                text = "MJPEG stream URL (e.g. IP Webcam app)"
+                text = hintText
                 setTextColor(colorTextMuted)
                 textSize = 11f
                 setPadding(0, dpToPx(6), 0, 0)
@@ -1482,9 +1499,9 @@ class MainActivity : Activity() {
             val tv = TextView(this).apply {
                 tag = "det_$key"
                 text = "\u25CF  $displayLabel"
-                textSize = 15f
+                textSize = 22f
                 setTextColor(dotColor)
-                setPadding(0, dpToPx(2), 0, dpToPx(2))
+                setPadding(0, dpToPx(3), 0, dpToPx(3))
                 alpha = 0f
             }
             detectionsContainer.addView(tv)
@@ -1513,9 +1530,9 @@ class MainActivity : Activity() {
         val tv = TextView(this).apply {
             tag = "det_allclear"
             text = if (Config.LANGUAGE == "ja") "安全" else "All Clear"
-            textSize = 15f
+            textSize = 22f
             setTextColor(colorSafe)
-            setPadding(0, dpToPx(2), 0, dpToPx(2))
+            setPadding(0, dpToPx(3), 0, dpToPx(3))
             alpha = 0f
         }
         detectionsContainer.addView(tv)
@@ -1537,9 +1554,9 @@ class MainActivity : Activity() {
             val label = if (isJa) "\u25CF  乗客${p.index}: 姿勢不良" else "\u25CF  Passenger ${p.index}: Bad Posture"
             val tv = TextView(this).apply {
                 text = label
-                textSize = 14f
+                textSize = 20f
                 setTextColor(colorCaution)
-                setPadding(0, dpToPx(1), 0, dpToPx(1))
+                setPadding(0, dpToPx(2), 0, dpToPx(2))
                 alpha = 0f
             }
             passengerPostureContainer.addView(tv)
