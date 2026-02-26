@@ -293,20 +293,23 @@ def apply_confidence_thresholds(vlm_result: dict) -> dict:
     result["passenger_count"] = max(1, int(vlm_result.get("passenger_count", 1)))
 
     # Confidence → boolean via thresholds
+    # Note: isinstance(bool) must come before isinstance(int/float) since bool is a subclass of int
     for field, threshold in CONFIDENCE_THRESHOLDS.items():
         confidence = vlm_result.get(field, 0.0)
-        if isinstance(confidence, (int, float)):
-            result[field] = float(confidence) >= threshold
-        elif isinstance(confidence, bool):
+        if isinstance(confidence, bool):
             # VLM returned a boolean directly — use as-is
             result[field] = confidence
+        elif isinstance(confidence, (int, float)):
+            result[field] = float(confidence) >= threshold
+        # else: unexpected type (str, None) — keep default False
 
     # Child counting
     child_conf = vlm_result.get("child_present", 0.0)
-    if isinstance(child_conf, (int, float)) and float(child_conf) >= CONFIDENCE_THRESHOLDS["child_present"]:
-        result["child_count"] = 1
-        result["child_present"] = True
-    elif isinstance(child_conf, bool) and child_conf:
+    if isinstance(child_conf, bool):
+        if child_conf:
+            result["child_count"] = 1
+            result["child_present"] = True
+    elif isinstance(child_conf, (int, float)) and float(child_conf) >= CONFIDENCE_THRESHOLDS["child_present"]:
         result["child_count"] = 1
         result["child_present"] = True
 
@@ -328,11 +331,13 @@ def apply_confidence_thresholds(vlm_result: dict) -> dict:
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from VLM output, handling markdown code fences."""
     text = text.strip()
-    # Remove markdown code fences if present
+    # Remove markdown code fences if present (only first and last lines)
     if text.startswith("```"):
         lines = text.split("\n")
-        # Remove first and last fence lines
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
         text = "\n".join(lines).strip()
     return json.loads(text)
 

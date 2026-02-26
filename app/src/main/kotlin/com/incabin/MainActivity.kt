@@ -229,6 +229,7 @@ class MainActivity : Activity() {
     private var colorSurface = 0
     private var colorSurfaceElevated = 0
     private var colorVlmPurple = 0
+    private var activeInferenceMode = "local"  // captured at monitoring start for accurate badge
 
     // --- UI references ---
     private lateinit var rootLayout: FrameLayout
@@ -311,6 +312,7 @@ class MainActivity : Activity() {
 
     private var isRunning = false
     private var isSettingUp = false
+    @Volatile private var isActivityDestroyed = false
 
     // --- Platform & setup ---
     private lateinit var platformProfile: PlatformProfile
@@ -735,6 +737,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        isActivityDestroyed = true
         riskAnimator?.cancel()
         stopTipsRotation()
         if (::asimoGlowView.isInitialized) asimoGlowView.stopPulse()
@@ -1092,10 +1095,14 @@ class MainActivity : Activity() {
 
     private fun updateInferenceModeUI() {
         if (Config.INFERENCE_MODE == "remote") {
-            inferenceModeRemote.setTextColor(colorTextPrimary)
+            inferenceModeRemote.setBackgroundResource(R.drawable.bg_segmented_selected)
+            inferenceModeRemote.setTextColor(Color.WHITE)
+            inferenceModeLocal.setBackgroundColor(Color.TRANSPARENT)
             inferenceModeLocal.setTextColor(colorTextSecondary)
         } else {
-            inferenceModeLocal.setTextColor(colorTextPrimary)
+            inferenceModeLocal.setBackgroundResource(R.drawable.bg_segmented_selected)
+            inferenceModeLocal.setTextColor(Color.WHITE)
+            inferenceModeRemote.setBackgroundColor(Color.TRANSPARENT)
             inferenceModeRemote.setTextColor(colorTextSecondary)
         }
     }
@@ -1103,7 +1110,13 @@ class MainActivity : Activity() {
     private fun updateFpsSegmentUI() {
         val buttons = listOf(fps1Btn to 1, fps2Btn to 2, fps3Btn to 3)
         for ((btn, value) in buttons) {
-            btn.setTextColor(if (Config.INFERENCE_FPS == value) colorTextPrimary else colorTextSecondary)
+            if (Config.INFERENCE_FPS == value) {
+                btn.setBackgroundResource(R.drawable.bg_segmented_selected)
+                btn.setTextColor(Color.WHITE)
+            } else {
+                btn.setBackgroundColor(Color.TRANSPARENT)
+                btn.setTextColor(colorTextSecondary)
+            }
         }
     }
 
@@ -1173,7 +1186,9 @@ class MainActivity : Activity() {
                 if (url.isNotBlank()) {
                     Thread {
                         val health = VlmClient.checkHealthOnce(url)
+                        if (isActivityDestroyed) return@Thread
                         runOnUiThread {
+                            if (isActivityDestroyed) return@runOnUiThread
                             val msg = if (health != null)
                                 "VLM Online \u2014 ${health.model ?: "unknown"}"
                             else "VLM Offline"
@@ -1208,7 +1223,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateInferenceBadge() {
-        val isRemote = Config.INFERENCE_MODE == "remote"
+        val isRemote = activeInferenceMode == "remote"
         inferenceBadge.text = if (isRemote) "VLM" else "LOCAL"
         val bg = inferenceBadge.background
         if (bg is GradientDrawable) {
@@ -1225,7 +1240,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val isRemote = Config.INFERENCE_MODE == "remote"
+        val isRemote = activeInferenceMode == "remote"
         val status = FrameHolder.getCameraStatus()
         when (status) {
             FrameHolder.CameraStatus.NOT_CONNECTED -> {
@@ -1265,7 +1280,9 @@ class MainActivity : Activity() {
             statusText.text = "Checking VLM server..."
             Thread {
                 val health = VlmClient.checkHealthOnce(Config.VLM_SERVER_URL)
+                if (isActivityDestroyed) return@Thread
                 runOnUiThread {
+                    if (isActivityDestroyed) return@runOnUiThread
                     val msg = if (health != null)
                         "VLM Online \u2014 ${health.model ?: "unknown"}"
                     else "VLM server unreachable"
@@ -1407,6 +1424,7 @@ class MainActivity : Activity() {
             startForegroundService(intent)
         }
         isRunning = true
+        activeInferenceMode = Config.INFERENCE_MODE  // lock badge to actual mode at start
         toggleButton.text = getString(R.string.stop_service)
         statusText.text = "Monitoring active"
 

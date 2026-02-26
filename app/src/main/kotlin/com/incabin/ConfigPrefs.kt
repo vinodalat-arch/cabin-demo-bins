@@ -31,7 +31,7 @@ object ConfigPrefs {
         Config.WIFI_CAMERA_URL = prefs.getString(PREF_WIFI_URL, "") ?: ""
         Config.INFERENCE_MODE = prefs.getString(PREF_INFERENCE_MODE, "local") ?: "local"
         Config.VLM_SERVER_URL = prefs.getString(PREF_VLM_URL, "") ?: ""
-        Config.INFERENCE_FPS = prefs.getInt(PREF_INFERENCE_FPS, 1)
+        Config.INFERENCE_FPS = prefs.getInt(PREF_INFERENCE_FPS, 1).coerceIn(1, 3)
         Config.PASSENGER_INFO_DETAIL = prefs.getString(PREF_PASSENGER_DETAIL, "minimal") ?: "minimal"
         Config.ASIMO_SIZE = prefs.getString(PREF_ASIMO_SIZE, "m") ?: "m"
         Config.BOTTOM_WIDGET = prefs.getString(PREF_BOTTOM_WIDGET, "none") ?: "none"

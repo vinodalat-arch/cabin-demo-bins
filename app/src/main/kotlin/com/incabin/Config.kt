@@ -4,7 +4,6 @@ object Config {
     // Camera
     const val CAMERA_WIDTH = 1280
     const val CAMERA_HEIGHT = 720
-    const val INFERENCE_INTERVAL_MS = 100L
 
     // YOLO
     const val YOLO_CONFIDENCE = 0.35f

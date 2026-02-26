@@ -209,7 +209,9 @@ class VlmClient(
                             }
                         } else {
                             Log.w(TAG, "VLM server HTTP $responseCode")
-                            handleError(wasConnected, backoffMs)
+                            postConnectionLost(wasConnected)
+                            wasConnected = false
+                            backoffDelay(backoffMs)
                             backoffMs = MjpegCameraManager.nextBackoffDelay(backoffMs, Config.V4L2_RECONNECT_MAX_DELAY_MS)
                             continue
                         }
@@ -227,14 +229,10 @@ class VlmClient(
                 } catch (e: Exception) {
                     if (running) {
                         Log.e(TAG, "VLM poll error: ${e.message}")
-                        handleError(wasConnected, backoffMs)
+                        postConnectionLost(wasConnected)
+                        wasConnected = false
+                        backoffDelay(backoffMs)
                         backoffMs = MjpegCameraManager.nextBackoffDelay(backoffMs, Config.V4L2_RECONNECT_MAX_DELAY_MS)
-                        if (!wasConnected) {
-                            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
-                        } else {
-                            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
-                            wasConnected = false
-                        }
                     }
                 }
             }
@@ -256,7 +254,16 @@ class VlmClient(
     /** Check server health (blocking call). Delegates to companion. */
     fun checkHealth(): VlmHealthStatus? = checkHealthOnce(serverUrl)
 
-    private fun handleError(wasConnected: Boolean, delayMs: Long) {
+    private fun postConnectionLost(wasConnected: Boolean) {
+        if (!running) return
+        if (wasConnected) {
+            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.LOST)
+        } else {
+            FrameHolder.postCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
+        }
+    }
+
+    private fun backoffDelay(delayMs: Long) {
         if (!running) return
         try {
             Thread.sleep(delayMs)

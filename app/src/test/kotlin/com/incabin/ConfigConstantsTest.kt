@@ -23,8 +23,23 @@ class ConfigConstantsTest {
     }
 
     @Test
-    fun test_inference_interval() {
-        assertEquals(100L, Config.INFERENCE_INTERVAL_MS)
+    fun test_inference_fps_interval() {
+        val origFps = Config.INFERENCE_FPS
+        try {
+            Config.INFERENCE_FPS = 1
+            assertEquals(1000L, Config.inferenceIntervalMs())
+            Config.INFERENCE_FPS = 2
+            assertEquals(500L, Config.inferenceIntervalMs())
+            Config.INFERENCE_FPS = 3
+            assertEquals(333L, Config.inferenceIntervalMs())
+            // Edge cases: out-of-range values clamped
+            Config.INFERENCE_FPS = 0
+            assertEquals(1000L, Config.inferenceIntervalMs())  // coerced to 1
+            Config.INFERENCE_FPS = 5
+            assertEquals(333L, Config.inferenceIntervalMs())   // coerced to 3
+        } finally {
+            Config.INFERENCE_FPS = origFps
+        }
     }
 
     @Test

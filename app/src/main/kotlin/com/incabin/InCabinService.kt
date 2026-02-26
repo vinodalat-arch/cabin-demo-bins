@@ -441,7 +441,7 @@ class InCabinService : Service() {
         prevAudioEnabled = Config.ENABLE_AUDIO_ALERTS
 
         // Start pipeline watchdog
-        watchdog = PipelineWatchdog(onTimeout = ::restartCamera)
+        watchdog = PipelineWatchdog(onTimeout = ::restartPipeline)
         watchdog?.start()
 
         Log.i(TAG, "=== Service Ready ===")
@@ -510,21 +510,31 @@ class InCabinService : Service() {
         consecutiveInferenceErrors = 0
     }
 
-    /** Restart camera after watchdog timeout or error. Stops all cameras, then re-starts. */
-    private fun restartCamera() {
-        Log.w(TAG, "Restarting camera (watchdog trigger)")
-        CrashLog.warn(TAG, "Camera restart triggered by watchdog")
-        try {
-            v4l2Camera?.stop()
-            v4l2Camera = null
-            mjpegCamera?.stop()
-            mjpegCamera = null
-            cameraManager?.stop()
-            cameraManager = null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping cameras during restart", e)
+    /** Restart pipeline after watchdog timeout. Mode-aware: restarts camera or VLM client. */
+    private fun restartPipeline() {
+        Log.w(TAG, "Restarting pipeline (watchdog trigger, mode=${Config.INFERENCE_MODE})")
+        CrashLog.warn(TAG, "Pipeline restart triggered by watchdog (mode=${Config.INFERENCE_MODE})")
+        if (Config.INFERENCE_MODE == "remote") {
+            try {
+                vlmClient?.stop()
+                vlmClient = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping VLM client during restart", e)
+            }
+            startVlmClient()
+        } else {
+            try {
+                v4l2Camera?.stop()
+                v4l2Camera = null
+                mjpegCamera?.stop()
+                mjpegCamera = null
+                cameraManager?.stop()
+                cameraManager = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping cameras during restart", e)
+            }
+            startCamera()
         }
-        startCamera()
     }
 
     // -------------------------------------------------------------------------

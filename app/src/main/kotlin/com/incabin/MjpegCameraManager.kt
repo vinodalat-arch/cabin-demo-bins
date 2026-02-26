@@ -43,6 +43,7 @@ class MjpegCameraManager(
     private var bgrBuffer: ByteArray? = null
     private var lastWidth = 0
     private var lastHeight = 0
+    private var lastFrameTimeMs = 0L
 
     /**
      * Start reading from the given MJPEG stream URL.
@@ -224,6 +225,11 @@ class MjpegCameraManager(
     }
 
     private fun processJpegFrame(jpegData: ByteArray) {
+        // FPS throttle: skip frames that arrive faster than the configured interval
+        val now = System.currentTimeMillis()
+        if (now - lastFrameTimeMs < Config.inferenceIntervalMs()) return
+        lastFrameTimeMs = now
+
         try {
             // Decode JPEG to Bitmap
             val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size) ?: return
