@@ -1461,7 +1461,10 @@ object Config {
     // Camera
     const val CAMERA_WIDTH = 1280
     const val CAMERA_HEIGHT = 720
-    const val INFERENCE_INTERVAL_MS = 100L   // tuned: webcam ~1fps is the real bottleneck
+
+    // Inference FPS: 1, 2, or 3 — shared between local and VLM modes
+    @JvmStatic @Volatile var INFERENCE_FPS = 1
+    @JvmStatic fun inferenceIntervalMs(): Long = (1000L / INFERENCE_FPS.coerceIn(1, 3))
 
     // YOLO
     const val YOLO_CONFIDENCE = 0.35f
@@ -1469,17 +1472,21 @@ object Config {
     const val YOLO_PHONE_CLASS = 67
     val FOOD_DRINK_CLASSES = intArrayOf(39, 40, 41, 42, 43, 44, 45, 46, 47, 48)
 
-    // Face analysis
-    const val EAR_THRESHOLD = 0.21f
+    // Face analysis (EAR and HEAD_PITCH are overridable per platform at service startup)
+    @JvmStatic @Volatile var EAR_THRESHOLD = 0.21f
+    const val EAR_BASELINE_RATIO = 0.65f
     const val MAR_THRESHOLD = 0.5f
     const val HEAD_YAW_THRESHOLD = 30.0f   // degrees
-    const val HEAD_PITCH_THRESHOLD = 35.0f // degrees (tuned: camera mount angle causes ~5-10° baseline)
+    @JvmStatic @Volatile var HEAD_PITCH_THRESHOLD = 35.0f // degrees (tuned: camera mount angle)
+    const val PITCH_BASELINE_DEVIATION = 25.0f
+    const val BASELINE_FRAMES = 10
+    const val ANGLE_SMOOTH_WINDOW = 3
 
     // Pose analysis
     const val POSTURE_LEAN_THRESHOLD = 30.0f   // degrees from vertical
     const val CHILD_SLOUCH_THRESHOLD = 20.0f   // degrees
     const val HEAD_TURN_THRESHOLD = 0.3f       // nose offset / shoulder width
-    const val CHILD_BBOX_RATIO = 0.75f
+    const val CHILD_BBOX_RATIO = 0.65f
     const val KP_CONF_THRESHOLD = 0.5f
     const val WRIST_CROP_SIZE = 200            // pixels
 
@@ -1487,18 +1494,49 @@ object Config {
     const val SMOOTHER_WINDOW = 3              // tuned: 3-frame window for ~2s detection latency
     const val SMOOTHER_THRESHOLD = 0.6f
     const val FAST_CLEAR_FRAMES = 2
+    const val EYES_CLOSED_MIN_FRAMES = 2
+    const val DISTRACTED_MIN_FRAMES = 2
+    const val EATING_MIN_FRAMES = 2
+    const val POSTURE_MIN_FRAMES = 2
+    const val YAWNING_MIN_FRAMES = 2
+    const val HANDS_OFF_MIN_FRAMES = 3
+    const val CHILD_SLOUCH_MIN_FRAMES = 3
 
-    // Audio
-    val DISTRACTION_ALERT_THRESHOLDS = intArrayOf(5, 10, 20)
-    const val DISTRACTION_BEEP_THRESHOLD_S = 20  // loud beep at this duration
+    // Audio — escalation ladder
+    const val ALERT_COOLDOWN_MS = 10_000L
+    const val ALERT_STALENESS_MS = 4_000L
+    const val ALERT_ESCALATION_FIRST_S = 5
+    const val ALERT_ESCALATION_BEEP_S = 10
+    const val ALERT_ESCALATION_REPEAT_S = 10
+    const val ALERT_BEEP_DURATION_MS = 1000
+    const val ALERT_QUEUE_CAPACITY = 3
+    const val DISTRACTION_GRACE_FRAMES = 2
 
-    // Preview
-    @Volatile var ENABLE_PREVIEW = false  // runtime toggle, persisted via SharedPreferences
+    // Preview (toggleable at runtime; persisted in SharedPreferences)
+    @JvmStatic @Volatile var ENABLE_PREVIEW = false
+    @JvmStatic @Volatile var ENABLE_AUDIO_ALERTS = true
+    @JvmStatic @Volatile var LANGUAGE = "en"
+    @JvmStatic @Volatile var DRIVER_SEAT_SIDE = "left"
+    @JvmStatic @Volatile var WIFI_CAMERA_URL = ""
+    @JvmStatic @Volatile var INFERENCE_MODE = "local"  // "local" or "remote"
+    @JvmStatic @Volatile var VLM_SERVER_URL = ""
 
     // Face recognition
     const val FACE_RECOGNITION_THRESHOLD = 0.5f
-    const val FACE_RECOGNITION_INTERVAL = 5  // recognize every Nth inference frame
+    const val FACE_RECOGNITION_INTERVAL = 5
     const val FACE_EMBEDDING_DIM = 512
+
+    // Risk weights
+    const val RISK_WEIGHT_PHONE = 3
+    const val RISK_WEIGHT_EYES = 3
+    const val RISK_WEIGHT_HANDS_OFF = 3
+    const val RISK_WEIGHT_YAWNING = 2
+    const val RISK_WEIGHT_DISTRACTED = 2
+    const val RISK_WEIGHT_POSTURE = 2
+    const val RISK_WEIGHT_EATING = 1
+    const val RISK_WEIGHT_SLOUCH = 1
+    const val RISK_HIGH_THRESHOLD = 3
+    const val RISK_MEDIUM_THRESHOLD = 1
 }
 ```
 
@@ -1580,7 +1618,7 @@ in_cabin_poc-sa8155/
 
 ## 14. Implementation Status
 
-All phases are complete. The project builds successfully (`assembleDebug` produces an 84 MB APK) and all 218 unit tests pass.
+All phases are complete. The project builds successfully (`assembleDebug` produces an 84 MB APK) and all 583 unit tests pass.
 
 ### Phase 1 — Skeleton + Camera (Complete)
 - Android project with Gradle 8.9, NDK r26, CMake 3.22.1
@@ -1608,7 +1646,7 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 ### Phase 5 — On-Device Validation (Complete)
 - Build verified: `assembleDebug` and `test` both succeed
 - On-device validated on Honda SA8155P: ~630ms/frame, ~2-3s detection latency
-- Performance tuning: INFERENCE_INTERVAL_MS=100, SMOOTHER_WINDOW=3, HEAD_PITCH_THRESHOLD=35°
+- Performance tuning: INFERENCE_FPS=1 (dynamic inferenceIntervalMs()), SMOOTHER_WINDOW=3, HEAD_PITCH_THRESHOLD=35°
 
 ### Phase 6 — Pre-Deployment Hardening (Complete)
 - TTS retry: one-time retry after 3s if TextToSpeech init fails (AudioAlerter)
@@ -1659,6 +1697,25 @@ All phases are complete. The project builds successfully (`assembleDebug` produc
 - MJPEG auto-reconnect: exponential backoff 2s→30s in reconnect loop (3 MjpegReconnectTest tests)
 - Service alive check: `FrameHolder` heartbeat + UI stall indicator (3 ServiceHealthTest tests)
 - Inference error tracking: reinitialize after 10 consecutive errors (2 InferenceErrorTest tests)
+
+### Phase 13 — Multi-Modal Alert Orchestrator (Complete)
+- AlertOrchestrator: wraps AudioAlerter + VehicleChannelManager
+- 5-level escalation: L1 Nudge → L2 Warning → L3 Urgent → L4 Intervention → L5 Emergency
+- Per-detection caps: phone/eyes/hands_off/distracted→L5, yawning→L4, eating/posture/slouch→L3
+- 6 VHAL channels via reflection (cabin lights, seat haptic, seat thermal, steering heat, window, ADAS)
+- Speed-gating, platform gate, graceful no-op on generic Android
+- 86 tests across 5 test files
+
+### Phase 14 — Remote VLM Inference (Complete)
+- VlmClient: HTTP polling client for remote VLM server at configurable FPS (1-3)
+- vlm_server.py: FastAPI reference server with Qwen2.5-VL + mock mode
+- vlm_launcher.py: tkinter GUI for server management (start/stop, health, test, log)
+- Config.INFERENCE_FPS: shared 1/2/3 FPS setting for local and VLM modes
+- ConfigPrefs: centralized SharedPreferences persistence for all volatile Config fields
+- Inference badge: LOCAL/VLM pill during monitoring
+- Health checks on URL save and monitoring start
+- Mode-aware watchdog (restartPipeline)
+- 23 tests (VlmClientTest + FlowVlmRemoteTest)
 
 ---
 

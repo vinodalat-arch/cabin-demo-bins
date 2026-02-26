@@ -235,6 +235,10 @@ class MainActivity : Activity() {
     private lateinit var rootLayout: FrameLayout
     private lateinit var inferenceBadge: TextView
     private lateinit var toggleButton: TextView
+    private lateinit var rearAlertSection: LinearLayout
+    private lateinit var rearStatusText: TextView
+    private lateinit var rearDetectionLabels: LinearLayout
+    private lateinit var reverseToggleButton: Button
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
     private lateinit var audioToggle: Button
@@ -289,6 +293,10 @@ class MainActivity : Activity() {
     private lateinit var widgetOffBtn: TextView
     private lateinit var widgetStatsBtn: TextView
     private lateinit var widgetTipsBtn: TextView
+    private lateinit var brandHondaBtn: TextView
+    private lateinit var brandKonfluenceBtn: TextView
+    private lateinit var brandNameText: TextView
+    private lateinit var brandSubtitleText: TextView
     private lateinit var settingsPanel: LinearLayout
     private lateinit var settingsScrim: View
     private lateinit var settingsCloseBtn: TextView
@@ -401,6 +409,9 @@ class MainActivity : Activity() {
 
                 // 3. Update camera status indicator
                 updateCameraStatus()
+
+                // 4. Update rear camera dashboard
+                updateRearDashboard()
             } catch (e: Exception) {
                 Log.w(TAG, "Preview update failed", e)
             }
@@ -499,6 +510,14 @@ class MainActivity : Activity() {
         langJaBtn = findViewById(R.id.langJaBtn)
         paxMinimalBtn = findViewById(R.id.paxMinimalBtn)
         paxDetailedBtn = findViewById(R.id.paxDetailedBtn)
+        brandHondaBtn = findViewById(R.id.brandHondaBtn)
+        brandKonfluenceBtn = findViewById(R.id.brandKonfluenceBtn)
+        brandNameText = findViewById(R.id.brandNameText)
+        brandSubtitleText = findViewById(R.id.brandSubtitleText)
+        rearAlertSection = findViewById(R.id.rearAlertSection)
+        rearStatusText = findViewById(R.id.rearStatusText)
+        rearDetectionLabels = findViewById(R.id.rearDetectionLabels)
+        reverseToggleButton = findViewById(R.id.reverseToggleButton)
         registerButton = findViewById(R.id.registerButton)
         previewToggle = findViewById(R.id.previewToggle)
         audioToggle = findViewById(R.id.audioToggle)
@@ -529,6 +548,7 @@ class MainActivity : Activity() {
         updateAsimoSizeSegmentUI()
         updateBottomWidgetSegmentUI()
         updateFpsSegmentUI()
+        updateBrandUI()
 
         // --- Main controls ---
         toggleButton.setOnClickListener {
@@ -553,6 +573,19 @@ class MainActivity : Activity() {
         // --- Settings panel controls ---
         settingsCloseBtn.setOnClickListener { hideSettingsPanel() }
         settingsScrim.setOnClickListener { hideSettingsPanel() }
+
+        brandHondaBtn.setOnClickListener {
+            Config.BRAND = "honda"
+            prefs.edit().putString(ConfigPrefs.PREF_BRAND, "honda").apply()
+            updateBrandUI()
+            Log.i(TAG, "Brand: honda")
+        }
+        brandKonfluenceBtn.setOnClickListener {
+            Config.BRAND = "konfluence"
+            prefs.edit().putString(ConfigPrefs.PREF_BRAND, "konfluence").apply()
+            updateBrandUI()
+            Log.i(TAG, "Brand: konfluence")
+        }
 
         seatLeftBtn.setOnClickListener {
             Config.DRIVER_SEAT_SIDE = "left"
@@ -716,6 +749,27 @@ class MainActivity : Activity() {
             }
         }
 
+        reverseToggleButton.setOnClickListener {
+            val newState = !Config.REVERSE_GEAR_ACTIVE
+            reverseToggleButton.text = if (newState) "Reverse Gear: ON" else "Reverse Gear: OFF"
+            // Send action to service to start/stop rear camera
+            try {
+                val action = if (newState) InCabinService.ACTION_REVERSE_ON
+                             else InCabinService.ACTION_REVERSE_OFF
+                val serviceIntent = Intent(this, InCabinService::class.java).apply {
+                    this.action = action
+                }
+                startService(serviceIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to send gear change to service", e)
+            }
+        }
+
+        // Hide manual reverse toggle on automotive platforms (gear read from VHAL)
+        if (platformProfile.enableVehicleChannels) {
+            reverseToggleButton.visibility = View.GONE
+        }
+
         // --- Detect already-running service (started by BootReceiver) ---
         if (FrameHolder.isServiceRunning()) {
             Log.i(TAG, "Service already running (boot auto-start), syncing UI")
@@ -848,6 +902,23 @@ class MainActivity : Activity() {
             audioToggle.setTextColor(colorTextMuted)
             audioToggle.setBackgroundResource(R.drawable.bg_button)
         }
+    }
+
+    private fun updateBrandUI() {
+        if (Config.BRAND == "honda") {
+            brandHondaBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            brandHondaBtn.setTextColor(Color.WHITE)
+            brandKonfluenceBtn.setBackgroundColor(Color.TRANSPARENT)
+            brandKonfluenceBtn.setTextColor(colorTextSecondary)
+            brandNameText.text = "HONDA"
+        } else {
+            brandKonfluenceBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
+            brandKonfluenceBtn.setTextColor(Color.WHITE)
+            brandHondaBtn.setBackgroundColor(Color.TRANSPARENT)
+            brandHondaBtn.setTextColor(colorTextSecondary)
+            brandNameText.text = "KONFLUENCE"
+        }
+        brandSubtitleText.text = "SMART CABIN"
     }
 
     private fun updateSeatSegmentUI() {
@@ -1267,6 +1338,76 @@ class MainActivity : Activity() {
     }
 
     // ---------------------------------------------------------------------
+    // Rear Camera Dashboard
+    // ---------------------------------------------------------------------
+
+    private var lastRearTimestamp: String? = null
+
+    private fun updateRearDashboard() {
+        try {
+            val isReverse = Config.REVERSE_GEAR_ACTIVE
+            if (!isReverse || !isRunning) {
+                rearAlertSection.visibility = View.GONE
+                return
+            }
+
+            rearAlertSection.visibility = View.VISIBLE
+
+            // Rear camera status
+            val rearStatus = FrameHolder.getRearCameraStatus()
+            rearStatusText.text = when (rearStatus) {
+                FrameHolder.CameraStatus.NOT_CONNECTED -> "No camera"
+                FrameHolder.CameraStatus.CONNECTING -> "Connecting..."
+                FrameHolder.CameraStatus.ACTIVE -> "Active"
+                FrameHolder.CameraStatus.LOST -> "Lost"
+                else -> rearStatus.name
+            }
+
+            // Rear detection labels
+            val result = FrameHolder.getRearResult()
+            if (result != null && result.timestamp != lastRearTimestamp) {
+                lastRearTimestamp = result.timestamp
+                rearDetectionLabels.removeAllViews()
+
+                if (result.personDetected) {
+                    val label = TextView(this).apply {
+                        text = "\u25CF ${result.personCount} Person${if (result.personCount != 1) "s" else ""} Detected"
+                        setTextColor(colorDanger)
+                        textSize = 13f
+                    }
+                    rearDetectionLabels.addView(label)
+                }
+                if (result.catDetected) {
+                    val label = TextView(this).apply {
+                        text = "\u25CF Cat Detected"
+                        setTextColor(colorCaution)
+                        textSize = 13f
+                    }
+                    rearDetectionLabels.addView(label)
+                }
+                if (result.dogDetected) {
+                    val label = TextView(this).apply {
+                        text = "\u25CF Dog Detected"
+                        setTextColor(colorCaution)
+                        textSize = 13f
+                    }
+                    rearDetectionLabels.addView(label)
+                }
+                if (!result.personDetected && !result.catDetected && !result.dogDetected) {
+                    val label = TextView(this).apply {
+                        text = "\u25CF Clear"
+                        setTextColor(colorSafe)
+                        textSize = 13f
+                    }
+                    rearDetectionLabels.addView(label)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Rear dashboard update failed", e)
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Setup Flow
     // ---------------------------------------------------------------------
 
@@ -1298,6 +1439,7 @@ class MainActivity : Activity() {
             val setup = DeviceSetup()
             if (setup.isCameraAvailable() && hasRequiredPermissions()) {
                 Log.i(TAG, "Camera + permissions already available, skipping setup")
+                setup.fixVideoPermissions()
                 FrameHolder.postCameraStatus(FrameHolder.CameraStatus.READY)
                 startMonitoring()
             } else {
@@ -1322,6 +1464,7 @@ class MainActivity : Activity() {
 
         if (setup.isCameraAvailable()) {
             Log.i(TAG, "Camera already available, skipping full setup")
+            setup.fixVideoPermissions()
             FrameHolder.postCameraStatus(FrameHolder.CameraStatus.READY)
             checkPermissionsAndStart()
             return
@@ -1570,6 +1713,9 @@ class MainActivity : Activity() {
         previewImage.setImageBitmap(null)
         detectionsContainer.removeAllViews()
         passengerPostureContainer.removeAllViews()
+        rearAlertSection.visibility = View.GONE
+        rearDetectionLabels.removeAllViews()
+        lastRearTimestamp = null
         Log.i(TAG, "Monitoring stopped")
     }
 

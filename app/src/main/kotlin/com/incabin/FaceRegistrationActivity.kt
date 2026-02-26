@@ -661,36 +661,51 @@ class FaceRegistrationActivity : Activity() {
                 setPadding(0, hPad, 0, hPad)
             }
 
+            val dp = resources.displayMetrics.density
+            val btnW = (56 * dp).toInt()
+            val btnH = (32 * dp).toInt()
+
             row.addView(TextView(this).apply {
                 text = name
                 textSize = 16f
                 setTextColor(colorTextPrimary)
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = (12 * dp).toInt()
+            })
 
             row.addView(Button(this).apply {
                 text = "Edit"
-                textSize = 12f
+                textSize = 11f
                 setTextColor(colorAccent)
                 isAllCaps = false
                 stateListAnimator = null
                 setBackgroundResource(R.drawable.bg_button)
+                setPadding(0, 0, 0, 0)
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = 0
+                minimumHeight = 0
                 setOnClickListener { showRenameDialog(name) }
-            }, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = (8 * resources.displayMetrics.density).toInt()
+            }, LinearLayout.LayoutParams(btnW, btnH).apply {
+                marginEnd = (6 * dp).toInt()
             })
 
             row.addView(Button(this).apply {
-                text = "Delete"
-                textSize = 12f
+                text = "Del"
+                textSize = 11f
                 setTextColor(colorDanger)
                 isAllCaps = false
                 stateListAnimator = null
                 setBackgroundResource(R.drawable.bg_button)
+                setPadding(0, 0, 0, 0)
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = 0
+                minimumHeight = 0
                 setOnClickListener { confirmDelete(name) }
-            })
+            }, LinearLayout.LayoutParams(btnW, btnH))
 
             faceListLayout.addView(row)
         }

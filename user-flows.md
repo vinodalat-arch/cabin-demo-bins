@@ -46,11 +46,12 @@ This document describes the 5 primary user flows, each with preconditions, step-
 - At least one face visible to the camera
 
 ### Steps
-1. From the dashboard, tap **Faces** button (left panel).
-2. `FaceRegistrationActivity` opens. Camera preview shows the current frame.
+1. From the dashboard, open settings (5-tap) and tap **Manage Faces**. If monitoring, it stops first (only one camera consumer at a time).
+2. `FaceRegistrationActivity` opens with its own camera (V4L2/Camera2/MJPEG — same strategy as service). Live preview shows face bbox overlay.
 3. Position face in view. Tap **Capture**. The activity:
-   - Reads BGR crop from `FrameHolder.getCaptureData()`
-   - Computes 512-dim face embedding via temporary `FaceRecognizerBridge`
+   - Extracts BGR face crop from live camera data using `FaceDetectorLite` bbox
+   - Computes 512-dim face embedding via its own `FaceRecognizerBridge` instance
+   - Quality gate: pairwise cosine ≥ 0.7 between captures
    - Prompts for a name
 4. Enter name (e.g., "Vinod") and tap **Save**. `FaceStore.register()` persists name + embedding to `faces.json`.
 5. Return to dashboard. Tap **Start Monitoring** (or if already monitoring, recognition resumes).
@@ -103,36 +104,47 @@ This document describes the 5 primary user flows, each with preconditions, step-
 
 ---
 
-## Flow 4: Configuration & Preview Toggle
+## Flow 4: Configuration & Settings
 
 ### Preconditions
 - App installed, dashboard visible
+- Settings overlay accessible via 5-tap gesture on root layout
 
 ### Steps
-1. **Preview Toggle**: Tap the preview toggle button (top row, left panel).
-   - Off → On: Camera frames render in center panel with full overlay (bboxes, skeleton, landmarks, metrics). `Config.ENABLE_PREVIEW = true`.
-   - On → Off: Center panel shows idle branding. No bitmap creation, no GC pressure. `Config.ENABLE_PREVIEW = false`.
-   - State persisted in SharedPreferences across restarts.
-2. **Audio Toggle**: Tap the audio toggle.
+1. **Open Settings**: Tap root layout 5 times within 3s. Visual flash on 4th tap. Settings panel slides in from left.
+2. **Preview Toggle**: ON/OFF button.
+   - Off (default): No bitmap creation, no overlay rendering. Core pipeline unaffected.
+   - On: Full overlay rendered on camera frames and displayed in center panel.
+3. **Audio Toggle**: ON/OFF button.
    - On (default): TTS alerts fire on detections.
-   - Off: `Config.ENABLE_AUDIO_ALERTS = false`. TTS suppressed. Core pipeline still runs.
-3. **Language Toggle**: Tap to switch between English ("en") and Japanese ("ja").
-   - `Config.LANGUAGE` updates. Next alert uses new language.
-   - English: "Phone", "Eyes closed", "All clear"
-   - Japanese: "スマホ", "目を閉じています", "安全です"
-4. **Driver Seat Side**: Toggle between "left" (LHD) and "right" (RHD).
-   - `Config.DRIVER_SEAT_SIDE` updates. Affects which person is identified as the driver.
+   - Off: TTS suppressed. Core pipeline still runs.
+4. **Language Toggle**: EN/JA segmented button.
+   - Next alert uses new language. No restart needed.
+5. **Driver Seat Side**: LEFT/RIGHT segmented button.
+   - Affects which person is identified as the driver.
+6. **Inference Mode**: LOCAL/REMOTE segmented button.
+   - LOCAL: On-device ML inference via camera.
+   - REMOTE: HTTP polling to VLM server (no local camera/models needed).
+   - Takes effect on next monitoring start (mode locked during monitoring).
+7. **Inference FPS**: 1/2/3 segmented button.
+   - Shared between local and VLM modes. Controls frame throttling / poll interval.
+8. **VLM Server URL**: Button opens dialog to enter VLM server URL.
+   - On save, fires one-shot health check toast ("VLM Online — model" or "VLM Offline").
+9. **WiFi Camera URL**: Button opens dialog to enter MJPEG stream URL.
+10. **Manage Faces**: Opens FaceRegistrationActivity.
+11. **Close Settings**: Tap close button (x), tap scrim, or 5-tap again.
 
 ### Expected Observations
-- Preview off: ~2-3s detection latency (no bitmap overhead). Preview on: ~10s perceived delay on SA8155 due to GC pressure
+- All settings persist across app restarts and cold boots via SharedPreferences + `ConfigPrefs.loadIntoConfig()`
+- Preview off: ~2-3s detection latency. Preview on: ~10s perceived delay on SA8155 due to GC pressure
 - Audio toggle does not affect detection pipeline — only TTS output
-- Language change takes effect on next alert (no restart needed)
-- All toggles persist across app restarts
+- Inference mode change requires stop/start monitoring to take effect
 
 ### Edge Cases
-- **Preview toggle during monitoring**: `@Volatile var` ensures cross-thread visibility. Service thread reads `Config.ENABLE_PREVIEW` each frame
-- **Multiple rapid toggles**: Each write is atomic (`@Volatile`), last write wins
-- **Smoother uses Config constants**: `SMOOTHER_WINDOW=3`, `SMOOTHER_THRESHOLD=0.6` are compile-time constants, not runtime-toggleable
+- **Toggle during monitoring**: `@Volatile var` ensures cross-thread visibility. Service thread reads Config each frame
+- **FPS change during monitoring**: Takes effect on next frame interval (no restart needed for local, no restart needed for VLM polling)
+- **VLM URL save with health check**: Background thread runs health check; `@Volatile isActivityDestroyed` flag prevents callback on destroyed Activity
+- **All settings survive cold boot**: BootReceiver path calls `ConfigPrefs.loadIntoConfig()` before service start
 
 ---
 
@@ -220,3 +232,45 @@ This document describes the 5 primary user flows, each with preconditions, step-
 - **Model file corruption**: Inference errors trigger reinitialize after 10 failures. CrashLog captures stack traces for post-mortem analysis
 - **Low memory kill**: Android kills service due to memory pressure. `START_STICKY` flag requests restart. Boot receiver re-starts on next reboot
 - **CrashLog full**: Rotation to `crash_log_prev.txt` ensures at most ~1MB disk usage
+
+---
+
+## Flow 7: Remote VLM Inference
+
+### Preconditions
+- Laptop running `vlm_server.py` (or `vlm_launcher.py` GUI) on same network as Android device
+- App installed on device
+
+### Steps — Server Setup (Laptop)
+1. Run `python3 scripts/vlm_launcher.py` on the laptop.
+2. GUI shows auto-detected LAN IP and URL (e.g., `http://192.168.1.42:8000`).
+3. Click **Start Server**. Server log streams in real-time. Status: "Running".
+4. Click **Test Health** to verify server responds. Click **Test Query** to verify inference.
+5. Copy the URL (or use the Copy button).
+
+### Steps — Android Configuration
+1. Open settings overlay (5-tap gesture).
+2. Set **Inference Mode** to **REMOTE**.
+3. Tap **VLM Server** button. Enter the server URL from the launcher. Tap **Save**.
+   - Toast shows "VLM Online — Qwen2.5-VL-7B" or "VLM Offline".
+4. Optionally adjust **FPS** (1/2/3) — controls VLM polling interval.
+5. Close settings. Tap **Start Monitoring**.
+   - Sanity check runs: "Checking VLM server..." → advisory toast.
+   - Inference badge shows "VLM" (purple pill).
+   - Camera status shows "VLM: Active".
+6. Dashboard updates with detections from VLM server. Audio alerts fire normally.
+7. Tap **Stop Monitoring** to end session.
+
+### Expected Observations
+- No camera permission requested in remote mode
+- No local model loading — faster startup
+- `distraction_duration_s` computed on-device (safety-critical), not from server
+- VLM server uses laptop GPU for inference — higher quality detection than on-device models
+- Camera status shows "VLM: Connecting" → "VLM: Active" → "VLM: Lost" on disconnect
+
+### Edge Cases
+- **Server unreachable**: Health check toast warns "VLM Offline". Monitoring still starts (advisory only). VlmClient retries with backoff
+- **Server stops mid-session**: Camera status transitions to "VLM: Lost". Watchdog detects stall after 30s → `restartPipeline()` restarts VlmClient
+- **Network latency**: VLM polls at configured FPS interval. If inference takes longer than interval, next poll starts immediately (no sleep)
+- **Switch modes**: Must stop monitoring before switching LOCAL↔REMOTE (mode locked at start)
+- **Activity destroyed during health check**: `@Volatile isActivityDestroyed` flag prevents runOnUiThread callback on destroyed Activity

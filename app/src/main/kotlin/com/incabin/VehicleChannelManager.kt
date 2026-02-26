@@ -20,6 +20,9 @@ class VehicleChannelManager(context: Context) {
         const val DRIVING_STATE_IDLING = 1
         const val DRIVING_STATE_MOVING = 2
 
+        // Gear selection constants (mirrors android.car.VehicleGear values)
+        const val GEAR_REVERSE = 0x0020
+
         /**
          * Pure function: should we suppress vehicle channel dispatch for this driving state?
          * Suppresses L1 (nudge) when parked — no need to alert a parked driver with vehicle actions.
@@ -28,7 +31,17 @@ class VehicleChannelManager(context: Context) {
         fun shouldSuppressForDrivingState(drivingState: Int, level: EscalationLevel): Boolean {
             return drivingState == DRIVING_STATE_PARKED && level == EscalationLevel.L1_NUDGE
         }
+
+        /**
+         * Pure function: is the given VHAL gear value REVERSE?
+         */
+        fun isReverseGear(gearValue: Int): Boolean {
+            return gearValue == GEAR_REVERSE
+        }
     }
+
+    /** Callback for gear state changes (e.g., to activate rear camera on REVERSE). */
+    var onGearChanged: ((isReverse: Boolean) -> Unit)? = null
 
     private val channels = mutableListOf<VehicleActionChannel>()
     private var carConnected = false
@@ -62,6 +75,8 @@ class VehicleChannelManager(context: Context) {
                 Log.i(TAG, "Connected to Car API")
                 registerChannels(propertyManager)
                 probeDrivingState(car, getManagerMethod, carClass)
+                registerGearListener(propertyManager)
+                probeCurrentGear(propertyManager)
             }
         } catch (e: ClassNotFoundException) {
             Log.i(TAG, "Car API not available (not an automotive build) — vehicle channels disabled")
@@ -120,6 +135,80 @@ class VehicleChannelManager(context: Context) {
             Log.i(TAG, "Driving state: $drivingState")
         } catch (e: Exception) {
             Log.w(TAG, "Could not probe driving state, defaulting to MOVING", e)
+        }
+    }
+
+    /**
+     * Register a listener for GEAR_SELECTION property changes.
+     * When gear shifts to/from REVERSE, updates Config.REVERSE_GEAR_ACTIVE
+     * and invokes [onGearChanged] callback.
+     *
+     * Uses VHAL property ID 0x11400400 (VehicleProperty.GEAR_SELECTION).
+     */
+    private fun registerGearListener(propertyManager: Any) {
+        try {
+            // GEAR_SELECTION property ID = 0x11400400
+            val gearPropertyId = 0x11400400
+
+            val pmClass = propertyManager.javaClass
+
+            // Register callback via CarPropertyManager.registerCallback
+            val callbackClass = Class.forName(
+                "android.car.hardware.property.CarPropertyManager\$CarPropertyEventCallback"
+            )
+            val registerMethod = pmClass.getMethod(
+                "registerCallback", callbackClass, Int::class.java, Float::class.java
+            )
+
+            // Create a dynamic proxy for the callback interface
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                callbackClass.classLoader,
+                arrayOf(callbackClass)
+            ) { _, method, args ->
+                if (method.name == "onChangeEvent") {
+                    try {
+                        val event = args?.get(0) ?: return@newProxyInstance null
+                        val getValueMethod = event.javaClass.getMethod("getValue")
+                        val gearValue = (getValueMethod.invoke(event) as? Number)?.toInt() ?: 0
+                        val isReverse = gearValue == GEAR_REVERSE
+                        Config.REVERSE_GEAR_ACTIVE = isReverse
+                        Log.i(TAG, "Gear changed: value=0x${gearValue.toString(16)}, reverse=$isReverse")
+                        onGearChanged?.invoke(isReverse)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to process gear change event", e)
+                    }
+                }
+                null
+            }
+
+            registerMethod.invoke(propertyManager, proxy, gearPropertyId, 0f)
+            Log.i(TAG, "Registered gear state listener")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register gear listener — rear camera requires manual toggle", e)
+        }
+    }
+
+    /**
+     * Read current gear state from CarPropertyManager at startup.
+     * Sets Config.REVERSE_GEAR_ACTIVE but does NOT invoke onGearChanged callback
+     * (it's null in constructor, and the service wires it after init).
+     */
+    private fun probeCurrentGear(propertyManager: Any) {
+        try {
+            val gearPropertyId = 0x11400400 // GEAR_SELECTION
+            val getPropertyMethod = propertyManager.javaClass.getMethod(
+                "getProperty", Class::class.java, Int::class.java, Int::class.java
+            )
+            val result = getPropertyMethod.invoke(propertyManager, Integer::class.java, gearPropertyId, 0)
+            if (result != null) {
+                val getValueMethod = result.javaClass.getMethod("getValue")
+                val gearValue = (getValueMethod.invoke(result) as? Number)?.toInt() ?: 0
+                val isReverse = isReverseGear(gearValue)
+                Config.REVERSE_GEAR_ACTIVE = isReverse
+                Log.i(TAG, "Initial gear: value=0x${gearValue.toString(16)}, reverse=$isReverse")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not probe current gear — defaulting to non-reverse", e)
         }
     }
 

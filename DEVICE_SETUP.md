@@ -115,7 +115,7 @@ I/InCabin:  === Service Ready ===
 I/InCabin-JNI: V4L2: Scanning /dev/video*...
 I/InCabin-JNI: V4L2: Found capture device: /dev/video2 (C270 HD WEBCAM)
 I/InCabin-JNI: V4L2: Configured YUYV 1280x720
-I/InCabin-JNI: V4L2: 4 mmap buffers allocated
+I/InCabin-JNI: V4L2: 2 mmap buffers allocated
 I/InCabin-JNI: V4L2: Streaming started
 I/InCabin:  Using V4L2 camera
 I/InCabin-V4L2: First V4L2 frame: 1280x720, 2764800 bytes BGR

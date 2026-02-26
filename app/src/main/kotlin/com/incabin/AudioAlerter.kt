@@ -267,6 +267,9 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         fun any(): Boolean = phone || eyes || handsOff || yawning || distracted || eating || posture || slouching
     }
 
+    // --- Rear camera alert state ---
+    private var prevRearResult: RearResult? = null
+
     // --- State ---
     private var prevDangers: DangerSnapshot? = null
     private var prevDriverDetected: Boolean? = null
@@ -632,6 +635,39 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     }
 
     /**
+     * Check for rear camera alert transitions. Called from InCabinService rear pipeline.
+     * Person behind vehicle → CRITICAL (immediate danger).
+     * Cat/dog behind vehicle → WARNING.
+     */
+    fun checkRearAlerts(result: RearResult) {
+        val prev = prevRearResult
+        prevRearResult = result
+        if (prev == null) return  // first frame, store only
+
+        val isJapanese = Config.LANGUAGE == "ja"
+        val now = SystemClock.elapsedRealtime()
+
+        // Person detected (CRITICAL — immediate collision risk)
+        if (result.personDetected && !prev.personDetected) {
+            val text = if (isJapanese) "後方に人を検出" else "Person behind vehicle"
+            enqueueWithPriority(AlertMessage(AlertPriority.CRITICAL, text, null, true, now))
+        }
+
+        // Cat/dog detected (WARNING)
+        if ((result.catDetected || result.dogDetected) &&
+            !(prev.catDetected || prev.dogDetected)
+        ) {
+            val text = if (isJapanese) "後方に動物を検出" else "Animal behind vehicle"
+            enqueueWithPriority(AlertMessage(AlertPriority.WARNING, text, null, false, now))
+        }
+    }
+
+    /** Reset rear alert state (e.g., when rear camera stops). */
+    fun resetRearState() {
+        prevRearResult = null
+    }
+
+    /**
      * Reset alert state so the next frame is treated as "first frame" (store-only).
      * Call when re-enabling audio alerts after a period of silence to avoid
      * false onset/all-clear from stale prevDangers.
@@ -643,6 +679,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         cooldownMap.clear()
         escalationMap.clear()
         prevPassengerBadPosture.clear()
+        prevRearResult = null
     }
 
     fun close() {

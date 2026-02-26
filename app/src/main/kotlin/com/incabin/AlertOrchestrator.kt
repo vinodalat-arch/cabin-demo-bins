@@ -97,6 +97,16 @@ class AlertOrchestrator(
         }
     }
 
+    /** Forward rear camera alerts to AudioAlerter. */
+    fun checkRearAlerts(result: RearResult) {
+        audioAlerter.checkRearAlerts(result)
+    }
+
+    /** Reset rear alert state. */
+    fun resetRearState() {
+        audioAlerter.resetRearState()
+    }
+
     /** Forward to AudioAlerter. */
     fun checkPassengerPostures(postures: List<FrameHolder.PassengerPosture>) {
         audioAlerter.checkPassengerPostures(postures)

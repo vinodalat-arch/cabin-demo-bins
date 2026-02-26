@@ -292,4 +292,47 @@ class ConfigConstantsTest {
     fun test_wifi_camera_default_empty() {
         assertEquals("", Config.WIFI_CAMERA_URL)
     }
+
+    @Test
+    fun test_brand_default_honda() {
+        assertEquals("honda", Config.BRAND)
+    }
+
+    // -------------------------------------------------------------------------
+    // Rear camera constants (5 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_rear_coco_classes() {
+        assertEquals(0, Config.REAR_PERSON_CLASS)
+        assertEquals(15, Config.REAR_CAT_CLASS)
+        assertEquals(16, Config.REAR_DOG_CLASS)
+    }
+
+    @Test
+    fun test_rear_confidence_thresholds() {
+        assertEquals(0.45f, Config.REAR_PERSON_CONFIDENCE)
+        assertEquals(0.40f, Config.REAR_ANIMAL_CONFIDENCE)
+    }
+
+    @Test
+    fun test_rear_smoother_window() {
+        assertEquals(2, Config.REAR_SMOOTHER_WINDOW)
+    }
+
+    @Test
+    fun test_rear_min_frames() {
+        assertEquals(1, Config.REAR_PERSON_MIN_FRAMES)
+        assertEquals(2, Config.REAR_ANIMAL_MIN_FRAMES)
+    }
+
+    @Test
+    fun test_reverse_risk_cap() {
+        assertEquals("medium", Config.REVERSE_RISK_CAP)
+    }
+
+    @Test
+    fun test_gear_reverse_constant() {
+        assertEquals(0x0020, VehicleChannelManager.GEAR_REVERSE)
+    }
 }

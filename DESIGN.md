@@ -32,7 +32,7 @@ The ultra-wide aspect ratio (8:3) is the defining constraint. Vertical stacking 
 
 ```
 +---------------------+--------------------------+----------------------+
-| LEFT PANEL (280dp)  |  CENTER (flexible)       |  RIGHT PANEL (360dp) |
+| LEFT PANEL (100dp)  |  CENTER (flexible)       |  RIGHT PANEL (380dp) |
 |                     |                          |                      |
 |  Score Arc          |                          |  Risk Indicator      |
 |  Streak / Session   |   Camera Preview         |  Driver Name         |
@@ -133,8 +133,8 @@ Defined in `res/values/dimens.xml`. Based on a 4dp grid.
 
 | Token | Value |
 |---|---|
-| `left_panel_width` | 280dp |
-| `right_panel_width` | 360dp |
+| `left_panel_width` | 100dp |
+| `right_panel_width` | 380dp |
 | `score_arc_size` | 120dp |
 | `button_height` | 44dp (standard), 48dp (primary action) |
 | `button_radius` | 8dp |

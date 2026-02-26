@@ -260,6 +260,7 @@
 
                     <!-- Premium brand mark -->
                     <TextView
+                        android:id="@+id/brandNameText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="HONDA"
@@ -278,6 +279,7 @@
                         android:layout_marginBottom="@dimen/space_md" />
 
                     <TextView
+                        android:id="@+id/brandSubtitleText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="SMART CABIN"
@@ -326,6 +328,22 @@
                 android:paddingTop="@dimen/space_lg"
                 android:paddingBottom="@dimen/space_sm"
                 android:visibility="gone">
+
+                <!-- Smart Cabin section header -->
+                <TextView
+                    style="@style/TextMicro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/section_smart_cabin"
+                    android:textColor="@color/text_muted"
+                    android:letterSpacing="0.10"
+                    android:layout_marginBottom="@dimen/space_xs" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider"
+                    android:layout_marginBottom="@dimen/space_sm" />
 
                 <!-- Risk pill -->
                 <TextView
@@ -387,6 +405,46 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:layout_marginBottom="@dimen/space_md" />
+
+                <!-- Rear Camera Section (visible only during reverse) -->
+                <LinearLayout
+                    android:id="@+id/rearAlertSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:layout_marginBottom="@dimen/space_md">
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider"
+                        android:layout_marginBottom="@dimen/space_sm" />
+
+                    <TextView
+                        style="@style/TextMicro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/section_rear_view"
+                        android:textColor="@color/text_muted"
+                        android:letterSpacing="0.10"
+                        android:layout_marginBottom="@dimen/space_xs" />
+
+                    <TextView
+                        android:id="@+id/rearStatusText"
+                        style="@style/TextMicro"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Active"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="@dimen/space_xs" />
+
+                    <LinearLayout
+                        android:id="@+id/rearDetectionLabels"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
 
                 <!-- Bottom widget area (Session Stats or Driver Tips) -->
                 <FrameLayout
@@ -657,6 +715,47 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
+
+                <!-- Brand -->
+                <TextView
+                    style="@style/TextCaption"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Brand"
+                    android:layout_marginBottom="@dimen/space_sm" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_segmented_button"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        android:id="@+id/brandHondaBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="HONDA"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/brandKonfluenceBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="KONFLUENCE"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+                </LinearLayout>
 
                 <!-- Driver Seat Side -->
                 <TextView
@@ -1057,13 +1156,13 @@
                     android:layout_marginBottom="@dimen/space_md"
                     android:stateListAnimator="@null" />
 
-                <!-- WiFi Camera button -->
+                <!-- Rear Camera URL button -->
                 <Button
                     android:id="@+id/wifiCamButton"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/button_height"
                     android:background="@drawable/bg_button"
-                    android:text="WiFi Camera..."
+                    android:text="Rear Camera URL..."
                     android:textSize="15sp"
                     android:textColor="@color/text_secondary"
                     android:textAllCaps="false"
@@ -1077,6 +1176,18 @@
                     android:layout_height="@dimen/button_height"
                     android:background="@drawable/bg_button"
                     android:text="Manage Faces..."
+                    android:textSize="15sp"
+                    android:textColor="@color/text_secondary"
+                    android:textAllCaps="false"
+                    android:stateListAnimator="@null" />
+
+                <!-- Manual Reverse Toggle (for testing on non-automotive devices) -->
+                <Button
+                    android:id="@+id/reverseToggleButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:background="@drawable/bg_button"
+                    android:text="Reverse Gear: OFF"
                     android:textSize="15sp"
                     android:textColor="@color/text_secondary"
                     android:textAllCaps="false"

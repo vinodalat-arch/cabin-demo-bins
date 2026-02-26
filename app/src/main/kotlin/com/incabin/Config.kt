@@ -89,6 +89,9 @@ object Config {
     // Bottom widget: "none", "stats", or "tips" (toggleable at runtime; persisted in SharedPreferences)
     @JvmStatic @Volatile var BOTTOM_WIDGET = "none"
 
+    // Brand: "honda" or "konfluence" (toggleable at runtime; persisted in SharedPreferences)
+    @JvmStatic @Volatile var BRAND = "honda"
+
     // V4L2
     const val V4L2_SELECT_TIMEOUT_S = 2
     const val V4L2_MAX_CONSECUTIVE_FAILURES = 3
@@ -124,6 +127,20 @@ object Config {
     const val VEHICLE_PULSE_LUMBAR_MS = 2000L
     const val VEHICLE_PULSE_SEAT_THERMAL_MS = 5000L
     const val VEHICLE_WINDOW_CRACK_MS = 30000L
+
+    // Rear camera (WiFi MJPEG rear-view)
+    @JvmStatic @Volatile var REVERSE_GEAR_ACTIVE = false  // set by VHAL listener or manual toggle
+    const val REAR_PERSON_CLASS = 0
+    const val REAR_CAT_CLASS = 15
+    const val REAR_DOG_CLASS = 16
+    const val REAR_PERSON_CONFIDENCE = 0.45f
+    const val REAR_ANIMAL_CONFIDENCE = 0.40f
+    const val REAR_SMOOTHER_WINDOW = 2   // faster response for reversing safety
+    const val REAR_PERSON_MIN_FRAMES = 1 // immediate alert
+    const val REAR_ANIMAL_MIN_FRAMES = 2
+
+    // In-cabin risk dampening during reverse
+    const val REVERSE_RISK_CAP = "medium"  // cap in-cabin risk at medium during reverse
 
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3

@@ -1,36 +1,47 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, and independent face registration (own camera + FaceDetectorLite). Build verified (`assembleDebug` + all 447 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, and remote VLM inference mode (HTTP polling to laptop-hosted VLM server with configurable FPS). Build verified (`assembleDebug` + all 583 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
 
 ## What it does
-Captures USB webcam at 1fps, runs local ML inference on CPU, outputs JSON with 18 fields: passenger_count, driver_detected, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
+Two inference modes (selectable at runtime):
+- **Local mode**: Captures USB webcam at configurable FPS (1-3), runs on-device ML inference on CPU
+- **Remote VLM mode**: Polls a laptop-hosted VLM server (Qwen2.5-VL) via HTTP at configurable FPS (1-3), no local camera or model loading needed
+
+Both modes output JSON with 18 fields: passenger_count, driver_detected, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
 ## Full Specification
 **See `SPEC.md`** for complete implementation details including every algorithm, formula, landmark index, threshold, tensor shape, postprocessing step, and unit test specifications. That document is the single source of truth for this project.
 
 ## Architecture
 ```
-USB Webcam (default)
-  → V4L2 ioctl (/dev/videoN, YUYV 1280x720, mmap) → YUYV→BGR (C++ via JNI)
-    [fallback: Camera2 ImageReader → YUV_420_888 → BT.601 YUV→BGR]
-WiFi Camera (optional, via Settings)
-  → MjpegCameraManager → HTTP GET → multipart/x-mixed-replace → JPEG decode → ARGB→BGR
+LOCAL MODE (default):
+  USB Webcam (default)
+    → V4L2 ioctl (/dev/videoN, YUYV 1280x720, mmap) → YUYV→BGR (C++ via JNI)
+      [fallback: Camera2 ImageReader → YUV_420_888 → BT.601 YUV→BGR]
+  WiFi Camera (optional, via Settings)
+    → MjpegCameraManager → HTTP GET → multipart/x-mixed-replace → JPEG decode → ARGB→BGR
   → YOLOv8n-pose (ONNX Runtime C++, CPU EP) → posture, child, passenger count
   → YOLOv8n detection (ONNX Runtime C++, CPU EP) → phone, food/drink in driver ROI
   → MediaPipe FaceLandmarker (Kotlin, tasks-vision SDK) → EAR, MAR, solvePnP head pose
   → MobileFaceNet (ONNX Runtime C++, CPU EP) → 512-dim face embedding   ← every 5th frame
   → FaceStore (Kotlin) → cosine similarity matching → driver name        ← cached between runs
   → Merger (Kotlin) → risk scoring
+
+REMOTE VLM MODE (optional):
+  → VlmClient (HTTP polling) → laptop VLM server /api/detect → JSON OutputResult
+  → distraction_duration_s computed on-device (safety-critical)
+
+SHARED PIPELINE (both modes):
   → Temporal Smoother (Kotlin) → 3-frame sliding window, 60% threshold
-  → Audio Alerter (priority queue + staleness + cooldown + escalation) ← core path
+  → Alert Orchestrator → AudioAlerter (TTS) + VehicleChannelManager (VHAL)
   → JSON output (Logcat)                                               ← core path
   → FrameHolder.postResult() → OutputResult → Dashboard               ← fast UI path
-  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← optional UI path
-  → FrameHolder.postFrame() → bitmap → ImageView preview              ← optional UI path
+  → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← optional UI path (local only)
+  → FrameHolder.postFrame() → bitmap → ImageView preview              ← optional UI path (local only)
 ```
 
 ### Core Pipeline Isolation (Safety-Critical Requirement)
@@ -116,17 +127,17 @@ Runtime toggle in settings panel (hidden by default, 5-tap to open) enables/disa
 - Phone: COCO class 67, Food/drink: classes 39-48
 - Posture lean > 30°, Child slouch > 20°
 - Head turn: nose offset > 30% of shoulder width
-- Child: bbox height < 75% of driver
+- Child: bbox height < 65% of driver
 - Keypoint confidence threshold: 0.5
 - Wrist crop: 200x200px
 - Smoother: 3-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
-- Sustained detection: eyes 3 frames, yawning 2 frames, distracted 3 frames, eating 3 frames, posture 3 frames, child slouch 5 frames
+- Sustained detection: eyes 2 frames, yawning 2 frames, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 - Face recognition: cosine similarity > 0.5, every 5th frame, 512-dim embedding
 
 ## Risk Scoring
 ```
-phone=3, eyes=3, yawn=2, distracted=2, posture=2, eating=1, slouch=1
+phone=3, eyes=3, hands_off=3, yawn=2, distracted=2, posture=2, eating=1, slouch=1
 score >= 3 → high, >= 1 → medium, else → low
 ```
 
@@ -155,7 +166,7 @@ score >= 3 → high, >= 1 → medium, else → low
 ### Temporal Smoother
 - Standard fields: majority voting over buffer
 - Face-gated fields: eyes→ear_value, yawning→mar_value, distracted→head_yaw (skip null frames)
-- Sustained detection thresholds (streak counters): eyes 3 frames, yawning 2 frames, distracted 3 frames, eating 3 frames, posture 3 frames, child slouch 5 frames. Majority voting must agree AND streak must reach min_frames before detection fires
+- Sustained detection thresholds (streak counters): eyes 2 frames, yawning 2 frames, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames. Majority voting must agree AND streak must reach min_frames before detection fires
 - Fast-clear: 2 consecutive frames with ear >= 0.21 → immediately clear eyes_closed
 - Passenger count: mode of buffer
 - Risk: recomputed from smoothed booleans
@@ -200,6 +211,32 @@ score >= 3 → high, >= 1 → medium, else → low
 - **MJPEG safety**: `onBgrFrame()` copies BGR data defensively to avoid data race with MjpegCameraManager's reused internal buffer
 - **Thread safety**: Camera retry thread cancelled via `@Volatile` flag on `onPause()`, preventing background camera reopen
 
+### Remote VLM Inference (VlmClient)
+- **Mode**: `Config.INFERENCE_MODE` = "local" (default) or "remote". Mode locked at service start, not changeable during monitoring
+- **VlmClient**: HTTP polling client. Polls `{VLM_SERVER_URL}/api/detect` at `Config.inferenceIntervalMs()` interval
+- **Server**: `scripts/vlm_server.py` — FastAPI server running Qwen2.5-VL-7B on laptop GPU. Mock mode available for testing
+- **Launcher GUI**: `scripts/vlm_launcher.py` — tkinter GUI to manage vlm_server.py (start/stop, health check, test query, log viewer)
+- **Pipeline**: VlmClient → JSON parse → OutputResult → smoother → alerts → dashboard. No camera, no local models
+- **Confidence scoring**: VLM returns per-detection confidence (0.0-1.0), server applies per-detection thresholds (phone=0.6, eyes=0.5, etc.)
+- **Safety**: `distraction_duration_s` always computed on-device regardless of mode
+- **Camera status**: Shows "VLM: Connecting/Active/Lost" in remote mode
+- **Inference badge**: Shows "LOCAL" (blue) or "VLM" (purple) pill during monitoring, captured at start time
+- **Health check**: One-shot `VlmClient.checkHealthOnce()` on URL save and monitoring start (advisory toast)
+- **Watchdog**: `restartPipeline()` is mode-aware — restarts VlmClient in remote mode
+- **Activity safety**: `@Volatile isActivityDestroyed` flag guards background health check threads
+- **Parsing**: `parseDetectResponse()` pure companion function — 13 unit tests
+- **Error handling**: HTTP errors post LOST/NOT_CONNECTED status, exponential backoff on repeated failures
+
+### Multi-Modal Alert Orchestrator
+- **AlertOrchestrator**: Wraps `AudioAlerter` (unchanged) + `VehicleChannelManager`. Called from `InCabinService` instead of direct `AudioAlerter.checkAndAnnounce()`
+- **5-level escalation**: L1 Nudge (0s) → L2 Warning (5s) → L3 Urgent (10s) → L4 Intervention (20s) → L5 Emergency (30s+)
+- **Per-detection caps**: phone/eyes/hands_off/distracted→L5, yawning→L4, eating/posture/slouch→L3
+- **6 VHAL channels**: CabinLight, SeatHaptic, SeatThermal, SteeringHeat, Window, ADAS
+- **Car API**: Accessed via reflection (no compile-time dependency) — graceful no-op on generic Android
+- **Speed-gating**: L1 suppressed when PARKED
+- **Platform gate**: `PlatformProfile.enableVehicleChannels` — true on SA8155/SA8255/SA8295, false on GENERIC
+- **Manifest**: `android.car` uses-library (required=false), 9 car permissions, `distractionOptimized=true` on all activities (required for vehicle-moving state)
+
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
 - Increment +1 per frame if any active, reset to 0 when all clear
@@ -218,14 +255,14 @@ score >= 3 → high, >= 1 → medium, else → low
 ### Status Dashboard (MainActivity) — Luxury IVI Three-Zone Layout
 - **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
 - **Three-zone horizontal layout** optimized for 1920x720 automotive landscape display:
-  - **Left panel (80dp)**: Slim status strip — score arc (64dp, animated), streak/session timers (TextMicro condensed), camera status dot (tap for tooltip), Start/Stop button. No settings buttons visible
+  - **Left panel (100dp)**: Slim status strip — score arc (64dp, animated), streak/session timers (TextMicro condensed), camera status dot (tap for tooltip), Start/Stop button. No settings buttons visible
   - **Center (flexible)**: Camera preview (or idle branding when not monitoring), AI status message overlay with gradient scrim at bottom. Expanded to fill space recovered from slim left panel
-  - **Right panel (320dp)**: Risk pill, driver name, passenger count, distraction timer, detection labels, ticker (visible during monitoring only)
+  - **Right panel (380dp)**: Risk pill, driver name, passenger count, distraction timer, detection labels, ticker (visible during monitoring only)
 - **Settings overlay** (hidden by default):
   - **5-tap gesture**: Tap root layout 5 times within 3s to open. Visual hint (flash) on 4th tap
-  - **Settings panel (300dp)**: Slides in from left edge between left panel and center. Background: `surface_elevated` (#1A1B24) at 95% opacity, 12dp rounded right corners
+  - **Settings panel (340dp)**: Slides in from left edge between left panel and center. Background: `surface_elevated` (#1A1B24) at 95% opacity, 12dp rounded right corners
   - **Scrim**: 50% black overlay on center zone, clickable to dismiss
-  - **Controls**: Segmented buttons (LEFT/RIGHT seat side, EN/JA language), ON/OFF toggle buttons (audio, preview), action buttons (WiFi Camera dialog, Manage Faces activity)
+  - **Controls**: Segmented buttons (LEFT/RIGHT seat side, EN/JA language, LOCAL/REMOTE inference mode, 1/2/3 FPS), ON/OFF toggle buttons (audio, preview), action buttons (WiFi Camera dialog, VLM Server URL dialog, Manage Faces activity), passenger detail (minimal/detailed), ASIMO mascot size (S/M/L), bottom widget (none/stats/tips)
   - **Close**: Close button (x), tap scrim, or 5-tap again
   - **Animation**: Slide right 300ms decelerate (open), slide left 200ms accelerate (close)
 - **Design system**: Centralized color palette (`res/values/colors.xml`), typography styles (`res/values/styles.xml`), spacing system (`res/values/dimens.xml`)
@@ -279,33 +316,43 @@ in_cabin_poc-sa8155/
 │   │   ├── v4l2_camera, pose_analyzer, face_recognizer, yolo_utils, image_utils, jni_bridge
 │   │   └── CMakeLists.txt
 │   ├── kotlin/com/incabin/
-│   │   ├── Config, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
+│   │   ├── Config, ConfigPrefs, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
 │   │   ├── FaceAnalyzer, FaceDetectorLite, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
+│   │   ├── AlertOrchestrator, VehicleChannelManager, VlmClient
 │   │   ├── PlatformProfile, DeviceSetup, BootReceiver
 │   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest)
+├── scripts/              (vlm_server.py, vlm_launcher.py, requirements.txt, convert_fp16.py)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 447 unit tests (all passing):
+- 583 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
+  - AlertOrchestratorTest: 30 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
+  - ConfigConstantsTest: 33 tests (all Config constant values match documented spec)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
   - TemporalSmootherTest: 23 tests (voting, face-gating, fast-clear, sustained thresholds incl. yawning min_frames, passenger mode, risk recomputation)
+  - VehicleChannelManagerTest: 20 tests (VHAL property mapping, channel activation/deactivation, reflection-based Car API)
   - MergerTest: 19 tests (risk scoring + merge logic)
-  - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
+  - FlowDriverIdentificationTest: 16 tests (seat-side selection, face region validation, driver_detected schema/merger/smoother, config toggle)
+  - VlmClientTest: 13 tests (parseDetectResponse JSON→OutputResult, health check, error handling)
   - FlowMonitoringTest: 12 tests (full pipeline chain — mergeResults → smooth → validate for detection sequences)
   - FlowEscalationTest: 12 tests (escalation ladder timing, cooldown, multi-danger, all-clear reset, Japanese messages)
+  - FlowMultiModalEscalationTest: 12 tests (L1-L5 escalation with vehicle channels, per-detection caps, speed gating)
+  - EscalationLevelTest: 10 tests (level progression, duration thresholds, per-detection max level)
+  - FlowVlmRemoteTest: 10 tests (VLM pipeline end-to-end: polling → parse → smooth → validate)
+  - ChannelPropertyTest: 8 tests (VHAL property IDs, pulse durations, channel enable/disable)
   - FlowConfigToggleTest: 8 tests (Config defaults, toggle state, language effects on alerts, smoother/risk config)
   - FlowFaceRecognitionTest: 8 tests (driver name schema, cosine similarity matching, pipeline survival, JSON round-trip)
-  - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority logic)
-  - FlowDriverIdentificationTest: 16 tests (seat-side selection, face region validation, driver_detected schema/merger/smoother, config toggle)
+  - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
   - CrashLogTest: 7 tests (formatLine format, field inclusion, shouldRotate boundary cases)
+  - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority logic)
   - PipelineWatchdogTest: 6 tests (isStalled logic — not started, within timeout, beyond timeout, boundary, heartbeat reset)
   - MemoryPolicyTest: 5 tests (decideAction at various trim levels — no action, low, critical, high, zero)
   - BootReceiverTest: 4 tests (shouldAutoStart for SA8155, SA8255, SA8295, GENERIC)
@@ -318,7 +365,7 @@ in_cabin_poc-sa8155/
 On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~80ms. Frame cadence ~0.85s. Detection latency ~2-3s (smoother window=3 + webcam framerate). Memory stable at heap=19MB, native=208MB.
 
 ### On-Device Performance Tuning
-- **INFERENCE_INTERVAL_MS**: Reduced from 1000ms to 100ms (webcam at ~1fps is the actual bottleneck, not sleep)
+- **INFERENCE_FPS**: Configurable 1/2/3 FPS via settings (shared between local and VLM modes). `Config.inferenceIntervalMs()` computes `1000/fps` dynamically. Webcam at ~1fps is the actual bottleneck in local mode
 - **SMOOTHER_WINDOW**: Reduced from 5 to 3 frames for faster detection response (need 2/3 majority instead of 3/5)
 - **HEAD_PITCH_THRESHOLD**: Increased from 25° to 35° to eliminate false `driver_distracted` from camera mounting angle
 - **V4L2 mmap buffers**: Reduced from 4 to 2 to minimize frame latency
@@ -361,7 +408,7 @@ On-device measured: **avg 630ms/frame** on Kryo 485 (FP32). Pose ~550ms, Face ~8
 System-level hardening for unattended automotive IVI deployment:
 
 - **Boot auto-start** (`BootReceiver`): `ACTION_BOOT_COMPLETED` receiver auto-starts `InCabinService` on SA8155/SA8255/SA8295. Disabled on generic Android. Pure `shouldAutoStart(platform)` companion for testability
-- **Pipeline watchdog** (`PipelineWatchdog`): `HandlerThread`-based monitor checks `@Volatile lastHeartbeatMs` every 5s. If no heartbeat for 30s (`WATCHDOG_TIMEOUT_MS`), invokes `restartCamera()` callback. Pure `isStalled()` companion. Heartbeat recorded at end of each `processFrame()`
+- **Pipeline watchdog** (`PipelineWatchdog`): `HandlerThread`-based monitor checks `@Volatile lastHeartbeatMs` every 5s. If no heartbeat for 30s (`WATCHDOG_TIMEOUT_MS`), invokes `restartPipeline()` callback (mode-aware: restarts VlmClient in remote mode, camera in local mode). Pure `isStalled()` companion. Heartbeat recorded at end of each `processFrame()`
 - **Memory pressure handling** (`MemoryPolicy`): `onTrimMemory(level)` override in `InCabinService` calls pure `MemoryPolicy.decideAction(trimLevel)`. Level >= 10 (RUNNING_LOW): disables preview + clears FrameHolder buffers. Level >= 15 (RUNNING_CRITICAL): also requests GC. Zero per-frame cost
 - **Persistent crash log** (`CrashLog`): Singleton writes to `crash_log.txt` in app internal storage. `@Synchronized` thread-safe writes. 500KB cap with rotation to `crash_log_prev.txt`. Uncaught exception handler installed in `onCreate()`. Pipeline errors, watchdog stalls, and memory events logged. Pure `formatLine()` and `shouldRotate()` functions for testability
 - **Bounded init timeout**: `CountDownLatch.await()` replaced with `await(30s, TimeUnit.MILLISECONDS)`. Logs error + continues with partial init on timeout. Null checks downstream already handle missing components
@@ -398,7 +445,13 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell pm grant --user 10 com.incabin android.permission.CAMERA
 adb shell pm grant --user 10 com.incabin android.permission.POST_NOTIFICATIONS
 
-# 6. Start service and monitor
+# 6. Grant car permissions (required for vehicle-moving state)
+adb shell pm grant --user 10 com.incabin android.car.permission.CAR_SPEED
+adb shell pm grant --user 10 com.incabin android.car.permission.CAR_POWERTRAIN
+adb shell pm grant --user 10 com.incabin android.car.permission.CAR_ENERGY
+adb shell pm grant --user 10 com.incabin android.car.permission.CAR_DRIVING_STATE
+
+# 7. Start service and monitor
 adb shell am start-foreground-service -a com.incabin.START com.incabin/.InCabinService
 adb logcat -s 'InCabin:*' 'InCabin-V4L2:*' 'InCabin-JNI:*' 'InCabin-Camera:*' 'AudioAlerter:*'
 ```

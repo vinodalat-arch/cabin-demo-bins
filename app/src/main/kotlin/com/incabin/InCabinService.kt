@@ -23,6 +23,8 @@ class InCabinService : Service() {
 
         const val ACTION_START = "com.incabin.START"
         const val ACTION_STOP = "com.incabin.STOP"
+        const val ACTION_REVERSE_ON = "com.incabin.REVERSE_ON"
+        const val ACTION_REVERSE_OFF = "com.incabin.REVERSE_OFF"
 
         private const val STATS_INTERVAL = 30
 
@@ -67,6 +69,12 @@ class InCabinService : Service() {
 
     // --- Remote VLM client (mutually exclusive with local camera/models) ---
     private var vlmClient: VlmClient? = null
+
+    // --- Rear camera (WiFi MJPEG rear-view) ---
+    private var rearMjpegCamera: MjpegCameraManager? = null
+    private var rearAnalyzer: RearAnalyzer? = null
+    private var rearSmoother: RearSmoother? = null
+    private val rearPipelineLock = ReentrantLock()
 
     // --- Device setup (automotive BSP only) ---
     private var deviceSetup: DeviceSetup? = null
@@ -126,6 +134,14 @@ class InCabinService : Service() {
             ACTION_STOP -> {
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_REVERSE_ON -> {
+                onGearChanged(true)
+                return START_STICKY
+            }
+            ACTION_REVERSE_OFF -> {
+                onGearChanged(false)
+                return START_STICKY
             }
         }
 
@@ -233,6 +249,12 @@ class InCabinService : Service() {
 
             vlmClient?.stop()
             vlmClient = null
+
+            rearMjpegCamera?.stop()
+            rearMjpegCamera = null
+            rearAnalyzer?.close()
+            rearAnalyzer = null
+            rearSmoother = null
 
             faceAnalyzer?.close()
             faceAnalyzer = null
@@ -420,6 +442,14 @@ class InCabinService : Service() {
             }
         }
 
+        // Wire gear state callback to rear camera control
+        vehicleChannelManager?.onGearChanged = ::onGearChanged
+
+        // If car was already in reverse at startup (probed by VehicleChannelManager)
+        if (Config.REVERSE_GEAR_ACTIVE) {
+            onGearChanged(true)
+        }
+
         // AlertOrchestrator wraps AudioAlerter + VehicleChannelManager
         audioAlerter?.let { alerter ->
             alertOrchestrator = AlertOrchestrator(alerter, vehicleChannelManager)
@@ -453,19 +483,8 @@ class InCabinService : Service() {
     // -------------------------------------------------------------------------
 
     private fun startCamera() {
-        // WiFi camera: if URL is configured, try MJPEG stream first
-        val wifiUrl = Config.WIFI_CAMERA_URL
-        if (wifiUrl.isNotBlank()) {
-            val mjpeg = MjpegCameraManager(nativeLib, ::onBgrFrame)
-            if (mjpeg.start(wifiUrl)) {
-                mjpegCamera = mjpeg
-                FrameHolder.postCameraStatus(FrameHolder.CameraStatus.CONNECTING)
-                Log.i(TAG, "Using WiFi MJPEG camera: $wifiUrl")
-                return
-            }
-            Log.w(TAG, "WiFi camera failed, falling back to local cameras")
-        }
-
+        // WiFi camera URL is now used exclusively for rear-view camera (not in-cabin replacement).
+        // In-cabin always uses USB (V4L2 or Camera2).
         val tryV4l2First = platformProfile.cameraStrategy == PlatformProfile.CameraStrategy.V4L2_FIRST
 
         if (tryV4l2First) {
@@ -584,7 +603,13 @@ class InCabinService : Service() {
 
             // Inject distraction_duration_s (VLM doesn't send driver_name via recognition,
             // so we pass through whatever the server provides)
-            val finalResult = smoothed.copy(distractionDurationS = durationVal)
+            // During reverse gear, cap in-cabin risk at "medium"
+            val cappedRisk = if (Config.REVERSE_GEAR_ACTIVE && smoothed.riskLevel == "high") {
+                Config.REVERSE_RISK_CAP
+            } else {
+                smoothed.riskLevel
+            }
+            val finalResult = smoothed.copy(distractionDurationS = durationVal, riskLevel = cappedRisk)
 
             // Alert orchestrator (core — must run)
             val audioEnabled = Config.ENABLE_AUDIO_ALERTS
@@ -618,6 +643,97 @@ class InCabinService : Service() {
             CrashLog.logException(TAG, "VLM result processing error", e)
         } finally {
             pipelineLock.unlock()
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Rear Camera (WiFi MJPEG rear-view)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Start the rear camera pipeline. Creates MjpegCameraManager with its own
+     * frame callback and a separate RearAnalyzer + RearSmoother.
+     * Called when reverse gear is detected or manual toggle is activated.
+     */
+    fun startRearCamera() {
+        val wifiUrl = Config.WIFI_CAMERA_URL
+        if (wifiUrl.isBlank()) {
+            Log.w(TAG, "Rear camera URL not configured")
+            return
+        }
+        if (rearMjpegCamera != null) {
+            Log.i(TAG, "Rear camera already running")
+            return
+        }
+
+        // Initialize rear analyzer (separate ONNX session, 2 threads)
+        if (rearAnalyzer == null) {
+            try {
+                rearAnalyzer = RearAnalyzer(assets)
+                Log.i(TAG, "RearAnalyzer initialized")
+            } catch (e: Exception) {
+                Log.e(TAG, "RearAnalyzer initialization failed", e)
+                return
+            }
+        }
+        if (rearSmoother == null) {
+            rearSmoother = RearSmoother()
+        }
+
+        val mjpeg = MjpegCameraManager(nativeLib, ::onRearBgrFrame)
+        if (mjpeg.start(wifiUrl)) {
+            rearMjpegCamera = mjpeg
+            FrameHolder.postRearCameraStatus(FrameHolder.CameraStatus.CONNECTING)
+            Log.i(TAG, "Rear camera started: $wifiUrl")
+        } else {
+            Log.w(TAG, "Failed to start rear camera: $wifiUrl")
+            FrameHolder.postRearCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
+        }
+    }
+
+    /** Stop the rear camera pipeline and clear rear FrameHolder channels. */
+    fun stopRearCamera() {
+        rearMjpegCamera?.stop()
+        rearMjpegCamera = null
+        rearSmoother?.reset()
+        alertOrchestrator?.resetRearState()
+        FrameHolder.postRearCameraStatus(FrameHolder.CameraStatus.NOT_CONNECTED)
+        FrameHolder.postRearResult(RearResult.default())
+        Log.i(TAG, "Rear camera stopped")
+    }
+
+    /** Rear camera BGR frame callback. Runs on MJPEG reader thread. */
+    private fun onRearBgrFrame(bgrData: ByteArray, width: Int, height: Int) {
+        if (!rearPipelineLock.tryLock()) return
+        try {
+            val result = rearAnalyzer?.analyze(bgrData, width, height) ?: return
+            val smoothed = rearSmoother?.smooth(result) ?: result
+
+            FrameHolder.postRearResult(smoothed)
+
+            // Rear audio alerts
+            if (Config.ENABLE_AUDIO_ALERTS) {
+                alertOrchestrator?.checkRearAlerts(smoothed)
+            }
+
+            Log.i(TAG, "Rear: ${smoothed.toJson()}")
+        } catch (e: Exception) {
+            Log.w(TAG, "Rear camera pipeline error", e)
+        } finally {
+            rearPipelineLock.unlock()
+        }
+    }
+
+    /**
+     * Called when gear state changes (from VehicleChannelManager callback or manual toggle).
+     * Starts/stops rear camera and sets reverse gear flag.
+     */
+    fun onGearChanged(isReverse: Boolean) {
+        Config.REVERSE_GEAR_ACTIVE = isReverse
+        if (isReverse && Config.WIFI_CAMERA_URL.isNotBlank()) {
+            startRearCamera()
+        } else {
+            stopRearCamera()
         }
     }
 
@@ -716,9 +832,17 @@ class InCabinService : Service() {
             }
 
             // Step 6: Inject distraction_duration_s and driver name into result
+            // During reverse gear, cap in-cabin risk at "medium" (driver looking backward
+            // triggers driver_distracted which is expected during reverse)
+            val cappedRisk = if (Config.REVERSE_GEAR_ACTIVE && smoothed.riskLevel == "high") {
+                Config.REVERSE_RISK_CAP
+            } else {
+                smoothed.riskLevel
+            }
             val finalResult = smoothed.copy(
                 distractionDurationS = durationVal,
-                driverName = recognizedName
+                driverName = recognizedName,
+                riskLevel = cappedRisk
             )
 
             // Step 6.5: Welcome greeting on first driver name recognition in this session

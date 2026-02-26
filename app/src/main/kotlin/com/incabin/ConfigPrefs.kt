@@ -20,6 +20,7 @@ object ConfigPrefs {
     const val PREF_PASSENGER_DETAIL = "passenger_info_detail"
     const val PREF_ASIMO_SIZE = "asimo_size"
     const val PREF_BOTTOM_WIDGET = "bottom_widget"
+    const val PREF_BRAND = "brand"
 
     /** Load all persisted preferences into Config volatile fields. */
     fun loadIntoConfig(context: Context) {
@@ -35,5 +36,6 @@ object ConfigPrefs {
         Config.PASSENGER_INFO_DETAIL = prefs.getString(PREF_PASSENGER_DETAIL, "minimal") ?: "minimal"
         Config.ASIMO_SIZE = prefs.getString(PREF_ASIMO_SIZE, "m") ?: "m"
         Config.BOTTOM_WIDGET = prefs.getString(PREF_BOTTOM_WIDGET, "none") ?: "none"
+        Config.BRAND = prefs.getString(PREF_BRAND, "honda") ?: "honda"
     }
 }

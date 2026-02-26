@@ -111,6 +111,17 @@ class DeviceSetup {
         return NativeLib().nativeFindV4l2Device() != null
     }
 
+    /**
+     * Fix /dev/video* permissions without running the full setup flow.
+     * Device node permissions reset to 660 on each webcam reconnect and
+     * service stop/start cycle. Call this before every monitoring start
+     * on automotive BSPs.
+     */
+    fun fixVideoPermissions() {
+        executeRootCommand("chmod 666 /dev/video*")
+        Log.d(TAG, "Video device permissions refreshed")
+    }
+
     fun cancel() {
         cancelled = true
         setupThread?.interrupt()

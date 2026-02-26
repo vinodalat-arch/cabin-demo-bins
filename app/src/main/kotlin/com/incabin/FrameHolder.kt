@@ -83,6 +83,15 @@ object FrameHolder {
 
     fun getCameraStatus(): CameraStatus = cameraStatus.get()
 
+    // --- Rear camera result channel ---
+    private val latestRearResult = AtomicReference<RearResult?>(null)
+    private val rearCameraStatus = AtomicReference(CameraStatus.NOT_CONNECTED)
+
+    fun postRearResult(result: RearResult) { latestRearResult.set(result) }
+    fun getRearResult(): RearResult? = latestRearResult.get()
+    fun postRearCameraStatus(status: CameraStatus) { rearCameraStatus.set(status) }
+    fun getRearCameraStatus(): CameraStatus = rearCameraStatus.get()
+
     // --- Service heartbeat (for UI stall detection) ---
     private val serviceHeartbeatMs = AtomicLong(0L)
     private val serviceRunning = AtomicBoolean(false)
@@ -110,6 +119,8 @@ object FrameHolder {
         latestCapture.set(null)
         latestPassengerPostures.set(emptyList())
         cameraStatus.set(CameraStatus.NOT_CONNECTED)
+        latestRearResult.set(null)
+        rearCameraStatus.set(CameraStatus.NOT_CONNECTED)
         serviceHeartbeatMs.set(0L)
         serviceRunning.set(false)
     }

@@ -98,4 +98,33 @@ class VehicleChannelManagerTest {
             )
         )
     }
+
+    // -------------------------------------------------------------------------
+    // isReverseGear — gear value classification
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun isReverseGear_reverse_returnsTrue() {
+        assertTrue(VehicleChannelManager.isReverseGear(0x0020))
+    }
+
+    @Test
+    fun isReverseGear_park_returnsFalse() {
+        assertFalse(VehicleChannelManager.isReverseGear(0x0001))
+    }
+
+    @Test
+    fun isReverseGear_drive_returnsFalse() {
+        assertFalse(VehicleChannelManager.isReverseGear(0x0008))
+    }
+
+    @Test
+    fun isReverseGear_neutral_returnsFalse() {
+        assertFalse(VehicleChannelManager.isReverseGear(0x0004))
+    }
+
+    @Test
+    fun isReverseGear_zero_returnsFalse() {
+        assertFalse(VehicleChannelManager.isReverseGear(0))
+    }
 }
