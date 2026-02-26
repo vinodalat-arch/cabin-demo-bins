@@ -24,3 +24,7 @@ app/src/main/cpp/onnxruntime/lib/
 # Device debug logs
 logs/
 *.txt
+
+# Python virtual environments
+.venv/
+__pycache__/
