@@ -1262,10 +1262,18 @@ class MainActivity : Activity() {
                 }
                 Config.VLM_SERVER_URL = url
                 prefs.edit().putString(ConfigPrefs.PREF_VLM_URL, url).apply()
-                updateVlmServerButtonUI()
                 Log.i(TAG, "VLM server URL: ${if (url.isBlank()) "(cleared)" else url}")
 
-                // Advisory health check on save
+                // Auto-switch to REMOTE mode when URL is set
+                if (url.isNotBlank() && Config.INFERENCE_MODE != "remote") {
+                    Config.INFERENCE_MODE = "remote"
+                    prefs.edit().putString(ConfigPrefs.PREF_INFERENCE_MODE, "remote").apply()
+                    updateInferenceModeUI()
+                    Log.i(TAG, "Auto-switched to remote mode")
+                }
+                updateVlmServerButtonUI()
+
+                // Health check + auto-restart if monitoring
                 if (url.isNotBlank()) {
                     Thread {
                         val health = VlmClient.checkHealthOnce(url)
@@ -1276,6 +1284,13 @@ class MainActivity : Activity() {
                                 "VLM Online \u2014 ${health.model ?: "unknown"}"
                             else "VLM Offline"
                             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+                            // Auto-restart monitoring in VLM mode
+                            if (isRunning) {
+                                Log.i(TAG, "Restarting monitoring in VLM mode")
+                                stopMonitoringInternal(stopService = true, showSummary = false)
+                                startMonitoring()
+                            }
                         }
                     }.start()
                 }
@@ -1283,8 +1298,23 @@ class MainActivity : Activity() {
             .setNeutralButton("Clear") { _, _ ->
                 Config.VLM_SERVER_URL = ""
                 prefs.edit().putString(ConfigPrefs.PREF_VLM_URL, "").apply()
+
+                // Auto-switch back to LOCAL mode when URL is cleared
+                if (Config.INFERENCE_MODE == "remote") {
+                    Config.INFERENCE_MODE = "local"
+                    prefs.edit().putString(ConfigPrefs.PREF_INFERENCE_MODE, "local").apply()
+                    updateInferenceModeUI()
+                    Log.i(TAG, "Auto-switched to local mode")
+                }
                 updateVlmServerButtonUI()
                 Log.i(TAG, "VLM server URL cleared")
+
+                // Auto-restart monitoring back to local mode if running
+                if (isRunning) {
+                    Log.i(TAG, "Restarting monitoring in local mode")
+                    stopMonitoringInternal(stopService = true, showSummary = false)
+                    startMonitoring()
+                }
             }
             .setNegativeButton("Cancel", null)
             .create()
