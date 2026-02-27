@@ -248,6 +248,7 @@ class MainActivity : Activity() {
     private lateinit var vlmServerButton: Button
     private lateinit var cameraStatusText: TextView
     private lateinit var cameraStatusDot: View
+    private lateinit var speedText: TextView
     private lateinit var driverNameText: TextView
     private lateinit var driverPositionText: TextView
     private lateinit var statusText: TextView
@@ -410,7 +411,17 @@ class MainActivity : Activity() {
                 // 3. Update camera status indicator
                 updateCameraStatus()
 
-                // 4. Update rear camera dashboard
+                // 4. Update speed display
+                val speed = Config.VEHICLE_SPEED_KMH
+                if (speed >= 0f) {
+                    speedText.text = "${speed.toInt()} km/h"
+                    speedText.setTextColor(colorTextSecondary)
+                } else {
+                    speedText.text = "-- km/h"
+                    speedText.setTextColor(colorTextMuted)
+                }
+
+                // 5. Update rear camera dashboard
                 updateRearDashboard()
             } catch (e: Exception) {
                 Log.w(TAG, "Preview update failed", e)
@@ -445,6 +456,7 @@ class MainActivity : Activity() {
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
         inferenceBadge = findViewById(R.id.inferenceBadge)
+        speedText = findViewById(R.id.speedText)
         driverNameText = findViewById(R.id.driverNameText)
         driverPositionText = findViewById(R.id.driverPositionText)
         statusText = findViewById(R.id.statusText)
@@ -1607,6 +1619,8 @@ class MainActivity : Activity() {
         inferenceBadge.visibility = View.VISIBLE
         inferenceBadge.animate().alpha(1f).setDuration(200).start()
 
+        speedText.visibility = View.VISIBLE
+
         // Show aiStatusText only when preview is ON (bubble handles it otherwise)
         if (Config.ENABLE_PREVIEW) {
             aiStatusText.visibility = View.VISIBLE
@@ -1699,6 +1713,7 @@ class MainActivity : Activity() {
         leftDivider.visibility = View.GONE
         aiStatusText.visibility = View.GONE
         inferenceBadge.visibility = View.GONE
+        speedText.visibility = View.GONE
         tickerContainer.visibility = View.GONE
         stopTipsRotation()
         statsWidget.visibility = View.GONE

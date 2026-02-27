@@ -116,11 +116,29 @@ object Config {
     // Inference error tracking
     const val MAX_CONSECUTIVE_INFERENCE_ERRORS = 10
 
-    // Multi-modal escalation thresholds (seconds)
+    // Multi-modal escalation thresholds (seconds) — normal/stationary/slow/unavailable
     const val ESCALATION_L2_THRESHOLD_S = 5   // aligns with ALERT_ESCALATION_FIRST_S
     const val ESCALATION_L3_THRESHOLD_S = 10  // aligns with ALERT_ESCALATION_BEEP_S
     const val ESCALATION_L4_THRESHOLD_S = 20
     const val ESCALATION_L5_THRESHOLD_S = 30
+
+    // Speed-compressed escalation thresholds — MODERATE (31-80 km/h)
+    const val ESCALATION_MODERATE_L2_S = 3
+    const val ESCALATION_MODERATE_L3_S = 5
+    const val ESCALATION_MODERATE_L4_S = 10
+    const val ESCALATION_MODERATE_L5_S = 20
+
+    // Speed-compressed escalation thresholds — FAST (>80 km/h)
+    const val ESCALATION_FAST_L2_S = 0
+    const val ESCALATION_FAST_L3_S = 3
+    const val ESCALATION_FAST_L4_S = 5
+    const val ESCALATION_FAST_L5_S = 10
+
+    // Vehicle speed from VHAL (-1 = unavailable)
+    @JvmStatic @Volatile var VEHICLE_SPEED_KMH = -1f
+    const val SPEED_VHAL_PROPERTY_ID = 0x11600207  // PERF_VEHICLE_SPEED, Float, m/s
+    const val SPEED_SLOW_MAX_KMH = 30f
+    const val SPEED_MODERATE_MAX_KMH = 80f
 
     // Vehicle action pulse durations (ms)
     const val VEHICLE_PULSE_CABIN_LIGHTS_MS = 3000L

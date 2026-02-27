@@ -1,5 +1,6 @@
 package com.incabin
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -126,5 +127,34 @@ class VehicleChannelManagerTest {
     @Test
     fun isReverseGear_zero_returnsFalse() {
         assertFalse(VehicleChannelManager.isReverseGear(0))
+    }
+
+    // -------------------------------------------------------------------------
+    // speedTier — speed classification
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun speedTier_stationary() {
+        assertEquals(SpeedTier.STATIONARY, VehicleChannelManager.speedTier(0f))
+    }
+
+    @Test
+    fun speedTier_slow() {
+        assertEquals(SpeedTier.SLOW, VehicleChannelManager.speedTier(25f))
+    }
+
+    @Test
+    fun speedTier_moderate() {
+        assertEquals(SpeedTier.MODERATE, VehicleChannelManager.speedTier(60f))
+    }
+
+    @Test
+    fun speedTier_fast() {
+        assertEquals(SpeedTier.FAST, VehicleChannelManager.speedTier(100f))
+    }
+
+    @Test
+    fun speedTier_unavailable() {
+        assertEquals(SpeedTier.UNAVAILABLE, VehicleChannelManager.speedTier(-1f))
     }
 }

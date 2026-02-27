@@ -38,6 +38,17 @@ class VehicleChannelManager(context: Context) {
         fun isReverseGear(gearValue: Int): Boolean {
             return gearValue == GEAR_REVERSE
         }
+
+        /**
+         * Pure function: classify vehicle speed into a tier.
+         */
+        fun speedTier(speedKmh: Float): SpeedTier = when {
+            speedKmh < 0f -> SpeedTier.UNAVAILABLE
+            speedKmh == 0f -> SpeedTier.STATIONARY
+            speedKmh <= Config.SPEED_SLOW_MAX_KMH -> SpeedTier.SLOW
+            speedKmh <= Config.SPEED_MODERATE_MAX_KMH -> SpeedTier.MODERATE
+            else -> SpeedTier.FAST
+        }
     }
 
     /** Callback for gear state changes (e.g., to activate rear camera on REVERSE). */
@@ -77,6 +88,8 @@ class VehicleChannelManager(context: Context) {
                 probeDrivingState(car, getManagerMethod, carClass)
                 registerGearListener(propertyManager)
                 probeCurrentGear(propertyManager)
+                probeCurrentSpeed(propertyManager)
+                registerSpeedListener(propertyManager)
             }
         } catch (e: ClassNotFoundException) {
             Log.i(TAG, "Car API not available (not an automotive build) — vehicle channels disabled")
@@ -209,6 +222,67 @@ class VehicleChannelManager(context: Context) {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not probe current gear — defaulting to non-reverse", e)
+        }
+    }
+
+    /**
+     * Read current vehicle speed from CarPropertyManager at startup.
+     * PERF_VEHICLE_SPEED returns m/s as Float; converts to km/h.
+     */
+    private fun probeCurrentSpeed(propertyManager: Any) {
+        try {
+            val getPropertyMethod = propertyManager.javaClass.getMethod(
+                "getProperty", Class::class.java, Int::class.java, Int::class.java
+            )
+            val result = getPropertyMethod.invoke(
+                propertyManager, java.lang.Float::class.java, Config.SPEED_VHAL_PROPERTY_ID, 0
+            )
+            if (result != null) {
+                val getValueMethod = result.javaClass.getMethod("getValue")
+                val speedMs = (getValueMethod.invoke(result) as? Number)?.toFloat() ?: 0f
+                Config.VEHICLE_SPEED_KMH = speedMs * 3.6f
+                Log.i(TAG, "Initial speed: ${Config.VEHICLE_SPEED_KMH} km/h")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not probe current speed — defaulting to unavailable", e)
+        }
+    }
+
+    /**
+     * Register a listener for PERF_VEHICLE_SPEED property changes.
+     * Updates Config.VEHICLE_SPEED_KMH on every speed change event.
+     */
+    private fun registerSpeedListener(propertyManager: Any) {
+        try {
+            val pmClass = propertyManager.javaClass
+            val callbackClass = Class.forName(
+                "android.car.hardware.property.CarPropertyManager\$CarPropertyEventCallback"
+            )
+            val registerMethod = pmClass.getMethod(
+                "registerCallback", callbackClass, Int::class.java, Float::class.java
+            )
+
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                callbackClass.classLoader,
+                arrayOf(callbackClass)
+            ) { _, method, args ->
+                if (method.name == "onChangeEvent") {
+                    try {
+                        val event = args?.get(0) ?: return@newProxyInstance null
+                        val getValueMethod = event.javaClass.getMethod("getValue")
+                        val speedMs = (getValueMethod.invoke(event) as? Number)?.toFloat() ?: 0f
+                        Config.VEHICLE_SPEED_KMH = speedMs * 3.6f
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to process speed change event", e)
+                    }
+                }
+                null
+            }
+
+            registerMethod.invoke(propertyManager, proxy, Config.SPEED_VHAL_PROPERTY_ID, 0f)
+            Log.i(TAG, "Registered speed listener")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register speed listener — speed-scaled escalation disabled", e)
         }
     }
 

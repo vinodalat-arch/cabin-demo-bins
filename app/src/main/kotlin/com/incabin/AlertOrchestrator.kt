@@ -68,7 +68,7 @@ class AlertOrchestrator(
 
         // Step 2: Resolve escalation level
         val dangers = activeDangers(result)
-        val level = EscalationLevel.resolveLevel(result.distractionDurationS, dangers)
+        val level = EscalationLevel.resolveLevel(result.distractionDurationS, dangers, Config.VEHICLE_SPEED_KMH)
 
         // Step 3: On all-clear, restore vehicle channels
         if (level == null && previousLevel != null) {

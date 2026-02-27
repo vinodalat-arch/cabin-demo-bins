@@ -335,4 +335,35 @@ class ConfigConstantsTest {
     fun test_gear_reverse_constant() {
         assertEquals(0x0020, VehicleChannelManager.GEAR_REVERSE)
     }
+
+    // -------------------------------------------------------------------------
+    // Speed tier and compressed escalation constants (4 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_speed_tier_thresholds() {
+        assertEquals(30f, Config.SPEED_SLOW_MAX_KMH, 0.001f)
+        assertEquals(80f, Config.SPEED_MODERATE_MAX_KMH, 0.001f)
+    }
+
+    @Test
+    fun test_speed_vhal_property_id() {
+        assertEquals(0x11600207, Config.SPEED_VHAL_PROPERTY_ID)
+    }
+
+    @Test
+    fun test_escalation_moderate_thresholds() {
+        assertEquals(3, Config.ESCALATION_MODERATE_L2_S)
+        assertEquals(5, Config.ESCALATION_MODERATE_L3_S)
+        assertEquals(10, Config.ESCALATION_MODERATE_L4_S)
+        assertEquals(20, Config.ESCALATION_MODERATE_L5_S)
+    }
+
+    @Test
+    fun test_escalation_fast_thresholds() {
+        assertEquals(0, Config.ESCALATION_FAST_L2_S)
+        assertEquals(3, Config.ESCALATION_FAST_L3_S)
+        assertEquals(5, Config.ESCALATION_FAST_L4_S)
+        assertEquals(10, Config.ESCALATION_FAST_L5_S)
+    }
 }

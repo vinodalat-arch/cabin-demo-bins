@@ -164,6 +164,95 @@ class EscalationLevelTest {
     }
 
     // -------------------------------------------------------------------------
+    // thresholdsForSpeed — Speed Tier Mapping
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun thresholdsForSpeed_stationary_normalThresholds() {
+        val t = EscalationLevel.thresholdsForSpeed(0f)
+        assertEquals(Config.ESCALATION_L2_THRESHOLD_S, t[0])
+        assertEquals(Config.ESCALATION_L3_THRESHOLD_S, t[1])
+        assertEquals(Config.ESCALATION_L4_THRESHOLD_S, t[2])
+        assertEquals(Config.ESCALATION_L5_THRESHOLD_S, t[3])
+    }
+
+    @Test
+    fun thresholdsForSpeed_slow_normalThresholds() {
+        val t = EscalationLevel.thresholdsForSpeed(25f)
+        assertEquals(Config.ESCALATION_L2_THRESHOLD_S, t[0])
+        assertEquals(Config.ESCALATION_L3_THRESHOLD_S, t[1])
+        assertEquals(Config.ESCALATION_L4_THRESHOLD_S, t[2])
+        assertEquals(Config.ESCALATION_L5_THRESHOLD_S, t[3])
+    }
+
+    @Test
+    fun thresholdsForSpeed_moderate_compressedThresholds() {
+        val t = EscalationLevel.thresholdsForSpeed(60f)
+        assertEquals(Config.ESCALATION_MODERATE_L2_S, t[0])
+        assertEquals(Config.ESCALATION_MODERATE_L3_S, t[1])
+        assertEquals(Config.ESCALATION_MODERATE_L4_S, t[2])
+        assertEquals(Config.ESCALATION_MODERATE_L5_S, t[3])
+    }
+
+    @Test
+    fun thresholdsForSpeed_fast_aggressiveThresholds() {
+        val t = EscalationLevel.thresholdsForSpeed(100f)
+        assertEquals(Config.ESCALATION_FAST_L2_S, t[0])
+        assertEquals(Config.ESCALATION_FAST_L3_S, t[1])
+        assertEquals(Config.ESCALATION_FAST_L4_S, t[2])
+        assertEquals(Config.ESCALATION_FAST_L5_S, t[3])
+    }
+
+    @Test
+    fun thresholdsForSpeed_unavailable_normalThresholds() {
+        val t = EscalationLevel.thresholdsForSpeed(-1f)
+        assertEquals(Config.ESCALATION_L2_THRESHOLD_S, t[0])
+        assertEquals(Config.ESCALATION_L3_THRESHOLD_S, t[1])
+        assertEquals(Config.ESCALATION_L4_THRESHOLD_S, t[2])
+        assertEquals(Config.ESCALATION_L5_THRESHOLD_S, t[3])
+    }
+
+    // -------------------------------------------------------------------------
+    // resolveLevel — Speed-Scaled Escalation
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun resolveLevel_sameDuration_higherSpeedHigherLevel() {
+        val dangers = setOf("driver_using_phone")
+        // 4s: L1 at slow (L2 threshold=5s), L3 at fast (L2=0s, L3=3s, 4>=3)
+        assertEquals(EscalationLevel.L1_NUDGE, EscalationLevel.resolveLevel(4, dangers, 25f))
+        assertEquals(EscalationLevel.L3_URGENT, EscalationLevel.resolveLevel(4, dangers, 100f))
+    }
+
+    @Test
+    fun resolveLevel_fastSpeed_immediateL2() {
+        // 0s duration at >80 km/h → L2 (fast L2 threshold is 0s)
+        val level = EscalationLevel.resolveLevel(0, setOf("driver_using_phone"), 100f)
+        assertEquals(EscalationLevel.L2_WARNING, level)
+    }
+
+    @Test
+    fun resolveLevel_moderateSpeed_L3at5s() {
+        // 5s at moderate → L3 (moderate L3 threshold is 5s; normal would be L2)
+        val level = EscalationLevel.resolveLevel(5, setOf("driver_using_phone"), 60f)
+        assertEquals(EscalationLevel.L3_URGENT, level)
+    }
+
+    @Test
+    fun resolveLevel_unavailableSpeed_normalBehavior() {
+        // -1f → same as no speed, existing behavior
+        val level = EscalationLevel.resolveLevel(5, setOf("driver_using_phone"), -1f)
+        assertEquals(EscalationLevel.L2_WARNING, level)
+    }
+
+    @Test
+    fun resolveLevel_capsStillApply_withSpeed() {
+        // Eating capped at L3 even with fast speed and high duration
+        val level = EscalationLevel.resolveLevel(60, setOf("driver_eating_drinking"), 100f)
+        assertEquals(EscalationLevel.L3_URGENT, level)
+    }
+
+    // -------------------------------------------------------------------------
     // channelsForLevel
     // -------------------------------------------------------------------------
 

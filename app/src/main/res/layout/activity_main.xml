@@ -125,6 +125,17 @@
                     android:layout_marginTop="@dimen/space_sm"
                     android:visibility="gone" />
 
+                <!-- Vehicle speed -->
+                <TextView
+                    android:id="@+id/speedText"
+                    style="@style/TextMicro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="-- km/h"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginTop="@dimen/space_sm"
+                    android:visibility="gone" />
+
                 <!-- Spacer -->
                 <View
                     android:layout_width="0dp"

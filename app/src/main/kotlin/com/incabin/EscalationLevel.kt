@@ -28,21 +28,50 @@ enum class EscalationLevel(val ordinalLevel: Int) {
         )
 
         /**
+         * Return [L2, L3, L4, L5] threshold seconds for the given speed.
+         * Higher speed → compressed thresholds for faster escalation.
+         * Unavailable (-1) or stationary/slow → normal thresholds.
+         */
+        fun thresholdsForSpeed(speedKmh: Float): IntArray {
+            return when {
+                speedKmh < 0f -> intArrayOf(
+                    Config.ESCALATION_L2_THRESHOLD_S, Config.ESCALATION_L3_THRESHOLD_S,
+                    Config.ESCALATION_L4_THRESHOLD_S, Config.ESCALATION_L5_THRESHOLD_S
+                )
+                speedKmh > Config.SPEED_MODERATE_MAX_KMH -> intArrayOf(
+                    Config.ESCALATION_FAST_L2_S, Config.ESCALATION_FAST_L3_S,
+                    Config.ESCALATION_FAST_L4_S, Config.ESCALATION_FAST_L5_S
+                )
+                speedKmh > Config.SPEED_SLOW_MAX_KMH -> intArrayOf(
+                    Config.ESCALATION_MODERATE_L2_S, Config.ESCALATION_MODERATE_L3_S,
+                    Config.ESCALATION_MODERATE_L4_S, Config.ESCALATION_MODERATE_L5_S
+                )
+                else -> intArrayOf(
+                    Config.ESCALATION_L2_THRESHOLD_S, Config.ESCALATION_L3_THRESHOLD_S,
+                    Config.ESCALATION_L4_THRESHOLD_S, Config.ESCALATION_L5_THRESHOLD_S
+                )
+            }
+        }
+
+        /**
          * Resolve escalation level from distraction duration and active dangers.
          * Returns null if no dangers are active (nothing to escalate).
          *
          * The resolved level is capped by the highest-cap active detection,
          * so advisory-only detections (eating, posture) never trigger vehicle
          * interventions beyond L3.
+         *
+         * @param speedKmh current vehicle speed (-1f = unavailable, uses normal thresholds)
          */
-        fun resolveLevel(durationS: Int, activeDangers: Set<String>): EscalationLevel? {
+        fun resolveLevel(durationS: Int, activeDangers: Set<String>, speedKmh: Float = -1f): EscalationLevel? {
             if (activeDangers.isEmpty()) return null
 
+            val t = thresholdsForSpeed(speedKmh)
             val rawLevel = when {
-                durationS >= Config.ESCALATION_L5_THRESHOLD_S -> L5_EMERGENCY
-                durationS >= Config.ESCALATION_L4_THRESHOLD_S -> L4_INTERVENTION
-                durationS >= Config.ESCALATION_L3_THRESHOLD_S -> L3_URGENT
-                durationS >= Config.ESCALATION_L2_THRESHOLD_S -> L2_WARNING
+                durationS >= t[3] -> L5_EMERGENCY
+                durationS >= t[2] -> L4_INTERVENTION
+                durationS >= t[1] -> L3_URGENT
+                durationS >= t[0] -> L2_WARNING
                 else -> L1_NUDGE
             }
 
@@ -107,6 +136,11 @@ enum class EscalationLevel(val ordinalLevel: Int) {
         }
     }
 }
+
+/**
+ * Speed tier classification for speed-scaled escalation.
+ */
+enum class SpeedTier { STATIONARY, SLOW, MODERATE, FAST, UNAVAILABLE }
 
 /**
  * Identifiers for vehicle alert channels (both software and VHAL-backed).
