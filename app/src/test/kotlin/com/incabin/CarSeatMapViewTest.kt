@@ -31,18 +31,18 @@ class CarSeatMapViewTest {
     }
 
     @Test
-    fun seatColor_distracted_returnsDanger() {
-        assertEquals("danger", CarSeatMapView.seatColor("Distracted"))
+    fun seatColor_distracted_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.seatColor("Distracted"))
     }
 
     @Test
-    fun seatColor_eating_returnsDanger() {
-        assertEquals("danger", CarSeatMapView.seatColor("Eating"))
+    fun seatColor_eating_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.seatColor("Eating"))
     }
 
     @Test
-    fun seatColor_yawning_returnsDanger() {
-        assertEquals("danger", CarSeatMapView.seatColor("Yawning"))
+    fun seatColor_yawning_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.seatColor("Yawning"))
     }
 
     @Test

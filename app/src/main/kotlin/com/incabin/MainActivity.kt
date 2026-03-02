@@ -235,6 +235,9 @@ class MainActivity : Activity() {
     private lateinit var rootLayout: FrameLayout
     private lateinit var inferenceBadge: TextView
     private lateinit var toggleButton: TextView
+    private lateinit var idleModeToggle: LinearLayout
+    private lateinit var idleModeLocalBtn: TextView
+    private lateinit var idleModeVlmBtn: TextView
     private lateinit var rearAlertSection: LinearLayout
     private lateinit var rearStatusText: TextView
     private lateinit var rearDetectionLabels: LinearLayout
@@ -357,6 +360,9 @@ class MainActivity : Activity() {
     private lateinit var asimoGlowFrame: FrameLayout
     private lateinit var asimoGlowView: AsimoBgGlowView
     private lateinit var asimoDetectionLabel: TextView
+    private lateinit var mascotOverlayLabels: LinearLayout
+    private lateinit var mascotNameLabel: TextView
+    private lateinit var mascotBrandLabel: TextView
     private var currentAsimoPose: Int = 0
     private var asimoAnimating: Boolean = false
     private var currentAsimoDetectionKey: String = ""
@@ -455,6 +461,9 @@ class MainActivity : Activity() {
         // Bind views — main layout
         rootLayout = findViewById(R.id.rootLayout)
         toggleButton = findViewById(R.id.toggleButton)
+        idleModeToggle = findViewById(R.id.idleModeToggle)
+        idleModeLocalBtn = findViewById(R.id.idleModeLocalBtn)
+        idleModeVlmBtn = findViewById(R.id.idleModeVlmBtn)
         cameraStatusText = findViewById(R.id.cameraStatusText)
         cameraStatusDot = findViewById(R.id.cameraStatusDot)
         inferenceBadge = findViewById(R.id.inferenceBadge)
@@ -498,6 +507,9 @@ class MainActivity : Activity() {
         asimoGlowFrame = findViewById(R.id.asimoGlowFrame)
         asimoGlowView = findViewById(R.id.asimoGlowView)
         asimoDetectionLabel = findViewById(R.id.asimoDetectionLabel)
+        mascotOverlayLabels = findViewById(R.id.mascotOverlayLabels)
+        mascotNameLabel = findViewById(R.id.mascotNameLabel)
+        mascotBrandLabel = findViewById(R.id.mascotBrandLabel)
 
         // Bind views — bottom widgets
         statsWidget = findViewById(R.id.statsWidget)
@@ -577,6 +589,25 @@ class MainActivity : Activity() {
             }
         }
 
+        // Idle mode toggle (LOCAL / VLM)
+        idleModeLocalBtn.setOnClickListener {
+            Config.INFERENCE_MODE = "local"
+            prefs.edit().putString(ConfigPrefs.PREF_INFERENCE_MODE, "local").apply()
+            updateIdleModeToggleUI()
+            updateInferenceModeUI()
+            updateVlmServerButtonUI()
+            Log.i(TAG, "Idle mode toggle: local")
+        }
+        idleModeVlmBtn.setOnClickListener {
+            Config.INFERENCE_MODE = "remote"
+            prefs.edit().putString(ConfigPrefs.PREF_INFERENCE_MODE, "remote").apply()
+            updateIdleModeToggleUI()
+            updateInferenceModeUI()
+            updateVlmServerButtonUI()
+            Log.i(TAG, "Idle mode toggle: remote")
+        }
+        updateIdleModeToggleUI()
+
         // Camera status dot tap → show tooltip
         cameraStatusDot.setOnClickListener {
             Toast.makeText(this, cameraStatusText.text, Toast.LENGTH_SHORT).show()
@@ -608,12 +639,14 @@ class MainActivity : Activity() {
             Config.DRIVER_SEAT_SIDE = "left"
             prefs.edit().putString(ConfigPrefs.PREF_SEAT_SIDE, "left").apply()
             updateSeatSegmentUI()
+            refreshCarSeatMapSide()
             Log.i(TAG, "Driver seat side: left")
         }
         seatRightBtn.setOnClickListener {
             Config.DRIVER_SEAT_SIDE = "right"
             prefs.edit().putString(ConfigPrefs.PREF_SEAT_SIDE, "right").apply()
             updateSeatSegmentUI()
+            refreshCarSeatMapSide()
             Log.i(TAG, "Driver seat side: right")
         }
 
@@ -947,14 +980,36 @@ class MainActivity : Activity() {
             brandKonfluenceBtn.setBackgroundColor(Color.TRANSPARENT)
             brandKonfluenceBtn.setTextColor(colorTextSecondary)
             brandNameText.text = "HONDA"
+            // Mascot labels: ASIMO + HONDA (red)
+            mascotNameLabel.text = "\u2500\u2500 ASIMO \u2500\u2500"
+            mascotBrandLabel.text = "HONDA"
+            mascotBrandLabel.setTextColor(colorDanger)  // red
         } else {
             brandKonfluenceBtn.setBackgroundResource(R.drawable.bg_segmented_selected)
             brandKonfluenceBtn.setTextColor(Color.WHITE)
             brandHondaBtn.setBackgroundColor(Color.TRANSPARENT)
             brandHondaBtn.setTextColor(colorTextSecondary)
             brandNameText.text = "KONFLUENCE"
+            // Mascot labels: MANAV + KPIT (green)
+            mascotNameLabel.text = "\u2500\u2500 MANAV \u2500\u2500"
+            mascotBrandLabel.text = "KPIT"
+            mascotBrandLabel.setTextColor(colorSafe)  // green
         }
         brandSubtitleText.text = "SMART CABIN"
+    }
+
+    private fun updateIdleModeToggleUI() {
+        if (Config.INFERENCE_MODE == "local") {
+            idleModeLocalBtn.setBackgroundResource(R.drawable.bg_button_accent)
+            idleModeLocalBtn.setTextColor(Color.WHITE)
+            idleModeVlmBtn.setBackgroundResource(R.drawable.bg_button_surface)
+            idleModeVlmBtn.setTextColor(colorTextSecondary)
+        } else {
+            idleModeVlmBtn.setBackgroundResource(R.drawable.bg_button_accent)
+            idleModeVlmBtn.setTextColor(Color.WHITE)
+            idleModeLocalBtn.setBackgroundResource(R.drawable.bg_button_surface)
+            idleModeLocalBtn.setTextColor(colorTextSecondary)
+        }
     }
 
     private fun updateSeatSegmentUI() {
@@ -969,6 +1024,13 @@ class MainActivity : Activity() {
             seatLeftBtn.setBackgroundColor(Color.TRANSPARENT)
             seatLeftBtn.setTextColor(colorTextSecondary)
         }
+    }
+
+    /** Immediately redraw CarSeatMapView with the current driver side (no pipeline data change needed). */
+    private fun refreshCarSeatMapSide() {
+        val seatMap = currentSeatMap ?: return
+        val name = FrameHolder.getLatestResult()?.driverName
+        carSeatMapView.setSeatMap(seatMap, Config.DRIVER_SEAT_SIDE, name)
     }
 
     private fun updateLangSegmentUI() {
@@ -1639,6 +1701,7 @@ class MainActivity : Activity() {
         isRunning = true
         activeInferenceMode = Config.INFERENCE_MODE  // lock badge to actual mode at start
         toggleButton.text = getString(R.string.stop_service)
+        idleModeToggle.visibility = View.GONE  // hide mode selector while running
         statusText.text = "Monitoring active"
 
         // Reset all state
@@ -1753,6 +1816,8 @@ class MainActivity : Activity() {
 
         isRunning = false
         toggleButton.text = getString(R.string.start_service)
+        idleModeToggle.visibility = View.VISIBLE  // show mode selector in idle
+        updateIdleModeToggleUI()
         statusText.text = "Tap Start to begin monitoring"
 
         // Hide monitoring UI with fade
@@ -2167,6 +2232,7 @@ class MainActivity : Activity() {
         asimoBrandingText.visibility = hubVisibility
         asimoBubbleFrame.visibility = hubVisibility
         asimoBubbleTail.visibility = hubVisibility
+        mascotOverlayLabels.visibility = hubVisibility
         asimoDetectionLabel.visibility = if (isCompact || currentAsimoDetectionKey.isEmpty()) View.GONE else View.VISIBLE
 
         // Container gravity: center when full, bottom-end when compact

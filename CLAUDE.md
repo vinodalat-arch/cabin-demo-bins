@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, and per-seat passenger position detection. Build verified (`assembleDebug` + all 694 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, per-seat passenger position detection, premium CarSeatMapView with metallic sedan rendering, and mock VLM test server with 15 controllable scenarios. Build verified (`assembleDebug` + all 712 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -297,9 +297,33 @@ score >= 3 → high, >= 1 → medium, else → low
   - Passenger state: `badPosture` → "Sleeping", else "Upright" (limited without per-passenger face analysis)
 - **VLM mode**: `VlmClient.parseSeatMap()` parses optional `seat_map` JSON object from server response. File-based mode derives per-seat states from `OccupantAnalysis` fields
 - **Pipeline integration**: Step 8.7 in `processFrame()`, wrapped in try-catch (display-only, pipeline-isolated). Posts to `FrameHolder.postSeatMap()`
-- **UI**: `updateSeatMap()` in MainActivity replaces `updatePassengerPostures()`. Shows occupied seats with color-coded state labels (green=Upright, orange=danger states, muted=Vacant). EN/JA labels
+- **UI**: `CarSeatMapView` custom Canvas View renders premium top-down sedan diagram with per-seat state visualization (see CarSeatMapView section below)
 - **vlm_server.py**: `seat_map` added to `default_result()`, `parse_file_result()`, and `apply_confidence_thresholds()`
 - **Pure functions**: `SeatAssigner.assign()`, `SeatAssigner.deriveDriverState()`, `VlmClient.parseSeatMap()` — fully unit-testable, no Android deps
+
+### CarSeatMapView (Premium Sedan Diagram)
+- **Custom Canvas View**: Top-down sedan rendering with per-seat state visualization in right panel
+- **Rendering layers** (back to front): ground shadow → ambient underglow → metallic gradient body → panel lines → chrome window frames → glass-effect windows → LED headlights/taillights → multi-layer alloy wheels → side mirrors → ergonomic seat shapes with glow halos → state icons → seat labels → steering wheel (3-spoke)
+- **Metallic body**: `LinearGradient` from `#2A2C38` → `#383A48` → `#2A2C38` with `BlurMaskFilter` body highlight for depth
+- **Glass windows**: `RadialGradient` with blue tint (`#5B8DEF` at 40 alpha), chrome stroke border
+- **Seat rendering**: Ergonomic contoured shapes (backrest + cushion + headrest) with per-seat animated color transitions (`ArgbEvaluator`, 500ms)
+- **Seat states**: Color-coded — safe (`#2ECC71`), danger (`#E74C3C` with pulsing alpha 0.4→1.0, 800ms cycle), vacant (`#1E1F2A`)
+- **State icons**: OK, Zzz, TEL, !!, EAT, ~, -- (rendered as text above each seat)
+- **Steering wheel**: 3-spoke design, rendered on correct side based on `Config.DRIVER_SEAT_SIDE`
+- **Rear bench**: Continuous bench seat with dynamic zone rendering — 2-zone (RL|RR) or 3-zone (RL|RC|RR) based on `rearCenter.occupied`
+- **Animations**: Shared `ValueAnimator` for danger pulse (800ms repeat), per-seat `ArgbEvaluator` color transitions (500ms decelerate)
+- **Software rendering**: `LAYER_TYPE_SOFTWARE` for `BlurMaskFilter` glow halos on seats and underglow
+- **Pure companion functions**: `seatColor()`, `stateIcon()`, `isDanger()`, `benchZoneCount()` — unit-testable
+- **ASIMO mascot overlay**: Name label ("── ASIMO ──") and brand label ("HONDA") rendered as overlay on mascot chest area via `mascotOverlayLabels` layout
+
+### Mock VLM Test Server
+- **Purpose**: Controllable mock server (`scripts/mock_server_test.py`) for emulator-based UI testing without camera or real VLM
+- **15 scenarios**: Empty car, driver-only safe, driver+passenger safe, driver phone/eyes/yawning/distracted/eating, full car safe, full car all danger, driver phone+rear sleeping, 3 rear mixed, driver distracted+pax yawning, back to safe, rear only
+- **Endpoints**: `GET /api/detect` (active scenario result), `GET /api/health` (status+ready), `GET /api/scenario?id=N` (switch scenario), `GET /api/scenarios` (list all)
+- **Risk scoring**: Same weights as production (phone=3, eyes=3, yawn=2, distracted=2, eating=1, posture=2)
+- **Seat map**: Full 5-seat `seat_map` JSON per scenario (driver, front_passenger, rear_left, rear_center, rear_right)
+- **Usage**: `python3 scripts/mock_server_test.py` (port 8000), emulator connects via `http://10.0.2.2:8000`
+- **No dependencies**: Pure Python stdlib (`http.server`, `json`)
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
@@ -319,7 +343,7 @@ score >= 3 → high, >= 1 → medium, else → low
 ### Status Dashboard (MainActivity) — Luxury IVI Three-Zone Layout
 - **Decoupled from camera preview**: Dashboard reads from `FrameHolder.getLatestResult()` (result-only channel), camera preview reads from `FrameHolder.getLatest()` (bitmap channel). Dashboard updates at pipeline speed (~2-3s) regardless of preview rendering
 - **Three-zone horizontal layout** optimized for 1920x720 automotive landscape display:
-  - **Left panel (100dp)**: Slim status strip — score arc (64dp, animated), streak/session timers (TextMicro condensed), camera status dot (tap for tooltip), Start/Stop button. No settings buttons visible
+  - **Left panel (100dp)**: Slim status strip — score arc (64dp, animated), streak/session timers (TextMicro condensed), camera status dot (tap for tooltip), idle mode toggle (LOCAL/VLM segmented button, visible in idle state), Start/Stop button. No settings buttons visible
   - **Center (flexible)**: Camera preview (or idle branding when not monitoring), AI status message overlay with gradient scrim at bottom. Expanded to fill space recovered from slim left panel
   - **Right panel (380dp)**: Risk pill, driver name, passenger count, distraction timer, detection labels, ticker (visible during monitoring only)
 - **Settings overlay** (hidden by default):
@@ -383,19 +407,19 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, ConfigPrefs, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
 │   │   ├── FaceAnalyzer, FaceDetectorLite, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
-│   │   ├── AlertOrchestrator, VehicleChannelManager, ClimateController, VlmClient, SeatMap, SeatAssigner
+│   │   ├── AlertOrchestrator, VehicleChannelManager, ClimateController, VlmClient, SeatMap, SeatAssigner, CarSeatMapView
 │   │   ├── PlatformProfile, DeviceSetup, BootReceiver
 │   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest, SeatAssignerTest, SeatMapTest)
-├── scripts/              (vlm_server.py, vlm_launcher.py, requirements.txt, convert_fp16.py)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest, SeatAssignerTest, SeatMapTest, CarSeatMapViewTest, SeatValidationTest)
+├── scripts/              (vlm_server.py, vlm_launcher.py, requirements.txt, convert_fp16.py, mock_server_test.py)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 694 unit tests (all passing):
+- 712 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
   - ConfigConstantsTest: 42 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation + climate + seat constants)
   - AlertOrchestratorTest: 30 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
@@ -424,8 +448,9 @@ in_cabin_poc-sa8155/
   - MjpegReconnectTest: 3 tests (nextBackoffDelay doubling, cap at max, stays at max)
   - InferenceErrorTest: 2 tests (shouldReinitialize at threshold, below threshold)
   - ClimateControllerTest: 19 tests (computeTargetTemp occupancy cases + clamp, shouldAdjust debounce, rampStep toward/overshoot/at-target, formatAlertMessage EN/JA)
-  - SeatAssignerTest: 19 tests (assign empty/driver-only/front+rear/4-occupants/no-driver/left-right drive/multiple-same-side/bad-posture, deriveDriverState all states + priority)
-  - SeatMapTest: 4 tests (default all-vacant, occupied state, equality, enum values)
+  - SeatAssignerTest: 22 tests (assign empty/driver-only/front+rear/4-occupants/no-driver/left-right drive/multiple-same-side/bad-posture/rear-center, deriveDriverState all states + priority)
+  - SeatMapTest: 5 tests (default all-vacant, occupied state, equality, enum values, rear center)
+  - CarSeatMapViewTest: 14 tests (seatColor safe/danger/vacant, stateIcon all states, isDanger true/false, benchZoneCount 2/3-zone)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget

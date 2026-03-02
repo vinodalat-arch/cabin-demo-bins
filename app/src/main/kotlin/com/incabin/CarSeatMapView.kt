@@ -6,17 +6,22 @@ import android.content.Context
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import androidx.core.content.ContextCompat
 
 /**
- * Custom View: top-down sedan diagram with per-seat state visualization.
- * Elongated sedan silhouette with tapered hood/trunk, wheel arches, side windows.
+ * Custom View: premium top-down sedan diagram with per-seat state visualization.
+ * Features: metallic gradient body, glass-effect windows, LED headlights/taillights,
+ * ground shadow, ambient underglow, multi-layer alloy wheels, 3-spoke steering wheel,
+ * panel lines, side mirrors, and ergonomic seat shapes with glow halos.
  * Front row: two bucket seats. Rear row: continuous bench (2 or 3 zones).
  * Steering wheel on driver side. Seats glow green (safe) or pulse red (danger).
  */
@@ -30,11 +35,12 @@ class CarSeatMapView @JvmOverloads constructor(
         private const val PULSE_DURATION_MS = 800L
         private const val COLOR_ANIM_DURATION_MS = 500L
 
-        /** Classify seat state into a color category. */
+        /** Classify seat state into a color category (3-tier: danger/caution/safe). */
         fun seatColor(state: String): String = when (state) {
             "Upright" -> "safe"
             "Vacant" -> "vacant"
-            else -> "danger"  // Sleeping, Phone, Distracted, Eating, Yawning
+            "Phone", "Sleeping" -> "danger"       // critical (risk score 3)
+            else -> "caution"                      // Yawning, Distracted, Eating (warning)
         }
 
         /** Short icon label for each seat state. */
@@ -49,7 +55,7 @@ class CarSeatMapView @JvmOverloads constructor(
             else -> "?"
         }
 
-        /** Whether a state is a danger state (red pulse). */
+        /** Whether a state is non-safe (danger or caution — triggers pulse animation). */
         fun isDanger(state: String): Boolean = when (state) {
             "Sleeping", "Phone", "Distracted", "Eating", "Yawning" -> true
             else -> false
@@ -67,46 +73,38 @@ class CarSeatMapView @JvmOverloads constructor(
 
     // Resolved colors
     private val colorSafe = ContextCompat.getColor(context, R.color.safe)
+    private val colorCaution = ContextCompat.getColor(context, R.color.caution)
     private val colorDanger = ContextCompat.getColor(context, R.color.danger)
     private val colorVacant = Color.rgb(0x1E, 0x1F, 0x2A)
-    private val colorBody = Color.rgb(0x2A, 0x2C, 0x38)
-    private val colorBodyStroke = Color.rgb(0x3D, 0x3F, 0x4A)
-    private val colorWindow = Color.argb(40, 0x5B, 0x8D, 0xEF)
-    private val colorWindowStroke = Color.argb(60, 0x5B, 0x8D, 0xEF)
-    private val colorSteering = Color.rgb(0x6B, 0x6E, 0x7B)
     private val colorTextPrimary = ContextCompat.getColor(context, R.color.text_primary)
     private val colorTextMuted = Color.rgb(0x3D, 0x3F, 0x4A)
-    private val colorDividerLine = Color.rgb(0x2A, 0x2B, 0x35)
-    private val colorWheel = Color.rgb(0x30, 0x32, 0x3E)
-    private val colorWheelStroke = Color.rgb(0x4A, 0x4C, 0x58)
 
-    // Pre-allocated Paints
-    private val bodyFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL; color = colorBody
-    }
+    // Pre-allocated Paints — gradients set dynamically in onDraw when size is known
+    private val bodyFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val bodyStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 2f; color = colorBodyStroke
+        style = Paint.Style.STROKE; strokeWidth = 1.5f; color = Color.rgb(0x3D, 0x3F, 0x4A)
     }
-    private val windowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL; color = colorWindow
+    private val bodyHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.argb(30, 255, 255, 255)
     }
-    private val windowStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1.2f; color = colorWindowStroke
+    private val panelLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 0.5f; color = Color.argb(40, 61, 63, 74)
     }
-    private val seatFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
+    private val windowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val windowChromePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.argb(80, 255, 255, 255)
     }
+    private val seatFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val seatStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1f; color = colorBodyStroke
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.rgb(0x3D, 0x3F, 0x4A)
     }
-    private val seatGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
+    private val seatGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val steeringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 2.5f; color = colorSteering; strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE; strokeWidth = 2.5f; color = Color.rgb(0x6B, 0x6E, 0x7B)
+        strokeCap = Paint.Cap.ROUND
     }
     private val steeringCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL; color = colorSteering
+        style = Paint.Style.FILL; color = Color.rgb(0x6B, 0x6E, 0x7B)
     }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER; color = colorTextPrimary; isFakeBoldText = true
@@ -118,30 +116,61 @@ class CarSeatMapView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER; color = colorTextMuted; isFakeBoldText = true
     }
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1f; color = colorDividerLine
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.rgb(0x2A, 0x2B, 0x35)
     }
-    private val wheelFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL; color = colorWheel
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val underglowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val headlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val headlightGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val drlPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.argb(153, 0xF3, 0x9C, 0x12)
+        strokeCap = Paint.Cap.ROUND
     }
-    private val wheelStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1.5f; color = colorWheelStroke
+    private val taillightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val taillightGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val tirePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = Color.rgb(0x1A, 0x1B, 0x22)
+    }
+    private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val hubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = Color.rgb(0x4A, 0x4C, 0x58)
+    }
+    private val mirrorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = Color.rgb(0x3D, 0x3F, 0x4A)
+    }
+    private val mirrorStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.rgb(0x4A, 0x4C, 0x58)
+    }
+    private val consolePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = Color.rgb(0x1E, 0x1F, 0x2A)
+    }
+    private val interiorFloorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = Color.rgb(0x18, 0x19, 0x22)
     }
 
     // Reusable objects
     private val bodyPath = Path()
+    private val bodyHighlightPath = Path()
     private val seatRect = RectF()
     private val steeringRect = RectF()
-    private val wheelRect = RectF()
+    private val tempRect = RectF()
     private val windshieldPath = Path()
     private val rearWindowPath = Path()
     private val sideWindowLeftPath = Path()
     private val sideWindowRightPath = Path()
+    private val interiorPath = Path()
 
     // Animation state
     private var pulseAnimator: ValueAnimator? = null
     private val seatColorAnimators = mutableMapOf<Seat, ValueAnimator>()
     private val currentColors = IntArray(5) { colorVacant }
     private var hasDanger = false
+    private var underglowColor: Int = colorSafe
+    private var underglowAnimator: ValueAnimator? = null
+
+    // Cache last layout size for gradient invalidation
+    private var lastW = 0f
+    private var lastH = 0f
 
     init {
         setLayerType(LAYER_TYPE_SOFTWARE, null)
@@ -171,11 +200,34 @@ class CarSeatMapView @JvmOverloads constructor(
         }
         hasDanger = anyDanger
 
+        // Animate underglow: red if any critical, amber if any caution, green if all safe
+        val allStates = listOf(map.driver, map.frontPassenger, map.rearLeft, map.rearCenter, map.rearRight)
+        val hasCritical = allStates.any { seatColor(it.state) == "danger" }
+        val hasCaution = allStates.any { seatColor(it.state) == "caution" }
+        val targetGlow = when {
+            hasCritical -> colorDanger
+            hasCaution -> colorCaution
+            else -> colorSafe
+        }
+        if (targetGlow != underglowColor) {
+            underglowAnimator?.cancel()
+            underglowAnimator = ValueAnimator.ofObject(ArgbEvaluator(), underglowColor, targetGlow).apply {
+                duration = COLOR_ANIM_DURATION_MS
+                addUpdateListener {
+                    underglowColor = it.animatedValue as Int
+                    invalidate()
+                }
+                start()
+            }
+            underglowColor = targetGlow
+        }
+
         invalidate()
     }
 
     private fun resolveColor(state: SeatState): Int = when (seatColor(state.state)) {
         "safe" -> colorSafe
+        "caution" -> colorCaution
         "danger" -> colorDanger
         else -> colorVacant
     }
@@ -227,153 +279,196 @@ class CarSeatMapView @JvmOverloads constructor(
 
         val dp = resources.displayMetrics.density
 
-        // --- Sedan proportions: narrow and long ---
-        // Car is centered, ~48% of view width, ~88% of view height
-        val carW = w * 0.48f
-        val carH = h * 0.88f
-        val carL = (w - carW) / 2f
-        val carT = h * 0.06f
+        // --- Car bounding box: 52% width, 90% height, offset 20% left of center ---
+        val carW = w * 0.52f
+        val carH = h * 0.90f
+        val carCX = w * 0.40f  // 20% left of center (0.5 - 0.1)
+        val carL = carCX - carW / 2f
+        val carT = h * 0.05f
         val carR = carL + carW
         val carB = carT + carH
-        val carCX = (carL + carR) / 2f
 
-        // Section heights (top to bottom): hood, cabin, trunk
-        val hoodH = carH * 0.18f      // hood/front
-        val cabinH = carH * 0.52f     // cabin (windows + seats)
-        val trunkH = carH * 0.30f     // trunk/rear
+        // Section heights
+        val hoodH = carH * 0.20f
+        val cabinH = carH * 0.48f
+        val trunkH = carH * 0.32f
 
         val hoodTop = carT
         val cabinTop = carT + hoodH
         val trunkTop = cabinTop + cabinH
 
-        // Body corner radius
         val cr = carW * 0.18f
+        val hoodNarrow = carW * 0.10f
+        val trunkNarrow = carW * 0.05f
 
-        // --- Draw car body (sedan silhouette) ---
-        // Tapered front (narrower hood), full-width cabin, slightly tapered trunk
-        val hoodNarrow = carW * 0.08f  // how much narrower the hood is on each side
-        val trunkNarrow = carW * 0.04f
+        // Update gradients if size changed
+        if (w != lastW || h != lastH) {
+            lastW = w; lastH = h
+            updateGradients(carL, carR, carT, carB, dp)
+        }
 
-        bodyPath.reset()
-        // Start at top-left of hood (tapered)
-        bodyPath.moveTo(carL + hoodNarrow + cr * 0.5f, hoodTop)
-        // Top edge of hood
-        bodyPath.lineTo(carR - hoodNarrow - cr * 0.5f, hoodTop)
-        // Top-right corner of hood
-        bodyPath.quadTo(carR - hoodNarrow, hoodTop, carR - hoodNarrow, hoodTop + cr * 0.5f)
-        // Right side: hood widens to cabin
-        bodyPath.lineTo(carR - hoodNarrow, cabinTop - cr * 0.3f)
-        bodyPath.quadTo(carR - hoodNarrow, cabinTop, carR, cabinTop + cr * 0.3f)
-        // Right side: cabin
-        bodyPath.lineTo(carR, trunkTop - cr * 0.3f)
-        // Right side: cabin narrows to trunk
-        bodyPath.quadTo(carR, trunkTop, carR - trunkNarrow, trunkTop + cr * 0.3f)
-        // Right side: trunk
-        bodyPath.lineTo(carR - trunkNarrow, carB - cr * 0.5f)
-        // Bottom-right corner
-        bodyPath.quadTo(carR - trunkNarrow, carB, carR - trunkNarrow - cr * 0.5f, carB)
-        // Bottom edge
-        bodyPath.lineTo(carL + trunkNarrow + cr * 0.5f, carB)
-        // Bottom-left corner
-        bodyPath.quadTo(carL + trunkNarrow, carB, carL + trunkNarrow, carB - cr * 0.5f)
-        // Left side: trunk
-        bodyPath.lineTo(carL + trunkNarrow, trunkTop + cr * 0.3f)
-        // Left side: trunk widens to cabin
-        bodyPath.quadTo(carL + trunkNarrow, trunkTop, carL, trunkTop - cr * 0.3f)
-        // Left side: cabin
-        bodyPath.lineTo(carL, cabinTop + cr * 0.3f)
-        // Left side: cabin narrows to hood
-        bodyPath.quadTo(carL, cabinTop, carL + hoodNarrow, cabinTop - cr * 0.3f)
-        // Left side: hood
-        bodyPath.lineTo(carL + hoodNarrow, hoodTop + cr * 0.5f)
-        // Top-left corner of hood
-        bodyPath.quadTo(carL + hoodNarrow, hoodTop, carL + hoodNarrow + cr * 0.5f, hoodTop)
-        bodyPath.close()
+        // 1. Ground shadow
+        shadowPaint.shader = RadialGradient(
+            carCX, carB + 4f * dp, carW * 0.7f,
+            Color.argb(77, 0, 0, 0), Color.TRANSPARENT, Shader.TileMode.CLAMP
+        )
+        canvas.drawOval(
+            carCX - carW * 0.6f, carB - 8f * dp,
+            carCX + carW * 0.6f, carB + 16f * dp,
+            shadowPaint
+        )
+
+        // 2. Ambient underglow
+        val ugAlpha = 38  // 15%
+        val ugColor = Color.argb(ugAlpha,
+            Color.red(underglowColor), Color.green(underglowColor), Color.blue(underglowColor))
+        underglowPaint.shader = RadialGradient(
+            carCX, (carT + carB) / 2f, carW * 0.6f,
+            ugColor, Color.TRANSPARENT, Shader.TileMode.CLAMP
+        )
+        underglowPaint.maskFilter = BlurMaskFilter(12f * dp, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawOval(
+            carL - 10f * dp, carT - 6f * dp,
+            carR + 10f * dp, carB + 6f * dp,
+            underglowPaint
+        )
+        underglowPaint.maskFilter = null
+
+        // 3. Car body
+        buildBodyPath(carL, carR, carT, carB, hoodTop, cabinTop, trunkTop,
+            hoodNarrow, trunkNarrow, cr, carH)
 
         canvas.drawPath(bodyPath, bodyFillPaint)
         canvas.drawPath(bodyPath, bodyStrokePaint)
 
-        // --- "FRONT" label ---
-        orientPaint.textSize = 9f * dp
-        canvas.drawText("FRONT", carCX, hoodTop - 2f * dp, orientPaint)
+        // 4. Body highlight (rim light along top edge)
+        bodyHighlightPath.reset()
+        bodyHighlightPath.moveTo(carL + hoodNarrow + cr * 0.5f, hoodTop + 1f)
+        bodyHighlightPath.lineTo(carR - hoodNarrow - cr * 0.5f, hoodTop + 1f)
+        canvas.drawPath(bodyHighlightPath, bodyHighlightPaint)
 
-        // --- Windshield (trapezoid) ---
-        val wsInsetTop = carW * 0.14f
-        val wsInsetBot = carW * 0.06f
-        val wsTop = cabinTop + cabinH * 0.02f
-        val wsBot = cabinTop + cabinH * 0.18f
-        windshieldPath.reset()
-        windshieldPath.moveTo(carL + wsInsetTop, wsTop)
-        windshieldPath.lineTo(carR - wsInsetTop, wsTop)
-        windshieldPath.lineTo(carR - wsInsetBot, wsBot)
-        windshieldPath.lineTo(carL + wsInsetBot, wsBot)
-        windshieldPath.close()
-        canvas.drawPath(windshieldPath, windowFillPaint)
-        canvas.drawPath(windshieldPath, windowStrokePaint)
+        // 5. Panel lines (door seams)
+        // Left door seam
+        canvas.drawLine(carL + 0.5f * dp, cabinTop + cabinH * 0.45f,
+            carL + 0.5f * dp, trunkTop - cabinH * 0.02f, panelLinePaint)
+        // Right door seam
+        canvas.drawLine(carR - 0.5f * dp, cabinTop + cabinH * 0.45f,
+            carR - 0.5f * dp, trunkTop - cabinH * 0.02f, panelLinePaint)
+        // Hood seam (horizontal across front)
+        canvas.drawLine(carL + hoodNarrow + 2f * dp, cabinTop,
+            carR - hoodNarrow - 2f * dp, cabinTop, panelLinePaint)
+        // Trunk seam
+        canvas.drawLine(carL + trunkNarrow + 2f * dp, trunkTop,
+            carR - trunkNarrow - 2f * dp, trunkTop, panelLinePaint)
 
-        // --- Rear window (trapezoid) ---
-        val rwInsetTop = carW * 0.06f
-        val rwInsetBot = carW * 0.12f
-        val rwTop = trunkTop - cabinH * 0.01f
-        val rwBot = trunkTop + trunkH * 0.25f
-        rearWindowPath.reset()
-        rearWindowPath.moveTo(carL + rwInsetTop, rwTop)
-        rearWindowPath.lineTo(carR - rwInsetTop, rwTop)
-        rearWindowPath.lineTo(carR - trunkNarrow - rwInsetBot, rwBot)
-        rearWindowPath.lineTo(carL + trunkNarrow + rwInsetBot, rwBot)
-        rearWindowPath.close()
-        canvas.drawPath(rearWindowPath, windowFillPaint)
-        canvas.drawPath(rearWindowPath, windowStrokePaint)
+        // 6. Windows
+        drawWindows(canvas, carL, carR, cabinTop, trunkTop, cabinH, trunkH,
+            hoodNarrow, trunkNarrow, carW, dp)
 
-        // --- Side windows (left and right) ---
-        val swTop = wsBot + cabinH * 0.02f
-        val swBot = rwTop - cabinH * 0.02f
-        val swThick = carW * 0.06f  // window strip thickness
+        // 7. Side mirrors
+        val mirrorY = cabinTop + cabinH * 0.08f
+        val mirrorW = carW * 0.08f
+        val mirrorH = carW * 0.05f
+        // Left mirror
+        tempRect.set(carL - mirrorW - 1f * dp, mirrorY, carL - 1f * dp, mirrorY + mirrorH)
+        canvas.drawOval(tempRect, mirrorPaint)
+        canvas.drawOval(tempRect, mirrorStrokePaint)
+        // Right mirror
+        tempRect.set(carR + 1f * dp, mirrorY, carR + mirrorW + 1f * dp, mirrorY + mirrorH)
+        canvas.drawOval(tempRect, mirrorPaint)
+        canvas.drawOval(tempRect, mirrorStrokePaint)
 
-        // Left side window
-        sideWindowLeftPath.reset()
-        sideWindowLeftPath.moveTo(carL + wsInsetBot, swTop)
-        sideWindowLeftPath.lineTo(carL + wsInsetBot - swThick * 0.5f, swTop)
-        sideWindowLeftPath.lineTo(carL + rwInsetTop - swThick * 0.5f, swBot)
-        sideWindowLeftPath.lineTo(carL + rwInsetTop, swBot)
-        sideWindowLeftPath.close()
-        canvas.drawPath(sideWindowLeftPath, windowFillPaint)
+        // 8. Headlights (LED-style)
+        val hlW = carW * 0.14f
+        val hlH = hoodH * 0.16f
+        val hlY = hoodTop + hoodH * 0.12f
+        val hlCorner = 3f * dp
+        // Left headlight
+        headlightPaint.color = Color.rgb(0xFF, 0xF8, 0xE7)
+        tempRect.set(carL + hoodNarrow + 2f * dp, hlY,
+            carL + hoodNarrow + 2f * dp + hlW, hlY + hlH)
+        canvas.drawRoundRect(tempRect, hlCorner, hlCorner, headlightPaint)
+        // Headlight glow
+        headlightGlowPaint.color = Color.argb(60, 0xFF, 0xF8, 0xE7)
+        headlightGlowPaint.maskFilter = BlurMaskFilter(8f * dp, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawRoundRect(tempRect, hlCorner, hlCorner, headlightGlowPaint)
+        headlightGlowPaint.maskFilter = null
+        // Right headlight
+        tempRect.set(carR - hoodNarrow - 2f * dp - hlW, hlY,
+            carR - hoodNarrow - 2f * dp, hlY + hlH)
+        canvas.drawRoundRect(tempRect, hlCorner, hlCorner, headlightPaint)
+        headlightGlowPaint.maskFilter = BlurMaskFilter(8f * dp, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawRoundRect(tempRect, hlCorner, hlCorner, headlightGlowPaint)
+        headlightGlowPaint.maskFilter = null
+        // DRL strips (amber, below headlights)
+        val drlY = hlY + hlH + 2f * dp
+        canvas.drawLine(carL + hoodNarrow + 4f * dp, drlY,
+            carL + hoodNarrow + 4f * dp + hlW * 0.8f, drlY, drlPaint)
+        canvas.drawLine(carR - hoodNarrow - 4f * dp - hlW * 0.8f, drlY,
+            carR - hoodNarrow - 4f * dp, drlY, drlPaint)
 
-        // Right side window
-        sideWindowRightPath.reset()
-        sideWindowRightPath.moveTo(carR - wsInsetBot, swTop)
-        sideWindowRightPath.lineTo(carR - wsInsetBot + swThick * 0.5f, swTop)
-        sideWindowRightPath.lineTo(carR - rwInsetTop + swThick * 0.5f, swBot)
-        sideWindowRightPath.lineTo(carR - rwInsetTop, swBot)
-        sideWindowRightPath.close()
-        canvas.drawPath(sideWindowRightPath, windowFillPaint)
+        // 9. Taillights (LED-style red)
+        val tlW = carW * 0.16f
+        val tlH = trunkH * 0.10f
+        val tlY = carB - trunkH * 0.18f
+        val tlCorner = 2f * dp
+        taillightPaint.color = Color.rgb(0xE7, 0x4C, 0x3C)
+        // Left taillight
+        tempRect.set(carL + trunkNarrow + 2f * dp, tlY,
+            carL + trunkNarrow + 2f * dp + tlW, tlY + tlH)
+        canvas.drawRoundRect(tempRect, tlCorner, tlCorner, taillightPaint)
+        taillightGlowPaint.color = Color.argb(60, 0xE7, 0x4C, 0x3C)
+        taillightGlowPaint.maskFilter = BlurMaskFilter(6f * dp, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawRoundRect(tempRect, tlCorner, tlCorner, taillightGlowPaint)
+        taillightGlowPaint.maskFilter = null
+        // Right taillight
+        tempRect.set(carR - trunkNarrow - 2f * dp - tlW, tlY,
+            carR - trunkNarrow - 2f * dp, tlY + tlH)
+        canvas.drawRoundRect(tempRect, tlCorner, tlCorner, taillightPaint)
+        taillightGlowPaint.maskFilter = BlurMaskFilter(6f * dp, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawRoundRect(tempRect, tlCorner, tlCorner, taillightGlowPaint)
+        taillightGlowPaint.maskFilter = null
 
-        // --- Wheels (4 rounded rects at corners) ---
-        val wheelW = carW * 0.10f
+        // 10. Wheels (multi-layer)
+        val wheelW = carW * 0.11f
         val wheelH = carH * 0.08f
-        val wheelR = 3f * dp  // corner radius
-        val wheelOffsetX = 2f * dp  // how far wheel sticks out from body
+        val wheelOffsetX = 3f * dp
+        val wheelCorner = 3f * dp
+        // Front-left
+        drawWheel(canvas, carL - wheelOffsetX, cabinTop + cabinH * 0.04f,
+            wheelW, wheelH, wheelCorner, dp)
+        // Front-right
+        drawWheel(canvas, carR - wheelW + wheelOffsetX, cabinTop + cabinH * 0.04f,
+            wheelW, wheelH, wheelCorner, dp)
+        // Rear-left
+        drawWheel(canvas, carL + trunkNarrow - wheelOffsetX, trunkTop - wheelH * 0.3f,
+            wheelW, wheelH, wheelCorner, dp)
+        // Rear-right
+        drawWheel(canvas, carR - trunkNarrow - wheelW + wheelOffsetX, trunkTop - wheelH * 0.3f,
+            wheelW, wheelH, wheelCorner, dp)
 
-        // Front-left wheel
-        drawWheel(canvas, carL - wheelOffsetX, cabinTop + cabinH * 0.05f, wheelW, wheelH, wheelR)
-        // Front-right wheel
-        drawWheel(canvas, carR - wheelW + wheelOffsetX, cabinTop + cabinH * 0.05f, wheelW, wheelH, wheelR)
-        // Rear-left wheel
-        drawWheel(canvas, carL + trunkNarrow - wheelOffsetX, trunkTop - wheelH * 0.3f, wheelW, wheelH, wheelR)
-        // Rear-right wheel
-        drawWheel(canvas, carR - trunkNarrow - wheelW + wheelOffsetX, trunkTop - wheelH * 0.3f, wheelW, wheelH, wheelR)
-
-        // --- Interior seat area ---
-        val intPad = carW * 0.14f
-        val intL = carL + intPad
-        val intR = carR - intPad
+        // 11. Interior floor
+        val intPadX = carW * 0.14f
+        val intL = carL + intPadX
+        val intR = carR - intPadX
         val intW = intR - intL
-        val gap = intW * 0.08f
+        val intTop = cabinTop + cabinH * 0.04f
+        val intBot = trunkTop - cabinH * 0.02f
+        tempRect.set(intL, intTop, intR, intBot)
+        canvas.drawRoundRect(tempRect, 4f * dp, 4f * dp, interiorFloorPaint)
 
-        // --- Front row: two bucket seats ---
+        // 12. Center console
+        val consoleW = intW * 0.06f
+        val consoleTop = intTop + cabinH * 0.06f
+        val consoleBot = intBot - cabinH * 0.04f
+        tempRect.set(carCX - consoleW / 2f, consoleTop, carCX + consoleW / 2f, consoleBot)
+        canvas.drawRoundRect(tempRect, 2f * dp, 2f * dp, consolePaint)
+
+        // 13. Seats
+        val gap = intW * 0.08f
         val seatW = (intW - gap) / 2f
         val seatH = cabinH * 0.32f
-        val seatTop = wsBot + cabinH * 0.06f
+        val seatTop = intTop + cabinH * 0.06f
         val seatCorner = 6f * dp
 
         val leftSeatState: SeatState
@@ -393,14 +488,14 @@ class CarSeatMapView @JvmOverloads constructor(
         drawSeat(canvas, intL + seatW + gap, seatTop, seatW, seatH, seatCorner,
             rightSeatEnum, rightSeatState, dp)
 
-        // --- Steering wheel ---
+        // 14. Steering wheel (3-spoke)
         val driverSeatL = if (driverSide == "left") intL else intL + seatW + gap
         val swCX = driverSeatL + seatW / 2f
-        val swCY = seatTop + seatH * 0.30f
+        val swCY = seatTop + seatH * 0.28f
         val swR = seatW * 0.20f
         drawSteeringWheel(canvas, swCX, swCY, swR)
 
-        // --- Rear row: continuous bench seat ---
+        // Rear row: bench seat
         val benchGap = cabinH * 0.08f
         val benchTop = seatTop + seatH + benchGap
         val benchH = cabinH * 0.26f
@@ -433,17 +528,174 @@ class CarSeatMapView @JvmOverloads constructor(
                 intL + zoneW, benchTop + benchH - 3f * dp, dividerPaint)
         }
 
-        // --- Driver name below car ---
+        // 15. Orientation indicator
+        orientPaint.textSize = 9f * dp
+        // Upward chevron
+        val chevCX = carCX
+        val chevY = hoodTop - 6f * dp
+        canvas.drawText("\u25B2", chevCX, chevY, orientPaint)
+        canvas.drawText("FRONT", chevCX, chevY - 8f * dp, orientPaint)
+
+        // Driver name below car
         if (driverName != null) {
             namePaint.textSize = 11f * dp
-            canvas.drawText(driverName!!, carCX, carB + 12f * dp, namePaint)
+            canvas.drawText(driverName!!, carCX, carB + 14f * dp, namePaint)
         }
     }
 
-    private fun drawWheel(canvas: Canvas, left: Float, top: Float, w: Float, h: Float, r: Float) {
-        wheelRect.set(left, top, left + w, top + h)
-        canvas.drawRoundRect(wheelRect, r, r, wheelFillPaint)
-        canvas.drawRoundRect(wheelRect, r, r, wheelStrokePaint)
+    private fun updateGradients(carL: Float, carR: Float, carT: Float, carB: Float, dp: Float) {
+        // Body: left-to-right metallic gradient for 3D curvature
+        bodyFillPaint.shader = LinearGradient(
+            carL, 0f, carR, 0f,
+            intArrayOf(
+                Color.rgb(0x2A, 0x2C, 0x38),
+                Color.rgb(0x38, 0x3B, 0x48),
+                Color.rgb(0x2A, 0x2C, 0x38)
+            ),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP
+        )
+    }
+
+    private fun buildBodyPath(
+        carL: Float, carR: Float, carT: Float, carB: Float,
+        hoodTop: Float, cabinTop: Float, trunkTop: Float,
+        hoodNarrow: Float, trunkNarrow: Float, cr: Float, carH: Float
+    ) {
+        bodyPath.reset()
+        // Smoother bezier sedan silhouette
+        bodyPath.moveTo(carL + hoodNarrow + cr * 0.5f, hoodTop)
+        bodyPath.lineTo(carR - hoodNarrow - cr * 0.5f, hoodTop)
+        bodyPath.quadTo(carR - hoodNarrow, hoodTop, carR - hoodNarrow, hoodTop + cr * 0.5f)
+        // Right: hood widens to cabin via smooth bezier
+        bodyPath.cubicTo(
+            carR - hoodNarrow, cabinTop - cr * 0.5f,
+            carR, cabinTop - cr * 0.2f,
+            carR, cabinTop + cr * 0.3f
+        )
+        bodyPath.lineTo(carR, trunkTop - cr * 0.3f)
+        // Right: cabin narrows to trunk
+        bodyPath.cubicTo(
+            carR, trunkTop + cr * 0.2f,
+            carR - trunkNarrow, trunkTop + cr * 0.1f,
+            carR - trunkNarrow, trunkTop + cr * 0.3f
+        )
+        bodyPath.lineTo(carR - trunkNarrow, carB - cr * 0.5f)
+        bodyPath.quadTo(carR - trunkNarrow, carB, carR - trunkNarrow - cr * 0.5f, carB)
+        bodyPath.lineTo(carL + trunkNarrow + cr * 0.5f, carB)
+        bodyPath.quadTo(carL + trunkNarrow, carB, carL + trunkNarrow, carB - cr * 0.5f)
+        bodyPath.lineTo(carL + trunkNarrow, trunkTop + cr * 0.3f)
+        // Left: trunk widens to cabin
+        bodyPath.cubicTo(
+            carL + trunkNarrow, trunkTop + cr * 0.1f,
+            carL, trunkTop + cr * 0.2f,
+            carL, trunkTop - cr * 0.3f
+        )
+        bodyPath.lineTo(carL, cabinTop + cr * 0.3f)
+        // Left: cabin narrows to hood
+        bodyPath.cubicTo(
+            carL, cabinTop - cr * 0.2f,
+            carL + hoodNarrow, cabinTop - cr * 0.5f,
+            carL + hoodNarrow, hoodTop + cr * 0.5f
+        )
+        bodyPath.quadTo(carL + hoodNarrow, hoodTop, carL + hoodNarrow + cr * 0.5f, hoodTop)
+        bodyPath.close()
+    }
+
+    private fun drawWindows(
+        canvas: Canvas, carL: Float, carR: Float, cabinTop: Float, trunkTop: Float,
+        cabinH: Float, trunkH: Float, hoodNarrow: Float, trunkNarrow: Float,
+        carW: Float, dp: Float
+    ) {
+        // Windshield
+        val wsInsetTop = carW * 0.14f
+        val wsInsetBot = carW * 0.06f
+        val wsTop = cabinTop + cabinH * 0.02f
+        val wsBot = cabinTop + cabinH * 0.18f
+
+        // Window gradient (blue tint glass)
+        windowFillPaint.shader = LinearGradient(
+            0f, wsTop, 0f, wsBot,
+            Color.argb(50, 0x5B, 0x8D, 0xEF),
+            Color.argb(25, 0x5B, 0x8D, 0xEF),
+            Shader.TileMode.CLAMP
+        )
+
+        windshieldPath.reset()
+        windshieldPath.moveTo(carL + wsInsetTop, wsTop)
+        windshieldPath.lineTo(carR - wsInsetTop, wsTop)
+        windshieldPath.lineTo(carR - wsInsetBot, wsBot)
+        windshieldPath.lineTo(carL + wsInsetBot, wsBot)
+        windshieldPath.close()
+        canvas.drawPath(windshieldPath, windowFillPaint)
+        canvas.drawPath(windshieldPath, windowChromePaint)
+
+        // Rear window
+        val rwInsetTop = carW * 0.06f
+        val rwInsetBot = carW * 0.12f
+        val rwTop = trunkTop - cabinH * 0.01f
+        val rwBot = trunkTop + trunkH * 0.22f
+
+        windowFillPaint.shader = LinearGradient(
+            0f, rwTop, 0f, rwBot,
+            Color.argb(50, 0x5B, 0x8D, 0xEF),
+            Color.argb(25, 0x5B, 0x8D, 0xEF),
+            Shader.TileMode.CLAMP
+        )
+
+        rearWindowPath.reset()
+        rearWindowPath.moveTo(carL + rwInsetTop, rwTop)
+        rearWindowPath.lineTo(carR - rwInsetTop, rwTop)
+        rearWindowPath.lineTo(carR - trunkNarrow - rwInsetBot, rwBot)
+        rearWindowPath.lineTo(carL + trunkNarrow + rwInsetBot, rwBot)
+        rearWindowPath.close()
+        canvas.drawPath(rearWindowPath, windowFillPaint)
+        canvas.drawPath(rearWindowPath, windowChromePaint)
+
+        // Side windows
+        val swTop = wsBot + cabinH * 0.02f
+        val swBot = rwTop - cabinH * 0.02f
+        val swThick = carW * 0.06f
+
+        windowFillPaint.shader = null
+        windowFillPaint.color = Color.argb(35, 0x5B, 0x8D, 0xEF)
+
+        sideWindowLeftPath.reset()
+        sideWindowLeftPath.moveTo(carL + wsInsetBot, swTop)
+        sideWindowLeftPath.lineTo(carL + wsInsetBot - swThick * 0.5f, swTop)
+        sideWindowLeftPath.lineTo(carL + rwInsetTop - swThick * 0.5f, swBot)
+        sideWindowLeftPath.lineTo(carL + rwInsetTop, swBot)
+        sideWindowLeftPath.close()
+        canvas.drawPath(sideWindowLeftPath, windowFillPaint)
+
+        sideWindowRightPath.reset()
+        sideWindowRightPath.moveTo(carR - wsInsetBot, swTop)
+        sideWindowRightPath.lineTo(carR - wsInsetBot + swThick * 0.5f, swTop)
+        sideWindowRightPath.lineTo(carR - rwInsetTop + swThick * 0.5f, swBot)
+        sideWindowRightPath.lineTo(carR - rwInsetTop, swBot)
+        sideWindowRightPath.close()
+        canvas.drawPath(sideWindowRightPath, windowFillPaint)
+    }
+
+    private fun drawWheel(canvas: Canvas, left: Float, top: Float, w: Float, h: Float,
+                          corner: Float, dp: Float) {
+        // Tire
+        tempRect.set(left, top, left + w, top + h)
+        canvas.drawRoundRect(tempRect, corner, corner, tirePaint)
+
+        // Alloy rim (inset)
+        val rimInset = w * 0.15f
+        tempRect.set(left + rimInset, top + rimInset, left + w - rimInset, top + h - rimInset)
+        rimPaint.shader = RadialGradient(
+            left + w / 2f, top + h / 2f, w * 0.4f,
+            Color.rgb(0x8A, 0x8D, 0x9B), Color.rgb(0x5A, 0x5D, 0x6B),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(tempRect, corner * 0.6f, corner * 0.6f, rimPaint)
+
+        // Hub center
+        val hubR = w * 0.08f
+        canvas.drawCircle(left + w / 2f, top + h / 2f, hubR, hubPaint)
     }
 
     private fun drawSeat(
@@ -455,18 +707,29 @@ class CarSeatMapView @JvmOverloads constructor(
 
         seatRect.set(left, top, left + width, top + height)
 
+        // Glow halo for occupied seats
         if (state.occupied) {
             seatGlowPaint.color = color
             seatGlowPaint.alpha = (40 * alpha).toInt()
             seatGlowPaint.maskFilter = BlurMaskFilter(6f * dp, BlurMaskFilter.Blur.NORMAL)
             canvas.drawRoundRect(seatRect, corner, corner, seatGlowPaint)
+            seatGlowPaint.maskFilter = null
         }
 
-        seatFillPaint.color = color
+        // Seat fill with subtle gradient (lighter top -> darker bottom for leather look)
+        val topColor = lightenColor(color, 0.15f)
+        val botColor = darkenColor(color, 0.1f)
+        seatFillPaint.shader = LinearGradient(
+            0f, top, 0f, top + height,
+            topColor, botColor,
+            Shader.TileMode.CLAMP
+        )
         seatFillPaint.alpha = (255 * alpha).toInt()
         canvas.drawRoundRect(seatRect, corner, corner, seatFillPaint)
+        seatFillPaint.shader = null
         canvas.drawRoundRect(seatRect, corner, corner, seatStrokePaint)
 
+        // State icon label
         labelPaint.textSize = 11f * dp
         val icon = stateIcon(state.state)
         val textX = left + width / 2f
@@ -494,11 +757,19 @@ class CarSeatMapView @JvmOverloads constructor(
             seatGlowPaint.alpha = (40 * alpha).toInt()
             seatGlowPaint.maskFilter = BlurMaskFilter(6f * dp, BlurMaskFilter.Blur.NORMAL)
             canvas.drawRoundRect(seatRect, corner, corner, seatGlowPaint)
+            seatGlowPaint.maskFilter = null
         }
 
-        seatFillPaint.color = color
+        val topColor = lightenColor(color, 0.15f)
+        val botColor = darkenColor(color, 0.1f)
+        seatFillPaint.shader = LinearGradient(
+            0f, top, 0f, top + height,
+            topColor, botColor,
+            Shader.TileMode.CLAMP
+        )
         seatFillPaint.alpha = (255 * alpha).toInt()
         canvas.drawRoundRect(seatRect, corner, corner, seatFillPaint)
+        seatFillPaint.shader = null
 
         canvas.restore()
 
@@ -510,14 +781,39 @@ class CarSeatMapView @JvmOverloads constructor(
     }
 
     private fun drawSteeringWheel(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        // Outer ring (open at bottom)
         steeringRect.set(cx - radius, cy - radius, cx + radius, cy + radius)
         canvas.drawArc(steeringRect, 200f, 280f, false, steeringPaint)
+        // 3 spokes at 120-degree intervals
+        val spokeLen = radius * 0.65f
+        for (angle in intArrayOf(90, 210, 330)) {
+            val rad = Math.toRadians(angle.toDouble())
+            canvas.drawLine(cx, cy,
+                cx + (spokeLen * Math.cos(rad)).toFloat(),
+                cy - (spokeLen * Math.sin(rad)).toFloat(),
+                steeringPaint)
+        }
+        // Center hub
         canvas.drawCircle(cx, cy, radius * 0.18f, steeringCenterPaint)
-        canvas.drawLine(cx, cy, cx, cy - radius * 0.7f, steeringPaint)
+    }
+
+    private fun lightenColor(color: Int, fraction: Float): Int {
+        val r = (Color.red(color) + (255 - Color.red(color)) * fraction).toInt().coerceIn(0, 255)
+        val g = (Color.green(color) + (255 - Color.green(color)) * fraction).toInt().coerceIn(0, 255)
+        val b = (Color.blue(color) + (255 - Color.blue(color)) * fraction).toInt().coerceIn(0, 255)
+        return Color.argb(Color.alpha(color), r, g, b)
+    }
+
+    private fun darkenColor(color: Int, fraction: Float): Int {
+        val r = (Color.red(color) * (1f - fraction)).toInt().coerceIn(0, 255)
+        val g = (Color.green(color) * (1f - fraction)).toInt().coerceIn(0, 255)
+        val b = (Color.blue(color) * (1f - fraction)).toInt().coerceIn(0, 255)
+        return Color.argb(Color.alpha(color), r, g, b)
     }
 
     override fun onDetachedFromWindow() {
         pulseAnimator?.cancel()
+        underglowAnimator?.cancel()
         seatColorAnimators.values.forEach { it.cancel() }
         seatColorAnimators.clear()
         super.onDetachedFromWindow()

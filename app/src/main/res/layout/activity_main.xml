@@ -142,6 +142,44 @@
                     android:layout_height="0dp"
                     android:layout_weight="1" />
 
+                <!-- Inference mode toggle (visible in idle state, stacked) -->
+                <LinearLayout
+                    android:id="@+id/idleModeToggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/idleModeLocalBtn"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/button_height"
+                        android:background="@drawable/bg_button_surface"
+                        android:text="LOCAL"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.08"
+                        android:gravity="center"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="@dimen/space_xs"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <TextView
+                        android:id="@+id/idleModeVlmBtn"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/button_height"
+                        android:background="@drawable/bg_button_surface"
+                        android:text="VLM"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.08"
+                        android:gravity="center"
+                        android:textColor="@color/text_secondary"
+                        android:layout_marginBottom="@dimen/space_sm"
+                        android:clickable="true"
+                        android:focusable="true" />
+                </LinearLayout>
+
                 <!-- Start / Stop button -->
                 <TextView
                     android:id="@+id/toggleButton"
@@ -221,7 +259,7 @@
                         android:layout_marginBottom="@dimen/space_xs"
                         android:contentDescription="@null" />
 
-                    <!-- Glow ring + robot stacked -->
+                    <!-- Glow ring + robot stacked + overlay labels -->
                     <FrameLayout
                         android:id="@+id/asimoGlowFrame"
                         android:layout_width="@dimen/asimo_glow_m"
@@ -240,6 +278,42 @@
                             android:scaleType="fitCenter"
                             android:src="@drawable/asimo_all_clear"
                             android:contentDescription="ASIMO mascot" />
+
+                        <!-- Overlay labels on robot's lower torso -->
+                        <LinearLayout
+                            android:id="@+id/mascotOverlayLabels"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center_horizontal|bottom"
+                            android:layout_marginBottom="28dp"
+                            android:orientation="vertical"
+                            android:gravity="center_horizontal"
+                            android:background="@drawable/bg_mascot_label_pill">
+
+                            <!-- Mascot name (ASIMO / MANAV) -->
+                            <TextView
+                                android:id="@+id/mascotNameLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="── ASIMO ──"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_primary"
+                                android:letterSpacing="0.12"
+                                android:fontFamily="sans-serif-medium" />
+
+                            <!-- Brand label (HONDA in red / KPIT in green) -->
+                            <TextView
+                                android:id="@+id/mascotBrandLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="HONDA"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:textColor="#E74C3C"
+                                android:letterSpacing="0.18"
+                                android:fontFamily="sans-serif-medium" />
+                        </LinearLayout>
                     </FrameLayout>
 
                     <!-- Detection label below robot -->
