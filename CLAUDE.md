@@ -219,9 +219,10 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Bridge server**: `scripts/vlm_server.py` — FastAPI bridge that captures webcam on laptop, sends base64 JPEG to external vLLM (OpenAI-compatible API), parses response, serves detection results to SA8155
 - **End-to-end path**: Webcam → bridge (base64 JPEG) → vLLM `/v1/chat/completions` → parse JSON → `apply_confidence_thresholds()` → `/api/detect` → VlmClient → `parseDetectResponse()` → TemporalSmoother → `distraction_duration_s` (on-device) → AlertOrchestrator → AudioAlerter + VehicleChannelManager → Dashboard
 - **vLLM**: Runs externally via `vllm serve /path/to/model`. NOT loaded by bridge script. Default model: Qwen3-VL-4B-Instruct at `/home/kpit/code/qwen3_offline_4B`
-- **Two start modes**:
+- **Three start modes**:
   - `--vllm-url http://localhost:8080` — connect to already-running vLLM (bridge only)
   - `--start-vllm --model-path /path/to/model` — launch vLLM subprocess + bridge together
+  - `--file-dir /path/to/logs` — file-based inference from pre-computed `log_vllm_*.json` files (no VLM or camera needed)
 - **Dependencies**: fastapi, uvicorn, opencv-python only (no torch/transformers needed on bridge)
 - **Launcher GUI**: `scripts/vlm_launcher.py` — tkinter GUI to manage vlm_server.py (start/stop, health check, test query, log viewer)
 - **Pipeline**: VlmClient → JSON parse → OutputResult → smoother → alerts → dashboard. No camera, no local models on device
@@ -235,6 +236,11 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Activity safety**: `@Volatile isActivityDestroyed` flag guards background health check threads
 - **Parsing**: `parseDetectResponse()` pure companion function — 13 unit tests
 - **Error handling**: HTTP errors post LOST/NOT_CONNECTED status, exponential backoff on repeated failures
+- **File-based inference**: `--file-dir` mode reads pre-computed `log_vllm_*.json` files. `parse_file_result()` maps driver/passenger states to detection booleans:
+  - `DRIVER_STATE`: sleeping→`driver_eyes_closed`, distracted→`driver_distracted`, eating→`driver_eating_drinking`, phone→`driver_using_phone`, yawning→`driver_yawning`, vacant→`driver_detected=false`, upright→no danger
+  - Passenger seats (`FRONT_PASSENGER_STATE`, `REAR_LEFT_STATE`, `REAR_RIGHT_STATE`): sleeping→`dangerous_posture`
+  - Risk level computed from mapped detections (same weights as VLM path)
+  - Device sees no difference — same `/api/detect` JSON endpoint, same `VlmClient` polling
 
 ### Multi-Modal Alert Orchestrator
 - **AlertOrchestrator**: Wraps `AudioAlerter` (unchanged) + `VehicleChannelManager`. Called from `InCabinService` instead of direct `AudioAlerter.checkAndAnnounce()`
@@ -274,7 +280,8 @@ score >= 3 → high, >= 1 → medium, else → low
 - **VHAL integration**: Probes `HVAC_TEMPERATURE_SET` (0x15600503, Float) via reflection. Reads initial temperature as base. Writes via `setFloatProperty()`. Graceful no-op on generic Android
 - **Toggle**: `Config.ENABLE_AUTO_CLIMATE` (off by default, persisted in SharedPreferences, UI toggle in settings overlay)
 - **Lifecycle**: Created in `VehicleChannelManager.registerChannels()`. Called per-frame from `AlertOrchestrator.evaluate()`. Restores base temp on `resetState()` and `close()`
-- **Pure companion functions**: `computeTargetTemp()`, `shouldAdjust()`, `rampStep()` — fully unit-testable, no Android deps
+- **TTS announcement**: `update()` returns `ClimateAdjustment` when target changes; AlertOrchestrator speaks via `enqueueWelcome()` at INFO priority. EN: "Temperature adjusted to 21.0 degrees, 3 occupants" / JA: "空調21.0度に調整、乗員3名". Fires once per target change, not per ramp step
+- **Pure companion functions**: `computeTargetTemp()`, `shouldAdjust()`, `rampStep()`, `formatAlertMessage()` — fully unit-testable, no Android deps
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
