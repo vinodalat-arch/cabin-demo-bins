@@ -340,6 +340,19 @@
                 android:paddingBottom="@dimen/space_sm"
                 android:visibility="gone">
 
+                <!-- === Scrollable top section (detections, status, etc.) === -->
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scrollbars="none"
+                    android:fillViewport="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
                 <!-- Smart Cabin section header -->
                 <TextView
                     style="@style/TextMicro"
@@ -409,12 +422,13 @@
                     android:orientation="vertical"
                     android:layout_marginBottom="@dimen/space_xs" />
 
-                <!-- Car seat map visualization -->
-                <com.incabin.CarSeatMapView
-                    android:id="@+id/carSeatMapView"
+                <!-- Seat status text labels -->
+                <LinearLayout
+                    android:id="@+id/seatStatusContainer"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/car_seat_map_height"
-                    android:layout_marginBottom="@dimen/space_md" />
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="@dimen/space_sm" />
 
                 <!-- Rear Camera Section (visible only during reverse) -->
                 <LinearLayout
@@ -459,14 +473,13 @@
                 <!-- Bottom widget area (Session Stats or Driver Tips) -->
                 <FrameLayout
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1">
+                    android:layout_height="wrap_content">
 
                     <!-- Session Stats widget -->
                     <LinearLayout
                         android:id="@+id/statsWidget"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
+                        android:layout_height="wrap_content"
                         android:orientation="vertical"
                         android:visibility="gone">
 
@@ -549,7 +562,7 @@
                     <LinearLayout
                         android:id="@+id/tipsWidget"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
+                        android:layout_height="wrap_content"
                         android:orientation="vertical"
                         android:visibility="gone">
 
@@ -622,6 +635,22 @@
                     android:textColor="@color/text_muted"
                     android:layout_marginTop="@dimen/space_sm"
                     android:visibility="gone" />
+
+                    </LinearLayout>
+                </ScrollView>
+
+                <!-- === Fixed bottom: Car seat map diagram === -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider"
+                    android:layout_marginTop="@dimen/space_xs"
+                    android:layout_marginBottom="@dimen/space_xs" />
+
+                <com.incabin.CarSeatMapView
+                    android:id="@+id/carSeatMapView"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/car_seat_map_height" />
 
                 <!-- Hidden engineering metrics (kept in layout for compatibility) -->
                 <TextView

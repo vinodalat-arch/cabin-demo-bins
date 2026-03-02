@@ -39,7 +39,7 @@
     <dimen name="bubble_padding_v">10dp</dimen>
 
     <!-- Car seat map -->
-    <dimen name="car_seat_map_height">200dp</dimen>
+    <dimen name="car_seat_map_height">340dp</dimen>
 
     <!-- Risk pill -->
     <dimen name="risk_pill_radius">14dp</dimen>

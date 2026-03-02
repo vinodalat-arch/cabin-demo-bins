@@ -265,6 +265,7 @@ class MainActivity : Activity() {
     private lateinit var distractionText: TextView
     private lateinit var detectionsContainer: LinearLayout
     private lateinit var carSeatMapView: CarSeatMapView
+    private lateinit var seatStatusContainer: LinearLayout
     private lateinit var aiStatusText: TextView
     private lateinit var scoreArc: ScoreArcView
     private lateinit var scoreContainer: FrameLayout
@@ -473,6 +474,7 @@ class MainActivity : Activity() {
         distractionText = findViewById(R.id.distractionText)
         detectionsContainer = findViewById(R.id.detectionsContainer)
         carSeatMapView = findViewById(R.id.carSeatMapView)
+        seatStatusContainer = findViewById(R.id.seatStatusContainer)
         aiStatusText = findViewById(R.id.aiStatusText)
         scoreArc = findViewById(R.id.scoreArc)
         scoreContainer = findViewById(R.id.scoreContainer)
@@ -1784,6 +1786,8 @@ class MainActivity : Activity() {
         previewImage.setImageBitmap(null)
         detectionsContainer.removeAllViews()
         carSeatMapView.visibility = View.GONE
+        seatStatusContainer.removeAllViews()
+        seatStatusContainer.visibility = View.GONE
         currentSeatMap = null
         rearAlertSection.visibility = View.GONE
         rearDetectionLabels.removeAllViews()
@@ -1998,11 +2002,53 @@ class MainActivity : Activity() {
 
         if (seatMap == null) {
             carSeatMapView.visibility = View.GONE
+            seatStatusContainer.visibility = View.GONE
             return
         }
         carSeatMapView.visibility = View.VISIBLE
+        seatStatusContainer.visibility = View.VISIBLE
         val name = FrameHolder.getLatestResult()?.driverName
         carSeatMapView.setSeatMap(seatMap, Config.DRIVER_SEAT_SIDE, name)
+
+        // Text status labels below car diagram
+        seatStatusContainer.removeAllViews()
+        val isJa = Config.LANGUAGE == "ja"
+        val seats = listOf(
+            (if (isJa) "ドライバー" else "Driver") to seatMap.driver,
+            (if (isJa) "助手席" else "Front Pax") to seatMap.frontPassenger,
+            (if (isJa) "後席左" else "Rear L") to seatMap.rearLeft,
+            (if (isJa) "後席中" else "Rear C") to seatMap.rearCenter,
+            (if (isJa) "後席右" else "Rear R") to seatMap.rearRight
+        )
+
+        for ((seatName, state) in seats) {
+            if (!state.occupied && state.state == "Vacant") continue
+            val color = when (state.state) {
+                "Upright" -> colorSafe
+                "Vacant" -> colorTextMuted
+                else -> colorCaution
+            }
+            val stateLabel = if (isJa) {
+                when (state.state) {
+                    "Upright" -> "正常"
+                    "Sleeping" -> "居眠り"
+                    "Distracted" -> "よそ見"
+                    "Phone" -> "スマホ"
+                    "Eating" -> "飲食"
+                    "Yawning" -> "あくび"
+                    "Vacant" -> "空席"
+                    else -> state.state
+                }
+            } else state.state
+            val label = "\u25CF  $seatName: $stateLabel"
+            val tv = TextView(this).apply {
+                text = label
+                textSize = 14f
+                setTextColor(color)
+                setPadding(0, dpToPx(1), 0, dpToPx(1))
+            }
+            seatStatusContainer.addView(tv)
+        }
     }
 
     // ---------------------------------------------------------------------

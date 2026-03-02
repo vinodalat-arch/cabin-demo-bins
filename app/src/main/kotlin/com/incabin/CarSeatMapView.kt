@@ -15,7 +15,8 @@ import android.view.animation.DecelerateInterpolator
 import androidx.core.content.ContextCompat
 
 /**
- * Custom View: top-down car diagram with per-seat state visualization.
+ * Custom View: top-down sedan diagram with per-seat state visualization.
+ * Elongated sedan silhouette with tapered hood/trunk, wheel arches, side windows.
  * Front row: two bucket seats. Rear row: continuous bench (2 or 3 zones).
  * Steering wheel on driver side. Seats glow green (safe) or pulse red (danger).
  */
@@ -67,32 +68,42 @@ class CarSeatMapView @JvmOverloads constructor(
     // Resolved colors
     private val colorSafe = ContextCompat.getColor(context, R.color.safe)
     private val colorDanger = ContextCompat.getColor(context, R.color.danger)
-    private val colorVacant = Color.rgb(0x1E, 0x1F, 0x2A)  // divider
-    private val colorBody = Color.rgb(0x3D, 0x3F, 0x4A)     // text_muted
-    private val colorWindow = Color.argb(51, 0x5B, 0x8D, 0xEF)  // accent at 20%
-    private val colorSteering = Color.rgb(0x6B, 0x6E, 0x7B)  // text_secondary
+    private val colorVacant = Color.rgb(0x1E, 0x1F, 0x2A)
+    private val colorBody = Color.rgb(0x2A, 0x2C, 0x38)
+    private val colorBodyStroke = Color.rgb(0x3D, 0x3F, 0x4A)
+    private val colorWindow = Color.argb(40, 0x5B, 0x8D, 0xEF)
+    private val colorWindowStroke = Color.argb(60, 0x5B, 0x8D, 0xEF)
+    private val colorSteering = Color.rgb(0x6B, 0x6E, 0x7B)
     private val colorTextPrimary = ContextCompat.getColor(context, R.color.text_primary)
     private val colorTextMuted = Color.rgb(0x3D, 0x3F, 0x4A)
     private val colorDividerLine = Color.rgb(0x2A, 0x2B, 0x35)
+    private val colorWheel = Color.rgb(0x30, 0x32, 0x3E)
+    private val colorWheelStroke = Color.rgb(0x4A, 0x4C, 0x58)
 
     // Pre-allocated Paints
-    private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 2.5f; color = colorBody
+    private val bodyFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = colorBody
     }
-    private val windowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val bodyStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 2f; color = colorBodyStroke
+    }
+    private val windowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL; color = colorWindow
+    }
+    private val windowStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 1.2f; color = colorWindowStroke
     }
     private val seatFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val seatStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1.5f; color = colorBody
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = colorBodyStroke
     }
     private val seatGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val steeringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 3f; color = colorSteering; strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE; strokeWidth = 2.5f; color = colorSteering; strokeCap = Paint.Cap.ROUND
     }
     private val steeringCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL; color = colorSteering
@@ -107,16 +118,24 @@ class CarSeatMapView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER; color = colorTextMuted; isFakeBoldText = true
     }
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 1.5f; color = colorDividerLine
+        style = Paint.Style.STROKE; strokeWidth = 1f; color = colorDividerLine
+    }
+    private val wheelFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL; color = colorWheel
+    }
+    private val wheelStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 1.5f; color = colorWheelStroke
     }
 
     // Reusable objects
-    private val bodyRect = RectF()
+    private val bodyPath = Path()
     private val seatRect = RectF()
-    private val benchRect = RectF()
     private val steeringRect = RectF()
+    private val wheelRect = RectF()
     private val windshieldPath = Path()
     private val rearWindowPath = Path()
+    private val sideWindowLeftPath = Path()
+    private val sideWindowRightPath = Path()
 
     // Animation state
     private var pulseAnimator: ValueAnimator? = null
@@ -135,14 +154,12 @@ class CarSeatMapView @JvmOverloads constructor(
         driverSide = side
         driverName = name
 
-        // Animate color transitions per seat
         animateSeatColor(Seat.DRIVER, oldMap.driver, map.driver)
         animateSeatColor(Seat.FRONT_PASSENGER, oldMap.frontPassenger, map.frontPassenger)
         animateSeatColor(Seat.REAR_LEFT, oldMap.rearLeft, map.rearLeft)
         animateSeatColor(Seat.REAR_CENTER, oldMap.rearCenter, map.rearCenter)
         animateSeatColor(Seat.REAR_RIGHT, oldMap.rearRight, map.rearRight)
 
-        // Start/stop pulse animator based on danger presence
         val anyDanger = isDanger(map.driver.state) || isDanger(map.frontPassenger.state) ||
             isDanger(map.rearLeft.state) || isDanger(map.rearCenter.state) ||
             isDanger(map.rearRight.state)
@@ -208,60 +225,157 @@ class CarSeatMapView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val density = resources.displayMetrics.density
+        val dp = resources.displayMetrics.density
 
-        // Car body proportions
-        val bodyW = w * 0.78f
-        val bodyH = h * 0.72f
-        val bodyL = (w - bodyW) / 2f
-        val bodyT = h * 0.10f
-        val bodyR = bodyL + bodyW
-        val bodyB = bodyT + bodyH
-        val bodyCorner = 12f * density
+        // --- Sedan proportions: narrow and long ---
+        // Car is centered, ~48% of view width, ~88% of view height
+        val carW = w * 0.48f
+        val carH = h * 0.88f
+        val carL = (w - carW) / 2f
+        val carT = h * 0.06f
+        val carR = carL + carW
+        val carB = carT + carH
+        val carCX = (carL + carR) / 2f
 
-        bodyRect.set(bodyL, bodyT, bodyR, bodyB)
-        canvas.drawRoundRect(bodyRect, bodyCorner, bodyCorner, bodyPaint)
+        // Section heights (top to bottom): hood, cabin, trunk
+        val hoodH = carH * 0.18f      // hood/front
+        val cabinH = carH * 0.52f     // cabin (windows + seats)
+        val trunkH = carH * 0.30f     // trunk/rear
 
-        // "FRONT" label
-        orientPaint.textSize = 10f * density
-        canvas.drawText("FRONT", w / 2f, bodyT - 3f * density, orientPaint)
+        val hoodTop = carT
+        val cabinTop = carT + hoodH
+        val trunkTop = cabinTop + cabinH
 
-        // Windshield (trapezoid at top)
-        val wsInset = bodyW * 0.12f
-        val wsTop = bodyT + 3f * density
-        val wsBot = bodyT + bodyH * 0.15f
+        // Body corner radius
+        val cr = carW * 0.18f
+
+        // --- Draw car body (sedan silhouette) ---
+        // Tapered front (narrower hood), full-width cabin, slightly tapered trunk
+        val hoodNarrow = carW * 0.08f  // how much narrower the hood is on each side
+        val trunkNarrow = carW * 0.04f
+
+        bodyPath.reset()
+        // Start at top-left of hood (tapered)
+        bodyPath.moveTo(carL + hoodNarrow + cr * 0.5f, hoodTop)
+        // Top edge of hood
+        bodyPath.lineTo(carR - hoodNarrow - cr * 0.5f, hoodTop)
+        // Top-right corner of hood
+        bodyPath.quadTo(carR - hoodNarrow, hoodTop, carR - hoodNarrow, hoodTop + cr * 0.5f)
+        // Right side: hood widens to cabin
+        bodyPath.lineTo(carR - hoodNarrow, cabinTop - cr * 0.3f)
+        bodyPath.quadTo(carR - hoodNarrow, cabinTop, carR, cabinTop + cr * 0.3f)
+        // Right side: cabin
+        bodyPath.lineTo(carR, trunkTop - cr * 0.3f)
+        // Right side: cabin narrows to trunk
+        bodyPath.quadTo(carR, trunkTop, carR - trunkNarrow, trunkTop + cr * 0.3f)
+        // Right side: trunk
+        bodyPath.lineTo(carR - trunkNarrow, carB - cr * 0.5f)
+        // Bottom-right corner
+        bodyPath.quadTo(carR - trunkNarrow, carB, carR - trunkNarrow - cr * 0.5f, carB)
+        // Bottom edge
+        bodyPath.lineTo(carL + trunkNarrow + cr * 0.5f, carB)
+        // Bottom-left corner
+        bodyPath.quadTo(carL + trunkNarrow, carB, carL + trunkNarrow, carB - cr * 0.5f)
+        // Left side: trunk
+        bodyPath.lineTo(carL + trunkNarrow, trunkTop + cr * 0.3f)
+        // Left side: trunk widens to cabin
+        bodyPath.quadTo(carL + trunkNarrow, trunkTop, carL, trunkTop - cr * 0.3f)
+        // Left side: cabin
+        bodyPath.lineTo(carL, cabinTop + cr * 0.3f)
+        // Left side: cabin narrows to hood
+        bodyPath.quadTo(carL, cabinTop, carL + hoodNarrow, cabinTop - cr * 0.3f)
+        // Left side: hood
+        bodyPath.lineTo(carL + hoodNarrow, hoodTop + cr * 0.5f)
+        // Top-left corner of hood
+        bodyPath.quadTo(carL + hoodNarrow, hoodTop, carL + hoodNarrow + cr * 0.5f, hoodTop)
+        bodyPath.close()
+
+        canvas.drawPath(bodyPath, bodyFillPaint)
+        canvas.drawPath(bodyPath, bodyStrokePaint)
+
+        // --- "FRONT" label ---
+        orientPaint.textSize = 9f * dp
+        canvas.drawText("FRONT", carCX, hoodTop - 2f * dp, orientPaint)
+
+        // --- Windshield (trapezoid) ---
+        val wsInsetTop = carW * 0.14f
+        val wsInsetBot = carW * 0.06f
+        val wsTop = cabinTop + cabinH * 0.02f
+        val wsBot = cabinTop + cabinH * 0.18f
         windshieldPath.reset()
-        windshieldPath.moveTo(bodyL + wsInset, wsTop)
-        windshieldPath.lineTo(bodyR - wsInset, wsTop)
-        windshieldPath.lineTo(bodyR - wsInset * 0.4f, wsBot)
-        windshieldPath.lineTo(bodyL + wsInset * 0.4f, wsBot)
+        windshieldPath.moveTo(carL + wsInsetTop, wsTop)
+        windshieldPath.lineTo(carR - wsInsetTop, wsTop)
+        windshieldPath.lineTo(carR - wsInsetBot, wsBot)
+        windshieldPath.lineTo(carL + wsInsetBot, wsBot)
         windshieldPath.close()
-        canvas.drawPath(windshieldPath, windowPaint)
+        canvas.drawPath(windshieldPath, windowFillPaint)
+        canvas.drawPath(windshieldPath, windowStrokePaint)
 
-        // Rear window (trapezoid at bottom)
-        val rwTop = bodyB - bodyH * 0.12f
-        val rwBot = bodyB - 3f * density
+        // --- Rear window (trapezoid) ---
+        val rwInsetTop = carW * 0.06f
+        val rwInsetBot = carW * 0.12f
+        val rwTop = trunkTop - cabinH * 0.01f
+        val rwBot = trunkTop + trunkH * 0.25f
         rearWindowPath.reset()
-        rearWindowPath.moveTo(bodyL + wsInset * 0.4f, rwTop)
-        rearWindowPath.lineTo(bodyR - wsInset * 0.4f, rwTop)
-        rearWindowPath.lineTo(bodyR - wsInset, rwBot)
-        rearWindowPath.lineTo(bodyL + wsInset, rwBot)
+        rearWindowPath.moveTo(carL + rwInsetTop, rwTop)
+        rearWindowPath.lineTo(carR - rwInsetTop, rwTop)
+        rearWindowPath.lineTo(carR - trunkNarrow - rwInsetBot, rwBot)
+        rearWindowPath.lineTo(carL + trunkNarrow + rwInsetBot, rwBot)
         rearWindowPath.close()
-        canvas.drawPath(rearWindowPath, windowPaint)
+        canvas.drawPath(rearWindowPath, windowFillPaint)
+        canvas.drawPath(rearWindowPath, windowStrokePaint)
 
-        // Interior area
-        val intL = bodyL + bodyW * 0.08f
-        val intR = bodyR - bodyW * 0.08f
+        // --- Side windows (left and right) ---
+        val swTop = wsBot + cabinH * 0.02f
+        val swBot = rwTop - cabinH * 0.02f
+        val swThick = carW * 0.06f  // window strip thickness
+
+        // Left side window
+        sideWindowLeftPath.reset()
+        sideWindowLeftPath.moveTo(carL + wsInsetBot, swTop)
+        sideWindowLeftPath.lineTo(carL + wsInsetBot - swThick * 0.5f, swTop)
+        sideWindowLeftPath.lineTo(carL + rwInsetTop - swThick * 0.5f, swBot)
+        sideWindowLeftPath.lineTo(carL + rwInsetTop, swBot)
+        sideWindowLeftPath.close()
+        canvas.drawPath(sideWindowLeftPath, windowFillPaint)
+
+        // Right side window
+        sideWindowRightPath.reset()
+        sideWindowRightPath.moveTo(carR - wsInsetBot, swTop)
+        sideWindowRightPath.lineTo(carR - wsInsetBot + swThick * 0.5f, swTop)
+        sideWindowRightPath.lineTo(carR - rwInsetTop + swThick * 0.5f, swBot)
+        sideWindowRightPath.lineTo(carR - rwInsetTop, swBot)
+        sideWindowRightPath.close()
+        canvas.drawPath(sideWindowRightPath, windowFillPaint)
+
+        // --- Wheels (4 rounded rects at corners) ---
+        val wheelW = carW * 0.10f
+        val wheelH = carH * 0.08f
+        val wheelR = 3f * dp  // corner radius
+        val wheelOffsetX = 2f * dp  // how far wheel sticks out from body
+
+        // Front-left wheel
+        drawWheel(canvas, carL - wheelOffsetX, cabinTop + cabinH * 0.05f, wheelW, wheelH, wheelR)
+        // Front-right wheel
+        drawWheel(canvas, carR - wheelW + wheelOffsetX, cabinTop + cabinH * 0.05f, wheelW, wheelH, wheelR)
+        // Rear-left wheel
+        drawWheel(canvas, carL + trunkNarrow - wheelOffsetX, trunkTop - wheelH * 0.3f, wheelW, wheelH, wheelR)
+        // Rear-right wheel
+        drawWheel(canvas, carR - trunkNarrow - wheelW + wheelOffsetX, trunkTop - wheelH * 0.3f, wheelW, wheelH, wheelR)
+
+        // --- Interior seat area ---
+        val intPad = carW * 0.14f
+        val intL = carL + intPad
+        val intR = carR - intPad
         val intW = intR - intL
-        val gap = intW * 0.06f  // gap between front seats
+        val gap = intW * 0.08f
 
         // --- Front row: two bucket seats ---
         val seatW = (intW - gap) / 2f
-        val seatH = bodyH * 0.28f
-        val seatTop = bodyT + bodyH * 0.20f
-        val seatCorner = 8f * density
+        val seatH = cabinH * 0.32f
+        val seatTop = wsBot + cabinH * 0.06f
+        val seatCorner = 6f * dp
 
-        // Determine which seat is on which column
         val leftSeatState: SeatState
         val rightSeatState: SeatState
         val leftSeatEnum: Seat
@@ -274,91 +388,86 @@ class CarSeatMapView @JvmOverloads constructor(
             rightSeatState = seatMap.driver; rightSeatEnum = Seat.DRIVER
         }
 
-        // Left front seat
         drawSeat(canvas, intL, seatTop, seatW, seatH, seatCorner,
-            leftSeatEnum, leftSeatState, density)
-
-        // Right front seat
+            leftSeatEnum, leftSeatState, dp)
         drawSeat(canvas, intL + seatW + gap, seatTop, seatW, seatH, seatCorner,
-            rightSeatEnum, rightSeatState, density)
+            rightSeatEnum, rightSeatState, dp)
 
-        // Steering wheel on driver seat
+        // --- Steering wheel ---
         val driverSeatL = if (driverSide == "left") intL else intL + seatW + gap
-        val swCenterX = driverSeatL + seatW / 2f
-        val swCenterY = seatTop + seatH * 0.32f
-        val swRadius = seatW * 0.22f
-        drawSteeringWheel(canvas, swCenterX, swCenterY, swRadius)
+        val swCX = driverSeatL + seatW / 2f
+        val swCY = seatTop + seatH * 0.30f
+        val swR = seatW * 0.20f
+        drawSteeringWheel(canvas, swCX, swCY, swR)
 
         // --- Rear row: continuous bench seat ---
-        val benchTop = seatTop + seatH + bodyH * 0.08f
-        val benchH = bodyH * 0.24f
-        val benchCorner = 8f * density
+        val benchGap = cabinH * 0.08f
+        val benchTop = seatTop + seatH + benchGap
+        val benchH = cabinH * 0.26f
+        val benchCorner = 6f * dp
         val zones = benchZoneCount(seatMap)
 
-        benchRect.set(intL, benchTop, intR, benchTop + benchH)
-        // Draw full bench outline
-        canvas.drawRoundRect(benchRect, benchCorner, benchCorner, seatStrokePaint)
+        // Bench outline
+        seatRect.set(intL, benchTop, intR, benchTop + benchH)
+        canvas.drawRoundRect(seatRect, benchCorner, benchCorner, seatStrokePaint)
 
         if (zones == 3) {
-            // 3-zone bench: RL | RC | RR
             val zoneW = intW / 3f
             drawBenchZone(canvas, intL, benchTop, zoneW, benchH, benchCorner,
-                Seat.REAR_LEFT, seatMap.rearLeft, density, isFirst = true, isLast = false)
+                Seat.REAR_LEFT, seatMap.rearLeft, dp, isFirst = true, isLast = false)
             drawBenchZone(canvas, intL + zoneW, benchTop, zoneW, benchH, benchCorner,
-                Seat.REAR_CENTER, seatMap.rearCenter, density, isFirst = false, isLast = false)
+                Seat.REAR_CENTER, seatMap.rearCenter, dp, isFirst = false, isLast = false)
             drawBenchZone(canvas, intL + 2 * zoneW, benchTop, zoneW, benchH, benchCorner,
-                Seat.REAR_RIGHT, seatMap.rearRight, density, isFirst = false, isLast = true)
-            // Divider lines
-            canvas.drawLine(intL + zoneW, benchTop + 4f * density,
-                intL + zoneW, benchTop + benchH - 4f * density, dividerPaint)
-            canvas.drawLine(intL + 2 * zoneW, benchTop + 4f * density,
-                intL + 2 * zoneW, benchTop + benchH - 4f * density, dividerPaint)
+                Seat.REAR_RIGHT, seatMap.rearRight, dp, isFirst = false, isLast = true)
+            canvas.drawLine(intL + zoneW, benchTop + 3f * dp,
+                intL + zoneW, benchTop + benchH - 3f * dp, dividerPaint)
+            canvas.drawLine(intL + 2 * zoneW, benchTop + 3f * dp,
+                intL + 2 * zoneW, benchTop + benchH - 3f * dp, dividerPaint)
         } else {
-            // 2-zone bench: RL | RR
             val zoneW = intW / 2f
             drawBenchZone(canvas, intL, benchTop, zoneW, benchH, benchCorner,
-                Seat.REAR_LEFT, seatMap.rearLeft, density, isFirst = true, isLast = false)
+                Seat.REAR_LEFT, seatMap.rearLeft, dp, isFirst = true, isLast = false)
             drawBenchZone(canvas, intL + zoneW, benchTop, zoneW, benchH, benchCorner,
-                Seat.REAR_RIGHT, seatMap.rearRight, density, isFirst = false, isLast = true)
-            // Center divider line
-            canvas.drawLine(intL + zoneW, benchTop + 4f * density,
-                intL + zoneW, benchTop + benchH - 4f * density, dividerPaint)
+                Seat.REAR_RIGHT, seatMap.rearRight, dp, isFirst = false, isLast = true)
+            canvas.drawLine(intL + zoneW, benchTop + 3f * dp,
+                intL + zoneW, benchTop + benchH - 3f * dp, dividerPaint)
         }
 
-        // Driver name below car body
+        // --- Driver name below car ---
         if (driverName != null) {
-            namePaint.textSize = 12f * density
-            canvas.drawText(driverName!!, w / 2f, bodyB + 16f * density, namePaint)
+            namePaint.textSize = 11f * dp
+            canvas.drawText(driverName!!, carCX, carB + 12f * dp, namePaint)
         }
+    }
+
+    private fun drawWheel(canvas: Canvas, left: Float, top: Float, w: Float, h: Float, r: Float) {
+        wheelRect.set(left, top, left + w, top + h)
+        canvas.drawRoundRect(wheelRect, r, r, wheelFillPaint)
+        canvas.drawRoundRect(wheelRect, r, r, wheelStrokePaint)
     }
 
     private fun drawSeat(
         canvas: Canvas, left: Float, top: Float, width: Float, height: Float,
-        corner: Float, seat: Seat, state: SeatState, density: Float
+        corner: Float, seat: Seat, state: SeatState, dp: Float
     ) {
         val color = currentColors[seat.ordinal]
         val alpha = if (isDanger(state.state)) dangerPulseAlpha else 1.0f
 
         seatRect.set(left, top, left + width, top + height)
 
-        // Glow halo for occupied seats
         if (state.occupied) {
             seatGlowPaint.color = color
             seatGlowPaint.alpha = (40 * alpha).toInt()
-            seatGlowPaint.maskFilter = BlurMaskFilter(8f * density, BlurMaskFilter.Blur.NORMAL)
+            seatGlowPaint.maskFilter = BlurMaskFilter(6f * dp, BlurMaskFilter.Blur.NORMAL)
             canvas.drawRoundRect(seatRect, corner, corner, seatGlowPaint)
         }
 
-        // Seat fill
         seatFillPaint.color = color
         seatFillPaint.alpha = (255 * alpha).toInt()
         canvas.drawRoundRect(seatRect, corner, corner, seatFillPaint)
-
-        // Seat outline
         canvas.drawRoundRect(seatRect, corner, corner, seatStrokePaint)
 
-        // State icon
-        labelPaint.textSize = 13f * density
+        labelPaint.textSize = 11f * dp
         val icon = stateIcon(state.state)
         val textX = left + width / 2f
         val textY = top + height / 2f + labelPaint.textSize * 0.35f
@@ -367,7 +476,7 @@ class CarSeatMapView @JvmOverloads constructor(
 
     private fun drawBenchZone(
         canvas: Canvas, left: Float, top: Float, width: Float, height: Float,
-        corner: Float, seat: Seat, state: SeatState, density: Float,
+        corner: Float, seat: Seat, state: SeatState, dp: Float,
         isFirst: Boolean, isLast: Boolean
     ) {
         val color = currentColors[seat.ordinal]
@@ -376,29 +485,24 @@ class CarSeatMapView @JvmOverloads constructor(
         canvas.save()
         canvas.clipRect(left, top, left + width, top + height)
 
-        // For rounded corners on outer edges, draw a full bench-sized rounded rect
-        // but clipped to this zone's region
         val fullL = if (isFirst) left else left - corner
         val fullR = if (isLast) left + width else left + width + corner
         seatRect.set(fullL, top, fullR, top + height)
 
-        // Glow
         if (state.occupied) {
             seatGlowPaint.color = color
             seatGlowPaint.alpha = (40 * alpha).toInt()
-            seatGlowPaint.maskFilter = BlurMaskFilter(8f * density, BlurMaskFilter.Blur.NORMAL)
+            seatGlowPaint.maskFilter = BlurMaskFilter(6f * dp, BlurMaskFilter.Blur.NORMAL)
             canvas.drawRoundRect(seatRect, corner, corner, seatGlowPaint)
         }
 
-        // Fill
         seatFillPaint.color = color
         seatFillPaint.alpha = (255 * alpha).toInt()
         canvas.drawRoundRect(seatRect, corner, corner, seatFillPaint)
 
         canvas.restore()
 
-        // State icon
-        labelPaint.textSize = 12f * density
+        labelPaint.textSize = 10f * dp
         val icon = stateIcon(state.state)
         val textX = left + width / 2f
         val textY = top + height / 2f + labelPaint.textSize * 0.35f
@@ -406,14 +510,9 @@ class CarSeatMapView @JvmOverloads constructor(
     }
 
     private fun drawSteeringWheel(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
-        // Wheel rim (270-degree arc, opening at bottom)
         steeringRect.set(cx - radius, cy - radius, cx + radius, cy + radius)
         canvas.drawArc(steeringRect, 200f, 280f, false, steeringPaint)
-
-        // Center hub
         canvas.drawCircle(cx, cy, radius * 0.18f, steeringCenterPaint)
-
-        // Spoke (vertical line from center to rim top area)
         canvas.drawLine(cx, cy, cx, cy - radius * 0.7f, steeringPaint)
     }
 
