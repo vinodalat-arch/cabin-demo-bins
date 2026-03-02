@@ -945,6 +945,33 @@
                         android:stateListAnimator="@null" />
                 </LinearLayout>
 
+                <!-- Auto AC Temp toggle -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/space_xl">
+
+                    <TextView
+                        style="@style/TextCaption"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Auto AC Temp" />
+
+                    <Button
+                        android:id="@+id/climateToggle"
+                        android:layout_width="84dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_button"
+                        android:text="OFF"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary"
+                        android:textAllCaps="false"
+                        android:stateListAnimator="@null" />
+                </LinearLayout>
+
                 <!-- ASIMO Size -->
                 <TextView
                     style="@style/TextCaption"

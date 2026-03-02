@@ -242,6 +242,7 @@ class MainActivity : Activity() {
     private lateinit var registerButton: Button
     private lateinit var previewToggle: Button
     private lateinit var audioToggle: Button
+    private lateinit var climateToggle: Button
     private lateinit var wifiCamButton: Button
     private lateinit var inferenceModeLocal: TextView
     private lateinit var inferenceModeRemote: TextView
@@ -533,6 +534,7 @@ class MainActivity : Activity() {
         registerButton = findViewById(R.id.registerButton)
         previewToggle = findViewById(R.id.previewToggle)
         audioToggle = findViewById(R.id.audioToggle)
+        climateToggle = findViewById(R.id.climateToggle)
         wifiCamButton = findViewById(R.id.wifiCamButton)
         inferenceModeLocal = findViewById(R.id.inferenceModeLocal)
         inferenceModeRemote = findViewById(R.id.inferenceModeRemote)
@@ -551,6 +553,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences(ConfigPrefs.PREFS_NAME, Context.MODE_PRIVATE)
         updatePreviewToggleUI()
         updateAudioToggleUI()
+        updateClimateToggleUI()
         updateSeatSegmentUI()
         updateLangSegmentUI()
         updateWifiCamButtonUI()
@@ -656,6 +659,13 @@ class MainActivity : Activity() {
                 updateAsimoSize()
             }
             Log.i(TAG, "Preview toggled: ${Config.ENABLE_PREVIEW}")
+        }
+
+        climateToggle.setOnClickListener {
+            Config.ENABLE_AUTO_CLIMATE = !Config.ENABLE_AUTO_CLIMATE
+            prefs.edit().putBoolean(ConfigPrefs.PREF_AUTO_CLIMATE, Config.ENABLE_AUTO_CLIMATE).apply()
+            updateClimateToggleUI()
+            Log.i(TAG, "Auto climate toggled: ${Config.ENABLE_AUTO_CLIMATE}")
         }
 
         asimoSizeSmallBtn.setOnClickListener {
@@ -913,6 +923,18 @@ class MainActivity : Activity() {
             audioToggle.text = "OFF"
             audioToggle.setTextColor(colorTextMuted)
             audioToggle.setBackgroundResource(R.drawable.bg_button)
+        }
+    }
+
+    private fun updateClimateToggleUI() {
+        if (Config.ENABLE_AUTO_CLIMATE) {
+            climateToggle.text = "ON"
+            climateToggle.setTextColor(colorTextPrimary)
+            climateToggle.setBackgroundResource(R.drawable.bg_button_accent)
+        } else {
+            climateToggle.text = "OFF"
+            climateToggle.setTextColor(colorTextSecondary)
+            climateToggle.setBackgroundResource(R.drawable.bg_button)
         }
     }
 

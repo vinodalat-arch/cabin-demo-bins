@@ -21,6 +21,7 @@ object ConfigPrefs {
     const val PREF_ASIMO_SIZE = "asimo_size"
     const val PREF_BOTTOM_WIDGET = "bottom_widget"
     const val PREF_BRAND = "brand"
+    const val PREF_AUTO_CLIMATE = "auto_climate"
 
     /** Load all persisted preferences into Config volatile fields. */
     fun loadIntoConfig(context: Context) {
@@ -37,5 +38,6 @@ object ConfigPrefs {
         Config.ASIMO_SIZE = prefs.getString(PREF_ASIMO_SIZE, "m") ?: "m"
         Config.BOTTOM_WIDGET = prefs.getString(PREF_BOTTOM_WIDGET, "none") ?: "none"
         Config.BRAND = prefs.getString(PREF_BRAND, "honda") ?: "honda"
+        Config.ENABLE_AUTO_CLIMATE = prefs.getBoolean(PREF_AUTO_CLIMATE, false)
     }
 }

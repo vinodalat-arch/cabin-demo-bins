@@ -95,6 +95,13 @@ class AlertOrchestrator(
             }
             previousLevel = level
         }
+
+        // Step 5: Occupancy-based climate adjustment (runs independently of escalation)
+        try {
+            vehicleChannelManager?.climateController?.update(result.passengerCount)
+        } catch (e: Exception) {
+            Log.w(TAG, "Climate controller update failed", e)
+        }
     }
 
     /** Forward rear camera alerts to AudioAlerter. */
@@ -121,6 +128,11 @@ class AlertOrchestrator(
     fun resetState() {
         audioAlerter.resetState()
         previousLevel = null
+        try {
+            vehicleChannelManager?.climateController?.restore()
+        } catch (e: Exception) {
+            Log.w(TAG, "Climate controller restore failed", e)
+        }
     }
 
     /** Close both AudioAlerter and VehicleChannelManager. */

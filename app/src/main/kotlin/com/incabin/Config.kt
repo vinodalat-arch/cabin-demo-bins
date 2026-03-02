@@ -140,6 +140,20 @@ object Config {
     const val SPEED_SLOW_MAX_KMH = 30f
     const val SPEED_MODERATE_MAX_KMH = 80f
 
+    // HVAC Climate Control — occupancy-based
+    const val HVAC_TEMPERATURE_SET_PROPERTY_ID = 0x15600503  // Float, °C
+    const val HVAC_FAN_SPEED_PROPERTY_ID = 0x1560050A        // Int32, 0-10
+    @JvmStatic @Volatile var HVAC_BASE_TEMP_C = 22.0f        // User's comfort baseline
+    const val CLIMATE_OFFSET_PER_PERSON_C = 0.5f
+    const val CLIMATE_MAX_ADJUSTMENT_C = 2.0f
+    const val CLIMATE_MIN_TEMP_C = 16.0f
+    const val CLIMATE_MAX_TEMP_C = 28.0f
+    const val CLIMATE_DEBOUNCE_FRAMES = 5                     // ~5s at 1fps
+    const val CLIMATE_RAMP_STEP_C = 0.5f                      // Max °C change per update
+
+    // Auto climate toggle (toggleable at runtime via UI; persisted in SharedPreferences)
+    @JvmStatic @Volatile var ENABLE_AUTO_CLIMATE = false
+
     // Vehicle action pulse durations (ms)
     const val VEHICLE_PULSE_CABIN_LIGHTS_MS = 3000L
     const val VEHICLE_PULSE_LUMBAR_MS = 2000L

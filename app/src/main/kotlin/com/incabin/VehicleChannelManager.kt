@@ -54,6 +54,10 @@ class VehicleChannelManager(context: Context) {
     /** Callback for gear state changes (e.g., to activate rear camera on REVERSE). */
     var onGearChanged: ((isReverse: Boolean) -> Unit)? = null
 
+    /** Occupancy-based HVAC climate controller (comfort feature, independent of escalation). */
+    var climateController: ClimateController? = null
+        private set
+
     private val channels = mutableListOf<VehicleActionChannel>()
     private var carConnected = false
     private var drivingState = DRIVING_STATE_MOVING // default to moving (safest assumption)
@@ -126,6 +130,10 @@ class VehicleChannelManager(context: Context) {
         try {
             channels.add(com.incabin.channels.AdasChannel(propertyManager))
         } catch (e: Exception) { Log.w(TAG, "AdasChannel init failed", e) }
+
+        try {
+            climateController = ClimateController(propertyManager)
+        } catch (e: Exception) { Log.w(TAG, "ClimateController init failed", e) }
 
         val availableCount = channels.count { it.available }
         Log.i(TAG, "Registered ${channels.size} channels, $availableCount available")
@@ -336,6 +344,12 @@ class VehicleChannelManager(context: Context) {
                 Log.w(TAG, "Failed to close ${channel.id}", e)
             }
         }
+        try {
+            climateController?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "ClimateController close failed", e)
+        }
+        climateController = null
         channels.clear()
         carConnected = false
         Log.i(TAG, "VehicleChannelManager closed")

@@ -366,4 +366,30 @@ class ConfigConstantsTest {
         assertEquals(5, Config.ESCALATION_FAST_L4_S)
         assertEquals(10, Config.ESCALATION_FAST_L5_S)
     }
+
+    // -------------------------------------------------------------------------
+    // Climate control constants (4 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_climate_offset_per_person() {
+        assertEquals(0.5f, Config.CLIMATE_OFFSET_PER_PERSON_C, 0.001f)
+    }
+
+    @Test
+    fun test_climate_max_adjustment() {
+        assertEquals(2.0f, Config.CLIMATE_MAX_ADJUSTMENT_C, 0.001f)
+    }
+
+    @Test
+    fun test_climate_temp_range() {
+        assertEquals(16.0f, Config.CLIMATE_MIN_TEMP_C, 0.001f)
+        assertEquals(28.0f, Config.CLIMATE_MAX_TEMP_C, 0.001f)
+    }
+
+    @Test
+    fun test_climate_debounce_and_ramp() {
+        assertEquals(5, Config.CLIMATE_DEBOUNCE_FRAMES)
+        assertEquals(0.5f, Config.CLIMATE_RAMP_STEP_C, 0.001f)
+    }
 }
