@@ -104,6 +104,7 @@ def default_result() -> dict:
             "driver": {"occupied": True, "state": "Upright"},
             "front_passenger": {"occupied": False, "state": "Vacant"},
             "rear_left": {"occupied": False, "state": "Vacant"},
+            "rear_center": {"occupied": False, "state": "Vacant"},
             "rear_right": {"occupied": False, "state": "Vacant"},
         },
     }
@@ -328,6 +329,7 @@ def parse_file_result(data: dict) -> dict:
             "driver": seat_entry("DRIVER_STATE", is_driver=True),
             "front_passenger": seat_entry("FRONT_PASSENGER_STATE"),
             "rear_left": seat_entry("REAR_LEFT_STATE"),
+            "rear_center": seat_entry("REAR_CENTER_STATE"),
             "rear_right": seat_entry("REAR_RIGHT_STATE"),
         }
 
@@ -509,6 +511,7 @@ def apply_confidence_thresholds(vlm_result: dict) -> dict:
         "driver": {"occupied": result["driver_detected"], "state": driver_state},
         "front_passenger": {"occupied": pax_count >= 2, "state": "Upright" if pax_count >= 2 else "Vacant"},
         "rear_left": {"occupied": pax_count >= 3, "state": "Upright" if pax_count >= 3 else "Vacant"},
+        "rear_center": {"occupied": pax_count >= 5, "state": "Upright" if pax_count >= 5 else "Vacant"},
         "rear_right": {"occupied": pax_count >= 4, "state": "Upright" if pax_count >= 4 else "Vacant"},
     }
 

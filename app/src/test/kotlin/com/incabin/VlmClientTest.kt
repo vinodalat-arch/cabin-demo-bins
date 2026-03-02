@@ -296,6 +296,7 @@ class VlmClientTest {
                 "driver": {"occupied": true, "state": "Upright"},
                 "front_passenger": {"occupied": true, "state": "Sleeping"},
                 "rear_left": {"occupied": false, "state": "Vacant"},
+                "rear_center": {"occupied": true, "state": "Upright"},
                 "rear_right": {"occupied": true, "state": "Phone"}
             }
         }
@@ -310,6 +311,8 @@ class VlmClientTest {
         assertEquals("Sleeping", seatMap.frontPassenger.state)
         assertFalse(seatMap.rearLeft.occupied)
         assertEquals("Vacant", seatMap.rearLeft.state)
+        assertTrue(seatMap.rearCenter.occupied)
+        assertEquals("Upright", seatMap.rearCenter.state)
         assertTrue(seatMap.rearRight.occupied)
         assertEquals("Phone", seatMap.rearRight.state)
     }
@@ -341,6 +344,8 @@ class VlmClientTest {
         assertEquals("Distracted", seatMap.driver.state)
         assertFalse(seatMap.rearLeft.occupied)
         assertEquals("Vacant", seatMap.rearLeft.state)
+        assertFalse(seatMap.rearCenter.occupied)
+        assertEquals("Vacant", seatMap.rearCenter.state)
         assertFalse(seatMap.rearRight.occupied)
         assertEquals("Vacant", seatMap.rearRight.state)
     }

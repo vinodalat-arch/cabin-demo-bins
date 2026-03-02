@@ -409,12 +409,11 @@
                     android:orientation="vertical"
                     android:layout_marginBottom="@dimen/space_xs" />
 
-                <!-- Passenger posture container -->
-                <LinearLayout
-                    android:id="@+id/passengerPostureContainer"
+                <!-- Car seat map visualization -->
+                <com.incabin.CarSeatMapView
+                    android:id="@+id/carSeatMapView"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
+                    android:layout_height="@dimen/car_seat_map_height"
                     android:layout_marginBottom="@dimen/space_md" />
 
                 <!-- Rear Camera Section (visible only during reverse) -->

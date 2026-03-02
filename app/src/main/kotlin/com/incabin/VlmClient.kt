@@ -53,6 +53,7 @@ class VlmClient(
                     driver = parseSeat("driver"),
                     frontPassenger = parseSeat("front_passenger"),
                     rearLeft = parseSeat("rear_left"),
+                    rearCenter = parseSeat("rear_center"),
                     rearRight = parseSeat("rear_right")
                 )
             } catch (e: Exception) {

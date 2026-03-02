@@ -20,6 +20,8 @@ class SeatMapTest {
         assertEquals("Vacant", map.frontPassenger.state)
         assertFalse(map.rearLeft.occupied)
         assertEquals("Vacant", map.rearLeft.state)
+        assertFalse(map.rearCenter.occupied)
+        assertEquals("Vacant", map.rearCenter.state)
         assertFalse(map.rearRight.occupied)
         assertEquals("Vacant", map.rearRight.state)
     }
@@ -37,12 +39,14 @@ class SeatMapTest {
             driver = SeatState(true, "Upright"),
             frontPassenger = SeatState(true, "Sleeping"),
             rearLeft = SeatState(false, "Vacant"),
+            rearCenter = SeatState(false, "Vacant"),
             rearRight = SeatState(false, "Vacant")
         )
         val b = SeatMap(
             driver = SeatState(true, "Upright"),
             frontPassenger = SeatState(true, "Sleeping"),
             rearLeft = SeatState(false, "Vacant"),
+            rearCenter = SeatState(false, "Vacant"),
             rearRight = SeatState(false, "Vacant")
         )
         assertEquals(a, b)
@@ -51,10 +55,18 @@ class SeatMapTest {
     @Test
     fun test_seatEnum_values() {
         val values = Seat.values()
-        assertEquals(4, values.size)
+        assertEquals(5, values.size)
         assertEquals(Seat.DRIVER, values[0])
         assertEquals(Seat.FRONT_PASSENGER, values[1])
         assertEquals(Seat.REAR_LEFT, values[2])
-        assertEquals(Seat.REAR_RIGHT, values[3])
+        assertEquals(Seat.REAR_CENTER, values[3])
+        assertEquals(Seat.REAR_RIGHT, values[4])
+    }
+
+    @Test
+    fun test_defaultSeatMap_rearCenterVacant() {
+        val map = SeatMap()
+        assertFalse(map.rearCenter.occupied)
+        assertEquals("Vacant", map.rearCenter.state)
     }
 }

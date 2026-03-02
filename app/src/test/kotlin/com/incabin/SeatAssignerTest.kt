@@ -32,6 +32,7 @@ class SeatAssignerTest {
         assertFalse(map.driver.occupied)
         assertFalse(map.frontPassenger.occupied)
         assertFalse(map.rearLeft.occupied)
+        assertFalse(map.rearCenter.occupied)
         assertFalse(map.rearRight.occupied)
     }
 
@@ -43,6 +44,7 @@ class SeatAssignerTest {
         assertEquals("Upright", map.driver.state)
         assertFalse(map.frontPassenger.occupied)
         assertFalse(map.rearLeft.occupied)
+        assertFalse(map.rearCenter.occupied)
         assertFalse(map.rearRight.occupied)
     }
 
@@ -87,6 +89,7 @@ class SeatAssignerTest {
         assertEquals("Phone", map.driver.state)
         assertTrue(map.frontPassenger.occupied)
         assertTrue(map.rearLeft.occupied)
+        assertFalse(map.rearCenter.occupied)
         assertTrue(map.rearRight.occupied)
     }
 
@@ -151,6 +154,65 @@ class SeatAssignerTest {
         val pax = person(800f, 300f, 900f, 400f, badPosture = true)
         val map = SeatAssigner.assign(listOf(driver, pax), "left", driverState = "Upright")
         assertEquals("Sleeping", map.rearRight.state)
+    }
+
+    // -------------------------------------------------------------------------
+    // 3 rear passengers / 5 occupants tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_assign_threeRearPassengers() {
+        val driver = person(100f, 100f, 400f, 600f, isDriver = true)
+        // 3 small bboxes (rear row): left, center, right
+        val rearL = person(100f, 300f, 250f, 450f)   // centerX=175, left side
+        val rearC = person(550f, 300f, 700f, 450f)    // centerX=625, near center
+        val rearR = person(900f, 300f, 1050f, 450f)   // centerX=975, right side
+        val map = SeatAssigner.assign(
+            listOf(driver, rearL, rearC, rearR), "left", driverState = "Upright"
+        )
+        assertTrue(map.driver.occupied)
+        assertFalse(map.frontPassenger.occupied)
+        assertTrue(map.rearLeft.occupied)
+        assertTrue(map.rearCenter.occupied)
+        assertTrue(map.rearRight.occupied)
+        assertEquals("Upright", map.rearLeft.state)
+        assertEquals("Upright", map.rearCenter.state)
+        assertEquals("Upright", map.rearRight.state)
+    }
+
+    @Test
+    fun test_assign_fiveOccupants() {
+        // Driver left front, large bbox
+        val driver = person(100f, 100f, 400f, 600f, isDriver = true)
+        // Front passenger right, large bbox → front row
+        val frontPax = person(700f, 100f, 1000f, 600f)
+        // 3 rear passengers: left, center, right
+        val rearL = person(100f, 300f, 250f, 450f)   // centerX=175
+        val rearC = person(550f, 300f, 700f, 450f)    // centerX=625
+        val rearR = person(900f, 300f, 1050f, 450f)   // centerX=975
+        val map = SeatAssigner.assign(
+            listOf(driver, frontPax, rearL, rearC, rearR), "left", driverState = "Distracted"
+        )
+        assertTrue(map.driver.occupied)
+        assertEquals("Distracted", map.driver.state)
+        assertTrue(map.frontPassenger.occupied)
+        assertTrue(map.rearLeft.occupied)
+        assertTrue(map.rearCenter.occupied)
+        assertTrue(map.rearRight.occupied)
+    }
+
+    @Test
+    fun test_assign_threeRearPassengers_badPosture() {
+        val driver = person(100f, 100f, 400f, 600f, isDriver = true)
+        val rearL = person(100f, 300f, 250f, 450f)
+        val rearC = person(550f, 300f, 700f, 450f, badPosture = true)  // center one sleeping
+        val rearR = person(900f, 300f, 1050f, 450f)
+        val map = SeatAssigner.assign(
+            listOf(driver, rearL, rearC, rearR), "left", driverState = "Upright"
+        )
+        assertEquals("Upright", map.rearLeft.state)
+        assertEquals("Sleeping", map.rearCenter.state)
+        assertEquals("Upright", map.rearRight.state)
     }
 
     // -------------------------------------------------------------------------
