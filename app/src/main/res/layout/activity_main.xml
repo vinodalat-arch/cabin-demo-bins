@@ -128,11 +128,12 @@
                 <!-- Vehicle speed -->
                 <TextView
                     android:id="@+id/speedText"
-                    style="@style/TextMicro"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="-- km/h"
-                    android:textColor="@color/text_secondary"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
                     android:layout_marginTop="@dimen/space_sm"
                     android:visibility="gone" />
 
@@ -185,7 +186,8 @@
                     android:id="@+id/toggleButton"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/button_height"
-                    android:background="@drawable/bg_button_accent"
+                    android:layout_marginTop="63dp"
+                    android:background="@drawable/bg_button_green"
                     android:text="@string/start_service"
                     android:textSize="15sp"
                     android:textStyle="bold"
@@ -290,17 +292,12 @@
                             android:gravity="center_horizontal"
                             android:background="@drawable/bg_mascot_label_pill">
 
-                            <!-- Mascot name (ASIMO / MANAV) -->
+                            <!-- Mascot name hidden (kept for code compatibility) -->
                             <TextView
                                 android:id="@+id/mascotNameLabel"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="── ASIMO ──"
-                                android:textSize="11sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/text_primary"
-                                android:letterSpacing="0.12"
-                                android:fontFamily="sans-serif-medium" />
+                                android:layout_width="0dp"
+                                android:layout_height="0dp"
+                                android:visibility="gone" />
 
                             <!-- Brand label (HONDA in red / KPIT in green) -->
                             <TextView
@@ -308,7 +305,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="HONDA"
-                                android:textSize="9sp"
+                                android:textSize="18sp"
                                 android:textStyle="bold"
                                 android:textColor="#E74C3C"
                                 android:letterSpacing="0.18"

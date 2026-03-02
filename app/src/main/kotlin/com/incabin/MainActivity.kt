@@ -1478,6 +1478,7 @@ class MainActivity : Activity() {
             val isReverse = Config.REVERSE_GEAR_ACTIVE
             if (!isReverse || !isRunning) {
                 rearAlertSection.visibility = View.GONE
+                carSeatMapView.setRearWarning("clear")
                 return
             }
 
@@ -1531,6 +1532,9 @@ class MainActivity : Activity() {
                     }
                     rearDetectionLabels.addView(label)
                 }
+
+                // Update car diagram rear warning visualization
+                carSeatMapView.setRearWarning(result.riskLevel)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Rear dashboard update failed", e)
@@ -1850,6 +1854,7 @@ class MainActivity : Activity() {
         handler.removeCallbacks(previewPoller)
         previewImage.setImageBitmap(null)
         detectionsContainer.removeAllViews()
+        carSeatMapView.setRearWarning("clear")
         carSeatMapView.visibility = View.GONE
         seatStatusContainer.removeAllViews()
         seatStatusContainer.visibility = View.GONE

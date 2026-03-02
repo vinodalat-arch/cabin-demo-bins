@@ -61,6 +61,12 @@ class ScoreArcView @JvmOverloads constructor(
         isFakeBoldText = true
     }
 
+    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        color = Color.rgb(0x6B, 0x6E, 0x7B)
+        letterSpacing = 0.15f
+    }
+
     private val arcRect = RectF()
     private val glowRect = RectF()
 
@@ -124,10 +130,14 @@ class ScoreArcView @JvmOverloads constructor(
             canvas.drawArc(arcRect, ARC_START, sweep, false, fgPaint)
         }
 
-        // Score number (no "SCORE" label)
-        scorePaint.textSize = height * 0.30f
-        val textY = height / 2f + scorePaint.textSize * 0.35f
+        // Score number
+        scorePaint.textSize = height * 0.28f
+        val textY = height / 2f + scorePaint.textSize * 0.2f
         canvas.drawText(displayScore.toInt().toString(), width / 2f, textY, scorePaint)
+
+        // "SAFETY" label below number
+        labelPaint.textSize = height * 0.10f
+        canvas.drawText("SAFETY", width / 2f, textY + scorePaint.textSize * 0.7f, labelPaint)
     }
 
     override fun onDetachedFromWindow() {

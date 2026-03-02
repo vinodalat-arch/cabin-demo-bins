@@ -64,6 +64,13 @@ class CarSeatMapView @JvmOverloads constructor(
         /** Number of rear bench zones: 3 if rear center is occupied, else 2. */
         fun benchZoneCount(seatMap: SeatMap): Int =
             if (seatMap.rearCenter.occupied) 3 else 2
+
+        /** Map rear risk level to color category for bumper/ripple rendering. */
+        fun rearRiskColor(riskLevel: String): String = when (riskLevel) {
+            "danger" -> "danger"
+            "caution" -> "caution"
+            else -> "clear"
+        }
     }
 
     private var seatMap: SeatMap = SeatMap()
@@ -168,6 +175,23 @@ class CarSeatMapView @JvmOverloads constructor(
     private var underglowColor: Int = colorSafe
     private var underglowAnimator: ValueAnimator? = null
 
+    // Rear warning state
+    private var rearRiskLevel: String = "clear"
+    private var ripplePhase: Float = 0f
+    private var rippleAnimator: ValueAnimator? = null
+
+    // Rear warning paints (pre-allocated)
+    private val rearBumperPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 4f; strokeCap = Paint.Cap.ROUND
+    }
+    private val rearBumperGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 8f; strokeCap = Paint.Cap.ROUND
+    }
+    private val rearRipplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
+    }
+    private val rippleRect = RectF()
+
     // Cache last layout size for gradient invalidation
     private var lastW = 0f
     private var lastH = 0f
@@ -222,6 +246,32 @@ class CarSeatMapView @JvmOverloads constructor(
             underglowColor = targetGlow
         }
 
+        invalidate()
+    }
+
+    /** Update rear warning state and start/stop ripple animation. */
+    fun setRearWarning(riskLevel: String) {
+        val category = rearRiskColor(riskLevel)
+        if (category == rearRiskLevel) return
+        rearRiskLevel = category
+
+        if (category != "clear") {
+            if (rippleAnimator == null) {
+                rippleAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                    duration = 1200L
+                    repeatCount = ValueAnimator.INFINITE
+                    addUpdateListener {
+                        ripplePhase = it.animatedValue as Float
+                        invalidate()
+                    }
+                    start()
+                }
+            }
+        } else {
+            rippleAnimator?.cancel()
+            rippleAnimator = null
+            ripplePhase = 0f
+        }
         invalidate()
     }
 
@@ -282,7 +332,7 @@ class CarSeatMapView @JvmOverloads constructor(
         // --- Car bounding box: 52% width, 90% height, offset 20% left of center ---
         val carW = w * 0.52f
         val carH = h * 0.90f
-        val carCX = w * 0.40f  // 20% left of center (0.5 - 0.1)
+        val carCX = w * 0.40f - 50f * dp  // shifted left ~0.8cm total from center
         val carL = carCX - carW / 2f
         val carT = h * 0.05f
         val carR = carL + carW
@@ -317,6 +367,9 @@ class CarSeatMapView @JvmOverloads constructor(
             carCX + carW * 0.6f, carB + 16f * dp,
             shadowPaint
         )
+
+        // 1.5. Rear warning sonar ripples + glowing bumper edge
+        drawRearWarning(canvas, carL, carR, carB, carCX, carH, trunkNarrow, cr, dp)
 
         // 2. Ambient underglow
         val ugAlpha = 38  // 15%
@@ -536,11 +589,7 @@ class CarSeatMapView @JvmOverloads constructor(
         canvas.drawText("\u25B2", chevCX, chevY, orientPaint)
         canvas.drawText("FRONT", chevCX, chevY - 8f * dp, orientPaint)
 
-        // Driver name below car
-        if (driverName != null) {
-            namePaint.textSize = 11f * dp
-            canvas.drawText(driverName!!, carCX, carB + 14f * dp, namePaint)
-        }
+        // Driver name below car removed — shown in dashboard instead
     }
 
     private fun updateGradients(carL: Float, carR: Float, carT: Float, carB: Float, dp: Float) {
@@ -600,6 +649,60 @@ class CarSeatMapView @JvmOverloads constructor(
         )
         bodyPath.quadTo(carL + hoodNarrow, hoodTop, carL + hoodNarrow + cr * 0.5f, hoodTop)
         bodyPath.close()
+    }
+
+    private fun drawRearWarning(
+        canvas: Canvas, carL: Float, carR: Float, carB: Float,
+        carCX: Float, carH: Float, trunkNarrow: Float, cr: Float, dp: Float
+    ) {
+        if (rearRiskLevel == "clear") return
+
+        val riskColor = if (rearRiskLevel == "danger") colorDanger else colorCaution
+
+        // Bumper edge endpoints (follows rear curve of body)
+        val bumperL = carL + trunkNarrow + cr * 0.5f
+        val bumperR = carR - trunkNarrow - cr * 0.5f
+        val bumperY = carB
+
+        // 1. Glowing bumper edge (glow layer first, then solid)
+        rearBumperGlowPaint.color = Color.argb(100, Color.red(riskColor), Color.green(riskColor), Color.blue(riskColor))
+        rearBumperGlowPaint.maskFilter = BlurMaskFilter(8f * dp, BlurMaskFilter.Blur.NORMAL)
+        canvas.drawLine(bumperL, bumperY, bumperR, bumperY, rearBumperGlowPaint)
+        rearBumperGlowPaint.maskFilter = null
+
+        rearBumperPaint.color = riskColor
+        canvas.drawLine(bumperL, bumperY, bumperR, bumperY, rearBumperPaint)
+
+        // 2. Sonar ripple waves (3 arcs expanding from bumper)
+        val maxExpand = carH * 0.15f
+        val bumperW = bumperR - bumperL
+        val arcCX = carCX
+        val arcTop = bumperY
+
+        for (i in 0 until 3) {
+            // Stagger each arc: phase offset by 0.33 each
+            val phase = (ripplePhase + i * 0.33f) % 1f
+            val expand = phase * maxExpand
+            val alpha = ((1f - phase) * when (i) {
+                0 -> 0.80f
+                1 -> 0.50f
+                else -> 0.25f
+            } * 255).toInt().coerceIn(0, 255)
+
+            val strokeW = when (i) {
+                0 -> 3f * dp
+                1 -> 2f * dp
+                else -> 1.5f * dp
+            }
+
+            rearRipplePaint.color = Color.argb(alpha, Color.red(riskColor), Color.green(riskColor), Color.blue(riskColor))
+            rearRipplePaint.strokeWidth = strokeW
+
+            val halfW = bumperW / 2f + expand * 0.5f
+            val arcH = expand + 4f * dp
+            rippleRect.set(arcCX - halfW, arcTop, arcCX + halfW, arcTop + arcH * 2f)
+            canvas.drawArc(rippleRect, 0f, 180f, false, rearRipplePaint)
+        }
     }
 
     private fun drawWindows(
@@ -814,6 +917,7 @@ class CarSeatMapView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         pulseAnimator?.cancel()
         underglowAnimator?.cancel()
+        rippleAnimator?.cancel()
         seatColorAnimators.values.forEach { it.cancel() }
         seatColorAnimators.clear()
         super.onDetachedFromWindow()

@@ -123,4 +123,28 @@ class CarSeatMapViewTest {
         val map = SeatMap()
         assertEquals(2, CarSeatMapView.benchZoneCount(map))
     }
+
+    // -------------------------------------------------------------------------
+    // rearRiskColor() tests
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun rearRiskColor_danger_returnsDanger() {
+        assertEquals("danger", CarSeatMapView.rearRiskColor("danger"))
+    }
+
+    @Test
+    fun rearRiskColor_caution_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.rearRiskColor("caution"))
+    }
+
+    @Test
+    fun rearRiskColor_clear_returnsClear() {
+        assertEquals("clear", CarSeatMapView.rearRiskColor("clear"))
+    }
+
+    @Test
+    fun rearRiskColor_unknown_returnsClear() {
+        assertEquals("clear", CarSeatMapView.rearRiskColor("unknown"))
+    }
 }
