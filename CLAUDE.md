@@ -212,11 +212,12 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Thread safety**: Camera retry thread cancelled via `@Volatile` flag on `onPause()`, preventing background camera reopen
 
 ### Remote VLM Inference (VlmClient + Bridge Server)
+- **Why**: SA8155 is CPU-only — cannot run VLMs locally. A laptop GPU on the same network runs Qwen3-VL-4B for state-of-the-art visual understanding. The laptop does seeing+thinking (webcam + VLM inference), the device does reacting (smoothing, distraction tracking, alerts, vehicle control). Safety-critical logic (distraction duration, escalation, VHAL actions) always runs on-device
 - **Mode**: `Config.INFERENCE_MODE` = "local" (default) or "remote". Mode locked at service start, not changeable during monitoring
 - **Auto-switch**: Saving VLM URL in device app auto-switches to REMOTE mode and restarts monitoring. Clearing URL auto-switches back to LOCAL
 - **VlmClient**: HTTP polling client. Polls `{VLM_SERVER_URL}/api/detect` at `Config.inferenceIntervalMs()` interval
 - **Bridge server**: `scripts/vlm_server.py` — FastAPI bridge that captures webcam on laptop, sends base64 JPEG to external vLLM (OpenAI-compatible API), parses response, serves detection results to SA8155
-- **Architecture**: Webcam → bridge server → external vLLM (`/v1/chat/completions`) → parse JSON → apply confidence thresholds → serve via `/api/detect`
+- **End-to-end path**: Webcam → bridge (base64 JPEG) → vLLM `/v1/chat/completions` → parse JSON → `apply_confidence_thresholds()` → `/api/detect` → VlmClient → `parseDetectResponse()` → TemporalSmoother → `distraction_duration_s` (on-device) → AlertOrchestrator → AudioAlerter + VehicleChannelManager → Dashboard
 - **vLLM**: Runs externally via `vllm serve /path/to/model`. NOT loaded by bridge script. Default model: Qwen3-VL-4B-Instruct at `/home/kpit/code/qwen3_offline_4B`
 - **Two start modes**:
   - `--vllm-url http://localhost:8080` — connect to already-running vLLM (bridge only)

@@ -48,16 +48,28 @@ Place these in `app/src/main/assets/` (gitignored due to size):
 
 ## Remote VLM Server (Laptop Setup)
 
-When you don't want to run ML models on-device (or want to use a more powerful VLM like Qwen3-VL-4B), you can run inference on your laptop and have the Android app poll results over HTTP.
+### Why Remote VLM?
+
+The SA8155 (Snapdragon 855 Automotive) is a CPU-only IVI platform — it cannot run Vision Language Models locally. But a laptop with a GPU on the same network can run Qwen3-VL-4B and provide state-of-the-art visual understanding ("is the driver eating while looking at their phone?") that traditional YOLO+MediaPipe models can't match.
+
+The solution splits the work: the **laptop does the seeing and thinking** (webcam capture + VLM inference), and the **device does the reacting** (temporal smoothing, distraction tracking, voice alerts, 5-level escalation, vehicle hardware actions via VHAL). Safety-critical logic — distraction duration counting, escalation decisions, seat vibration, steering heat, window control — always runs on-device. If the laptop disconnects, the device shows "VLM: Lost" and can fall back to local ML models.
 
 ### Architecture
 
 ```
-Laptop:  Webcam → vlm_server.py (bridge) → vLLM (OpenAI API) → parse → /api/detect
-Device:  SA8155 app → HTTP poll /api/detect → smoother → alerts → dashboard
+LAPTOP                                              SA8155 DEVICE
+──────                                              ─────────────
+Webcam                                              VlmClient (HTTP poll 1-3 Hz)
+  → vlm_server.py (bridge)                            → parseDetectResponse()
+    → base64 JPEG                                     → TemporalSmoother (3-frame window)
+    → vLLM /v1/chat/completions                       → distraction_duration_s (on-device)
+    → parse response                                  → AlertOrchestrator
+    → apply confidence thresholds                       ├─ AudioAlerter (TTS)
+    → /api/detect ──── HTTP GET ────────────────────    ├─ VehicleChannelManager (VHAL)
+                                                        └─ Dashboard UI
 ```
 
-The bridge server (`vlm_server.py`) captures webcam frames, sends base64 JPEG to an external vLLM server's OpenAI-compatible API, parses the VLM response, applies confidence thresholds, and serves detection results to the SA8155 device.
+The bridge server (`vlm_server.py`) captures webcam frames, sends base64 JPEG to an external vLLM server's OpenAI-compatible API, parses the VLM response, applies confidence thresholds, and serves detection results to the SA8155 device. Everything is configurable — confidence thresholds, escalation timing, VLM parameters — tunable without rebuilding anything.
 
 ### What Runs on the Laptop
 
