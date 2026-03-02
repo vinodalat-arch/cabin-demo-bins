@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, and auto-switch VLM mode on URL save. Build verified (`assembleDebug` + all 644 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, and occupancy-based HVAC climate control. Build verified (`assembleDebug` + all 667 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -264,6 +264,18 @@ score >= 3 → high, >= 1 → medium, else → low
 - **UI**: Speed displayed in left panel ("-- km/h" when unavailable, "{speed} km/h" when available). Visible during monitoring only
 - **VehicleChannelManager**: `probeCurrentSpeed()`, `registerSpeedListener()`, `speedTier()` companion function
 
+### Occupancy-Based HVAC Climate Control (ClimateController)
+- **Purpose**: Comfort feature — adjusts cabin temperature based on passenger count (more occupants → more body heat → lower set point). Independent of danger escalation system
+- **Algorithm**: `target = clamp(base - min((max(0, count-1) * 0.5), 2.0), 16.0, 28.0)`
+- **Occupancy offsets**: 1 person=0°C, 2=-0.5°C, 3=-1.0°C, 4=-1.5°C, 5+=-2.0°C (capped)
+- **Debounce**: Only adjusts after count is stable for 5 consecutive frames (~5s at 1fps)
+- **Ramp**: Steps 0.5°C per update cycle (no instant jumps)
+- **On count=0**: Reverts to base temperature
+- **VHAL integration**: Probes `HVAC_TEMPERATURE_SET` (0x15600503, Float) via reflection. Reads initial temperature as base. Writes via `setFloatProperty()`. Graceful no-op on generic Android
+- **Toggle**: `Config.ENABLE_AUTO_CLIMATE` (off by default, persisted in SharedPreferences, UI toggle in settings overlay)
+- **Lifecycle**: Created in `VehicleChannelManager.registerChannels()`. Called per-frame from `AlertOrchestrator.evaluate()`. Restores base temp on `resetState()` and `close()`
+- **Pure companion functions**: `computeTargetTemp()`, `shouldAdjust()`, `rampStep()` — fully unit-testable, no Android deps
+
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
 - Increment +1 per frame if any active, reset to 0 when all clear
@@ -346,21 +358,21 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, ConfigPrefs, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
 │   │   ├── FaceAnalyzer, FaceDetectorLite, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
-│   │   ├── AlertOrchestrator, VehicleChannelManager, VlmClient
+│   │   ├── AlertOrchestrator, VehicleChannelManager, ClimateController, VlmClient
 │   │   ├── PlatformProfile, DeviceSetup, BootReceiver
 │   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest)
 ├── scripts/              (vlm_server.py, vlm_launcher.py, requirements.txt, convert_fp16.py)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 644 unit tests (all passing):
+- 667 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
-  - ConfigConstantsTest: 37 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation constants)
+  - ConfigConstantsTest: 41 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation + climate constants)
   - AlertOrchestratorTest: 30 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
@@ -386,6 +398,7 @@ in_cabin_poc-sa8155/
   - ServiceHealthTest: 3 tests (heartbeat age default, clear reset, isServiceRunning default)
   - MjpegReconnectTest: 3 tests (nextBackoffDelay doubling, cap at max, stays at max)
   - InferenceErrorTest: 2 tests (shouldReinitialize at threshold, below threshold)
+  - ClimateControllerTest: 19 tests (computeTargetTemp occupancy cases + clamp, shouldAdjust debounce, rampStep toward/overshoot/at-target, formatAlertMessage EN/JA)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget

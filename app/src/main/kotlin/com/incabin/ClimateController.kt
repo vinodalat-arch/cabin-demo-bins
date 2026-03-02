@@ -21,10 +21,26 @@ import android.util.Log
  *   - Ramp: step RAMP_STEP_C per update cycle (no instant jumps)
  *   - On count=0: revert to base temperature
  */
+/** Returned by [ClimateController.update] when the target temperature changes. */
+data class ClimateAdjustment(val targetTempC: Float, val passengerCount: Int)
+
 class ClimateController(private val propertyManager: Any) {
 
     companion object {
         private const val TAG = "ClimateController"
+
+        /**
+         * Pure function: build announcement text for a climate adjustment.
+         * Keeps messages brief, consistent with other alert messages.
+         */
+        fun formatAlertMessage(adjustment: ClimateAdjustment, isJapanese: Boolean): String {
+            val temp = "%.1f".format(adjustment.targetTempC)
+            return if (isJapanese) {
+                "空調${temp}度に調整、乗員${adjustment.passengerCount}名"
+            } else {
+                "Temperature adjusted to $temp degrees, ${adjustment.passengerCount} occupants"
+            }
+        }
 
         /**
          * Pure function: compute target temperature for a given occupancy.
@@ -123,10 +139,12 @@ class ClimateController(private val propertyManager: Any) {
     /**
      * Called once per frame with current passenger count.
      * Handles debounce, target computation, ramping, and VHAL write.
+     * Returns [ClimateAdjustment] when target temperature changes (for audio announcement),
+     * null otherwise.
      */
-    fun update(passengerCount: Int) {
-        if (!available) return
-        if (!Config.ENABLE_AUTO_CLIMATE) return
+    fun update(passengerCount: Int): ClimateAdjustment? {
+        if (!available) return null
+        if (!Config.ENABLE_AUTO_CLIMATE) return null
 
         // Track count stability
         if (passengerCount == lastCount) {
@@ -137,14 +155,16 @@ class ClimateController(private val propertyManager: Any) {
         }
 
         // Debounce: wait for stable count
-        if (stableFrames < Config.CLIMATE_DEBOUNCE_FRAMES) return
+        if (stableFrames < Config.CLIMATE_DEBOUNCE_FRAMES) return null
 
         // Compute new target (0 occupants → revert to base)
         val newTarget = computeTargetTemp(Config.HVAC_BASE_TEMP_C, passengerCount)
+        var adjustment: ClimateAdjustment? = null
 
         if (newTarget != targetTemp) {
             targetTemp = newTarget
             lastStableCount = passengerCount
+            adjustment = ClimateAdjustment(newTarget, passengerCount)
             Log.d(TAG, "Target temp updated: ${targetTemp}°C (occupants=$passengerCount)")
         }
 
@@ -154,6 +174,8 @@ class ClimateController(private val propertyManager: Any) {
             currentTemp = nextTemp
             writeTemperature(currentTemp)
         }
+
+        return adjustment
     }
 
     /**

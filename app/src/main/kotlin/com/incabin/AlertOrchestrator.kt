@@ -98,7 +98,12 @@ class AlertOrchestrator(
 
         // Step 5: Occupancy-based climate adjustment (runs independently of escalation)
         try {
-            vehicleChannelManager?.climateController?.update(result.passengerCount)
+            val adjustment = vehicleChannelManager?.climateController?.update(result.passengerCount)
+            if (adjustment != null) {
+                val msg = ClimateController.formatAlertMessage(adjustment, Config.LANGUAGE == "ja")
+                audioAlerter.enqueueWelcome(msg)
+                Log.i(TAG, "Climate adjustment: $msg")
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Climate controller update failed", e)
         }

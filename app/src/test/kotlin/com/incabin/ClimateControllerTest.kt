@@ -115,4 +115,29 @@ class ClimateControllerTest {
     fun rampStep_alreadyAtTarget() {
         assertEquals(20.0f, ClimateController.rampStep(20.0f, 20.0f, 0.5f), 0.001f)
     }
+
+    // -------------------------------------------------------------------------
+    // formatAlertMessage
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun formatAlertMessage_english() {
+        val adj = ClimateAdjustment(21.0f, 3)
+        val msg = ClimateController.formatAlertMessage(adj, isJapanese = false)
+        assertEquals("Temperature adjusted to 21.0 degrees, 3 occupants", msg)
+    }
+
+    @Test
+    fun formatAlertMessage_japanese() {
+        val adj = ClimateAdjustment(21.0f, 3)
+        val msg = ClimateController.formatAlertMessage(adj, isJapanese = true)
+        assertEquals("空調21.0度に調整、乗員3名", msg)
+    }
+
+    @Test
+    fun formatAlertMessage_singleOccupant_english() {
+        val adj = ClimateAdjustment(22.0f, 1)
+        val msg = ClimateController.formatAlertMessage(adj, isJapanese = false)
+        assertEquals("Temperature adjusted to 22.0 degrees, 1 occupants", msg)
+    }
 }
