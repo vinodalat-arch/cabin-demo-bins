@@ -255,8 +255,7 @@ def test_all_inference_loop(fps: float = 1.0):
 def parse_file_result(data: dict) -> dict:
     """
     Map a log_vllm_*.json file to our OutputResult format.
-    Only occupancy and driver presence are available — all danger
-    detections default to false.
+    Extracts occupancy, driver presence, and driver/passenger state mappings.
     """
     result = default_result()
 
@@ -274,16 +273,43 @@ def parse_file_result(data: dict) -> dict:
         # Occupant analysis — per-seat states
         occupants = results.get("OccupantAnalysis", {})
 
-        driver_state = occupants.get("DRIVER_STATE", {}).get("answer", "Vacant")
-        result["driver_detected"] = driver_state.lower() != "vacant"
+        driver_state = occupants.get("DRIVER_STATE", {}).get("answer", "Vacant").lower()
+        result["driver_detected"] = driver_state != "vacant"
 
-        # Count adults from non-vacant, non-driver seats
+        # Map driver state to detection booleans
+        if driver_state == "sleeping":
+            result["driver_eyes_closed"] = True
+        elif driver_state == "distracted":
+            result["driver_distracted"] = True
+        elif driver_state == "eating":
+            result["driver_eating_drinking"] = True
+        elif driver_state == "phone":
+            result["driver_using_phone"] = True
+        elif driver_state == "yawning":
+            result["driver_yawning"] = True
+
+        # Count adults and detect passenger slouching from non-vacant seats
         adult_count = 0
+        sleeping_passengers = 0
         for seat in ("FRONT_PASSENGER_STATE", "REAR_LEFT_STATE", "REAR_RIGHT_STATE"):
-            state = occupants.get(seat, {}).get("answer", "Vacant")
-            if state.lower() != "vacant":
+            state = occupants.get(seat, {}).get("answer", "Vacant").lower()
+            if state != "vacant":
                 adult_count += 1
+                if state == "sleeping":
+                    sleeping_passengers += 1
         result["adult_count"] = adult_count
+        if sleeping_passengers > 0:
+            result["dangerous_posture"] = True
+
+        # Compute risk level from mapped detections
+        score = 0
+        if result["driver_using_phone"]: score += 3
+        if result["driver_eyes_closed"]: score += 3
+        if result["driver_distracted"]: score += 2
+        if result["driver_yawning"]: score += 2
+        if result["dangerous_posture"]: score += 2
+        if result["driver_eating_drinking"]: score += 1
+        result["risk_level"] = "high" if score >= 3 else "medium" if score >= 1 else "low"
 
     except Exception as e:
         print(f"Error parsing file result: {e}")
