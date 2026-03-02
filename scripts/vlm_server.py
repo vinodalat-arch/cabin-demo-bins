@@ -10,8 +10,8 @@ The SA8155 polls /api/detect at ~1-3Hz and feeds the result through its
 existing downstream pipeline (smoother, distraction counter, alerts).
 
 Usage:
-  pip install fastapi uvicorn opencv-python transformers torch
-  python vlm_server.py [--port 8000] [--camera 0] [--model Qwen/Qwen2.5-VL-7B-Instruct]
+  pip install fastapi uvicorn opencv-python transformers torch Pillow
+  python vlm_server.py [--port 8000] [--camera 0] [--model Qwen/Qwen3-VL-4B-Instruct]
 
 For quick testing without a real VLM (returns mock detections):
   python vlm_server.py --mock
@@ -351,7 +351,7 @@ def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
     model_name = vlm_model
 
     try:
-        from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+        from transformers import AutoModelForVision2Seq, AutoProcessor
         import torch
     except ImportError:
         print("ERROR: transformers and torch required for real VLM inference.")
@@ -367,7 +367,7 @@ def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
 
     print(f"Loading VLM model: {vlm_model}")
     processor = AutoProcessor.from_pretrained(vlm_model)
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
+    model = AutoModelForVision2Seq.from_pretrained(
         vlm_model, torch_dtype=torch.float16, device_map="auto"
     )
     print("VLM model loaded.")
@@ -459,8 +459,8 @@ def main():
     parser = argparse.ArgumentParser(description="In-Cabin VLM Server")
     parser.add_argument("--port", type=int, default=8000, help="Server port (default: 8000)")
     parser.add_argument("--camera", type=int, default=0, help="Camera device ID (default: 0)")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct",
-                        help="VLM model name (default: Qwen/Qwen2.5-VL-7B-Instruct)")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen3-VL-4B-Instruct",
+                        help="VLM model name (default: Qwen/Qwen3-VL-4B-Instruct)")
     parser.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
     parser.add_argument("--fps", type=float, default=2.0, help="Inference FPS (default: 2.0)")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
