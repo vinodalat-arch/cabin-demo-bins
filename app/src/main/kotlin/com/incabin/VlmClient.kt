@@ -151,6 +151,7 @@ class VlmClient(
                         val obj = gson.fromJson(body, JsonObject::class.java)
                         VlmHealthStatus(
                             status = obj.get("status")?.asString ?: "unknown",
+                            ready = obj.get("ready")?.asBoolean ?: false,
                             model = obj.get("model")?.asString,
                             fps = obj.get("fps")?.asDouble
                         )
@@ -165,7 +166,7 @@ class VlmClient(
     }
 
     /** Health check result from /api/health endpoint. */
-    data class VlmHealthStatus(val status: String, val model: String?, val fps: Double?)
+    data class VlmHealthStatus(val status: String, val ready: Boolean, val model: String?, val fps: Double?)
 
     @Volatile private var running = false
     private var pollThread: Thread? = null

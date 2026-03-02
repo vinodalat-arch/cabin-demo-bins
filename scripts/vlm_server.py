@@ -54,6 +54,7 @@ latest_result_lock = threading.Lock()
 server_start_time = time.time()
 frame_count = 0
 model_name = "mock"
+vlm_ready = False  # True once model is loaded and inference loop is running
 last_client_request_time: float = 0.0
 client_request_count: int = 0
 
@@ -112,7 +113,8 @@ def health():
     client_age = time.time() - last_client_request_time if last_client_request_time > 0 else -1
     client_connected = 0 < client_age < 5.0
     return JSONResponse(content={
-        "status": "ok",
+        "status": "ok" if vlm_ready else "loading",
+        "ready": vlm_ready,
         "model": model_name,
         "fps": round(fps, 2),
         "client_connected": client_connected,
@@ -136,7 +138,9 @@ def mock_inference_loop(camera_id: int, fps: float = 2.0):
             print(f"WARNING: Cannot open camera {camera_id}. Running without camera.")
             cap = None
 
+    global vlm_ready
     interval = 1.0 / fps
+    vlm_ready = True
     print(f"Mock inference loop started (fps={fps}, camera={'ON' if cap else 'OFF'})")
 
     try:
@@ -198,6 +202,8 @@ def test_all_inference_loop(fps: float = 1.0):
 
     interval = 1.0 / fps
     total_frames = sum(hold + clear for _, _, _, hold, clear in TEST_ALL_SEQUENCE)
+    global vlm_ready
+    vlm_ready = True
     total_secs = total_frames * interval
     print(f"=== TEST-ALL scenario: {len(TEST_ALL_SEQUENCE)} detections, "
           f"~{total_secs:.0f}s total at {fps} fps ===")
@@ -370,6 +376,8 @@ def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
     model = AutoModelForVision2Seq.from_pretrained(
         vlm_model, torch_dtype=torch.float16, device_map="auto"
     )
+    global vlm_ready
+    vlm_ready = True
     print("VLM model loaded.")
 
     cap = cv2.VideoCapture(camera_id)
@@ -476,6 +484,24 @@ def main():
         model_name = "mock"
         thread = threading.Thread(target=mock_inference_loop, args=(args.camera, args.fps), daemon=True)
     else:
+        # Pre-flight: verify VLM dependencies and model exist before starting
+        try:
+            from transformers import AutoModelForVision2Seq, AutoProcessor
+            import torch
+        except ImportError:
+            print("=" * 60)
+            print("ERROR: VLM dependencies not installed.")
+            print("  pip install transformers torch Pillow")
+            print("=" * 60)
+            exit(1)
+
+        if not HAS_OPENCV:
+            print("=" * 60)
+            print("ERROR: opencv-python not installed (required for camera).")
+            print("  pip install opencv-python")
+            print("=" * 60)
+            exit(1)
+
         model_name = args.model
         thread = threading.Thread(target=vlm_inference_loop, args=(args.camera, args.model, args.fps), daemon=True)
 

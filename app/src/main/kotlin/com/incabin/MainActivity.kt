@@ -1280,9 +1280,11 @@ class MainActivity : Activity() {
                         if (isActivityDestroyed) return@Thread
                         runOnUiThread {
                             if (isActivityDestroyed) return@runOnUiThread
-                            val msg = if (health != null)
-                                "VLM Online \u2014 ${health.model ?: "unknown"}"
-                            else "VLM Offline"
+                            val msg = when {
+                                health == null -> "VLM Offline"
+                                !health.ready -> "VLM Loading \u2014 model not ready yet"
+                                else -> "VLM Online \u2014 ${health.model ?: "unknown"}"
+                            }
                             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
                             // Auto-restart monitoring in VLM mode
@@ -1466,9 +1468,11 @@ class MainActivity : Activity() {
                 if (isActivityDestroyed) return@Thread
                 runOnUiThread {
                     if (isActivityDestroyed) return@runOnUiThread
-                    val msg = if (health != null)
-                        "VLM Online \u2014 ${health.model ?: "unknown"}"
-                    else "VLM server unreachable"
+                    val msg = when {
+                        health == null -> "VLM server unreachable"
+                        !health.ready -> "VLM Loading \u2014 model not ready yet"
+                        else -> "VLM Online \u2014 ${health.model ?: "unknown"}"
+                    }
                     Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     checkPermissionsAndStart()  // Always proceed — advisory only
                 }
