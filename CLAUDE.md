@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, and occupancy-based HVAC climate control. Build verified (`assembleDebug` + all 667 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, and per-seat passenger position detection. Build verified (`assembleDebug` + all 694 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -40,6 +40,7 @@ SHARED PIPELINE (both modes):
   → Alert Orchestrator → AudioAlerter (TTS) + VehicleChannelManager (VHAL)
   → JSON output (Logcat)                                               ← core path
   → FrameHolder.postResult() → OutputResult → Dashboard               ← fast UI path
+  → SeatAssigner (Kotlin) → bbox heuristics → SeatMap → Dashboard     ← display-only UI path
   → Overlay Renderer (Kotlin) → bboxes, skeleton, face landmarks      ← optional UI path (local only)
   → FrameHolder.postFrame() → bitmap → ImageView preview              ← optional UI path (local only)
 ```
@@ -134,6 +135,7 @@ Runtime toggle in settings panel (hidden by default, 5-tap to open) enables/disa
 - Sustained detection: eyes 2 frames, yawning 2 frames, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 - Face recognition: cosine similarity > 0.5, every 5th frame, 512-dim embedding
+- Seat assignment: front row if bbox area >= 40% of driver bbox area
 
 ## Risk Scoring
 ```
@@ -240,6 +242,7 @@ score >= 3 → high, >= 1 → medium, else → low
   - `DRIVER_STATE`: sleeping→`driver_eyes_closed`, distracted→`driver_distracted`, eating→`driver_eating_drinking`, phone→`driver_using_phone`, yawning→`driver_yawning`, vacant→`driver_detected=false`, upright→no danger
   - Passenger seats (`FRONT_PASSENGER_STATE`, `REAR_LEFT_STATE`, `REAR_RIGHT_STATE`): sleeping→`dangerous_posture`
   - Risk level computed from mapped detections (same weights as VLM path)
+  - `seat_map` derived from per-seat states (DRIVER_STATE, FRONT_PASSENGER_STATE, REAR_LEFT_STATE, REAR_RIGHT_STATE)
   - Device sees no difference — same `/api/detect` JSON endpoint, same `VlmClient` polling
 
 ### Multi-Modal Alert Orchestrator
@@ -282,6 +285,21 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Lifecycle**: Created in `VehicleChannelManager.registerChannels()`. Called per-frame from `AlertOrchestrator.evaluate()`. Restores base temp on `resetState()` and `close()`
 - **TTS announcement**: `update()` returns `ClimateAdjustment` when target changes; AlertOrchestrator speaks via `enqueueWelcome()` at INFO priority. EN: "Temperature adjusted to 21.0 degrees, 3 occupants" / JA: "空調21.0度に調整、乗員3名". Fires once per target change, not per ramp step
 - **Pure companion functions**: `computeTargetTemp()`, `shouldAdjust()`, `rampStep()`, `formatAlertMessage()` — fully unit-testable, no Android deps
+
+### Per-Seat Passenger Position Detection (SeatAssigner)
+- **Purpose**: Maps detected persons to specific seats (Driver, Front Passenger, Rear Left, Rear Right) for per-seat occupancy and state display
+- **Data model**: `SeatMap` (4× `SeatState(occupied: Boolean, state: String)`), `Seat` enum. States: Upright, Sleeping, Distracted, Phone, Eating, Yawning, Vacant
+- **Local mode algorithm** (`SeatAssigner.assign()`):
+  - Driver: Already tagged by C++ (`isDriver=true`). State derived from OutputResult detections via `deriveDriverState()`
+  - Front/rear discrimination: `bboxArea >= SEAT_FRONT_ROW_AREA_RATIO (0.40) × driverArea` → front row
+  - Left/right: bbox center x vs frame midline (640px). `Config.DRIVER_SEAT_SIDE` determines passenger side
+  - Priority: driver first → front passenger (largest non-driver on opposite side meeting area threshold) → rear by x-coordinate (largest per side)
+  - Passenger state: `badPosture` → "Sleeping", else "Upright" (limited without per-passenger face analysis)
+- **VLM mode**: `VlmClient.parseSeatMap()` parses optional `seat_map` JSON object from server response. File-based mode derives per-seat states from `OccupantAnalysis` fields
+- **Pipeline integration**: Step 8.7 in `processFrame()`, wrapped in try-catch (display-only, pipeline-isolated). Posts to `FrameHolder.postSeatMap()`
+- **UI**: `updateSeatMap()` in MainActivity replaces `updatePassengerPostures()`. Shows occupied seats with color-coded state labels (green=Upright, orange=danger states, muted=Vacant). EN/JA labels
+- **vlm_server.py**: `seat_map` added to `default_result()`, `parse_file_result()`, and `apply_confidence_thresholds()`
+- **Pure functions**: `SeatAssigner.assign()`, `SeatAssigner.deriveDriverState()`, `VlmClient.parseSeatMap()` — fully unit-testable, no Android deps
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
@@ -365,21 +383,21 @@ in_cabin_poc-sa8155/
 │   │   ├── Config, ConfigPrefs, InCabinService, V4l2CameraManager, CameraManager, MjpegCameraManager
 │   │   ├── FaceAnalyzer, FaceDetectorLite, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
-│   │   ├── AlertOrchestrator, VehicleChannelManager, ClimateController, VlmClient
+│   │   ├── AlertOrchestrator, VehicleChannelManager, ClimateController, VlmClient, SeatMap, SeatAssigner
 │   │   ├── PlatformProfile, DeviceSetup, BootReceiver
 │   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest, SeatAssignerTest, SeatMapTest)
 ├── scripts/              (vlm_server.py, vlm_launcher.py, requirements.txt, convert_fp16.py)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 667 unit tests (all passing):
+- 694 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
-  - ConfigConstantsTest: 41 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation + climate constants)
+  - ConfigConstantsTest: 42 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation + climate + seat constants)
   - AlertOrchestratorTest: 30 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
@@ -388,7 +406,7 @@ in_cabin_poc-sa8155/
   - TemporalSmootherTest: 23 tests (voting, face-gating, fast-clear, sustained thresholds incl. yawning min_frames, passenger mode, risk recomputation)
   - MergerTest: 19 tests (risk scoring + merge logic)
   - FlowDriverIdentificationTest: 16 tests (seat-side selection, face region validation, driver_detected schema/merger/smoother, config toggle)
-  - VlmClientTest: 13 tests (parseDetectResponse JSON→OutputResult, health check, error handling)
+  - VlmClientTest: 16 tests (parseDetectResponse JSON→OutputResult, parseSeatMap, health check, error handling)
   - FlowMonitoringTest: 12 tests (full pipeline chain — mergeResults → smooth → validate for detection sequences)
   - FlowEscalationTest: 12 tests (escalation ladder timing, cooldown, multi-danger, all-clear reset, Japanese messages)
   - FlowMultiModalEscalationTest: 12 tests (L1-L5 escalation with vehicle channels, per-detection caps, speed gating)
@@ -406,6 +424,8 @@ in_cabin_poc-sa8155/
   - MjpegReconnectTest: 3 tests (nextBackoffDelay doubling, cap at max, stays at max)
   - InferenceErrorTest: 2 tests (shouldReinitialize at threshold, below threshold)
   - ClimateControllerTest: 19 tests (computeTargetTemp occupancy cases + clamp, shouldAdjust debounce, rampStep toward/overshoot/at-target, formatAlertMessage EN/JA)
+  - SeatAssignerTest: 19 tests (assign empty/driver-only/front+rear/4-occupants/no-driver/left-right drive/multiple-same-side/bad-posture, deriveDriverState all states + priority)
+  - SeatMapTest: 4 tests (default all-vacant, occupied state, equality, enum values)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget
