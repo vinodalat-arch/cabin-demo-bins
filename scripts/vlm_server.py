@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """
-Sample VLM server for In-Cabin AI remote inference mode.
+In-Cabin VLM bridge server for remote inference mode.
+
+Architecture:
+  Webcam → this server → external vLLM (OpenAI API) → parse → SA8155 device
 
 Provides two REST endpoints:
   GET /api/detect  — returns latest detection result from VLM
-  GET /api/health  — returns server status
+  GET /api/health  — returns server + vLLM status
 
 The SA8155 polls /api/detect at ~1-3Hz and feeds the result through its
 existing downstream pipeline (smoother, distraction counter, alerts).
 
-Usage:
-  pip install fastapi uvicorn opencv-python transformers torch Pillow
-  python vlm_server.py [--port 8000] [--camera 0] [--model Qwen/Qwen3-VL-4B-Instruct]
+Prerequisites:
+  1. vLLM running on the same or another machine:
+     vllm serve /path/to/model --host 0.0.0.0 --port 8080 --trust-remote-code
+
+  2. This bridge server:
+     pip install fastapi uvicorn opencv-python
+     python vlm_server.py --vllm-url http://localhost:8080 --camera 0
 
 For quick testing without a real VLM (returns mock detections):
   python vlm_server.py --mock
@@ -19,13 +26,18 @@ For quick testing without a real VLM (returns mock detections):
 Requirements:
   - Python 3.10+
   - fastapi, uvicorn, opencv-python
-  - For real VLM: transformers, torch (with CUDA recommended)
+  - A running vLLM server (external — NOT loaded by this script)
 """
 
 import argparse
+import base64
 import json
+import subprocess
+import sys
 import time
 import threading
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -53,8 +65,8 @@ latest_result: dict = {}
 latest_result_lock = threading.Lock()
 server_start_time = time.time()
 frame_count = 0
-model_name = "mock"
-vlm_ready = False  # True once model is loaded and inference loop is running
+model_name = "unknown"
+vlm_ready = False  # True once vLLM is reachable and inference loop is running
 last_client_request_time: float = 0.0
 client_request_count: int = 0
 
@@ -201,9 +213,9 @@ def test_all_inference_loop(fps: float = 1.0):
     global latest_result, frame_count
 
     interval = 1.0 / fps
-    total_frames = sum(hold + clear for _, _, _, hold, clear in TEST_ALL_SEQUENCE)
     global vlm_ready
     vlm_ready = True
+    total_frames = sum(hold + clear for _, _, _, hold, clear in TEST_ALL_SEQUENCE)
     total_secs = total_frames * interval
     print(f"=== TEST-ALL scenario: {len(TEST_ALL_SEQUENCE)} detections, "
           f"~{total_secs:.0f}s total at {fps} fps ===")
@@ -251,7 +263,7 @@ CONFIDENCE_THRESHOLDS = {
 
 
 # ---------------------------------------------------------------------------
-# VLM inference loop (real model)
+# VLM inference via external vLLM server (OpenAI-compatible API)
 # ---------------------------------------------------------------------------
 
 # Enhanced prompt: asks for per-detection confidence (0.0-1.0) instead of booleans.
@@ -348,51 +360,98 @@ def extract_json_from_text(text: str) -> dict:
     return json.loads(text)
 
 
-def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
+def query_vllm(vllm_url: str, vllm_model: str, image_base64: str) -> Optional[dict]:
     """
-    Run actual VLM inference on camera frames.
-    Uses enhanced prompt with confidence scoring and adaptive frame pacing.
+    Send an image to the vLLM OpenAI-compatible API and return parsed JSON.
+    Returns None on error.
     """
-    global latest_result, frame_count, model_name
-    model_name = vlm_model
+    url = f"{vllm_url.rstrip('/')}/v1/chat/completions"
+    payload = json.dumps({
+        "model": vllm_model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
+                    },
+                    {
+                        "type": "text",
+                        "text": VLM_PROMPT
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 300,
+        "temperature": 0.1,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
 
     try:
-        from transformers import AutoModelForVision2Seq, AutoProcessor
-        import torch
-    except ImportError:
-        print("ERROR: transformers and torch required for real VLM inference.")
-        print("  pip install transformers torch")
-        print("Falling back to mock mode.")
-        mock_inference_loop(camera_id, fps)
-        return
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            text = body["choices"][0]["message"]["content"]
+            return extract_json_from_text(text)
+    except urllib.error.URLError as e:
+        print(f"vLLM request failed: {e}")
+        return None
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        print(f"vLLM response parse error: {e}")
+        return None
+    except Exception as e:
+        print(f"vLLM error: {e}")
+        return None
+
+
+def check_vllm_health(vllm_url: str) -> Optional[str]:
+    """
+    Check if vLLM is reachable and return the model name.
+    Returns model name on success, None on failure.
+    """
+    url = f"{vllm_url.rstrip('/')}/v1/models"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            models = body.get("data", [])
+            if models:
+                return models[0].get("id", "unknown")
+            return "unknown"
+    except Exception as e:
+        print(f"vLLM health check failed: {e}")
+        return None
+
+
+def vlm_inference_loop(vllm_url: str, vllm_model: str, camera_id: int, fps: float = 2.0):
+    """
+    Capture webcam frames, send to external vLLM server, parse results.
+    vLLM must be running separately (e.g., vllm serve ...).
+    """
+    global latest_result, frame_count, vlm_ready
 
     if not HAS_OPENCV:
         print("ERROR: opencv-python required for camera capture.")
-        mock_inference_loop(camera_id, fps)
+        print("  pip install opencv-python")
         return
-
-    print(f"Loading VLM model: {vlm_model}")
-    processor = AutoProcessor.from_pretrained(vlm_model)
-    model = AutoModelForVision2Seq.from_pretrained(
-        vlm_model, torch_dtype=torch.float16, device_map="auto"
-    )
-    global vlm_ready
-    vlm_ready = True
-    print("VLM model loaded.")
 
     cap = cv2.VideoCapture(camera_id)
     if not cap.isOpened():
         print(f"ERROR: Cannot open camera {camera_id}")
         return
 
+    vlm_ready = True
     target_interval = 1.0 / fps
-    print(f"VLM inference loop started (target_fps={fps}, adaptive pacing)")
+    print(f"VLM inference loop started (vllm={vllm_url}, model={vllm_model}, fps={fps})")
     inference_times = []
 
     try:
-        from PIL import Image
-        import io
-
         while True:
             frame_start = time.time()
 
@@ -402,51 +461,32 @@ def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
                 continue
 
             try:
-                # Encode frame as JPEG for VLM input
-                _, jpeg = cv2.imencode('.jpg', frame)
-                image = Image.open(io.BytesIO(jpeg.tobytes()))
+                # Encode frame as JPEG base64 for vLLM API
+                _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                image_b64 = base64.b64encode(jpeg.tobytes()).decode("utf-8")
 
-                messages = [
-                    {"role": "user", "content": [
-                        {"type": "image", "image": image},
-                        {"type": "text", "text": VLM_PROMPT},
-                    ]}
-                ]
+                # Query external vLLM
+                vlm_result = query_vllm(vllm_url, vllm_model, image_b64)
+                if vlm_result is not None:
+                    result = apply_confidence_thresholds(vlm_result)
+                    with latest_result_lock:
+                        latest_result = result
+                    frame_count += 1
 
-                text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                inputs = processor(text=[text], images=[image], return_tensors="pt").to(model.device)
+                    # Track inference time
+                    inference_ms = (time.time() - frame_start) * 1000
+                    inference_times.append(inference_ms)
+                    if len(inference_times) > 10:
+                        inference_times.pop(0)
+                    avg_ms = sum(inference_times) / len(inference_times)
+                    actual_fps = 1000.0 / avg_ms if avg_ms > 0 else 0
 
-                with torch.no_grad():
-                    output_ids = model.generate(**inputs, max_new_tokens=300)
+                    if frame_count % 10 == 0:
+                        print(f"[VLM Stats] frame={frame_count}, inference={inference_ms:.0f}ms, "
+                              f"avg={avg_ms:.0f}ms, actual_fps={actual_fps:.1f}")
+                else:
+                    print("vLLM returned no result, skipping frame")
 
-                output_text = processor.batch_decode(
-                    output_ids[:, inputs.input_ids.shape[1]:],
-                    skip_special_tokens=True
-                )[0]
-
-                # Parse VLM output and apply confidence thresholds
-                vlm_result = extract_json_from_text(output_text)
-                result = apply_confidence_thresholds(vlm_result)
-
-                with latest_result_lock:
-                    latest_result = result
-
-                frame_count += 1
-
-                # Track inference time for adaptive pacing stats
-                inference_ms = (time.time() - frame_start) * 1000
-                inference_times.append(inference_ms)
-                if len(inference_times) > 10:
-                    inference_times.pop(0)
-                avg_ms = sum(inference_times) / len(inference_times)
-                actual_fps = 1000.0 / avg_ms if avg_ms > 0 else 0
-
-                if frame_count % 10 == 0:
-                    print(f"[VLM Stats] frame={frame_count}, inference={inference_ms:.0f}ms, "
-                          f"avg={avg_ms:.0f}ms, actual_fps={actual_fps:.1f}")
-
-            except json.JSONDecodeError as e:
-                print(f"VLM JSON parse error: {e}")
             except Exception as e:
                 print(f"VLM inference error: {e}")
 
@@ -460,20 +500,114 @@ def vlm_inference_loop(camera_id: int, vlm_model: str, fps: float = 2.0):
 
 
 # ---------------------------------------------------------------------------
+# vLLM subprocess management
+# ---------------------------------------------------------------------------
+
+vllm_process: Optional[subprocess.Popen] = None
+
+
+def start_vllm_subprocess(model_path: str, vllm_port: int) -> str:
+    """
+    Launch vLLM serve as a subprocess. Waits until it's ready.
+    Returns the vLLM base URL.
+    """
+    global vllm_process
+
+    vllm_url = f"http://localhost:{vllm_port}"
+    cmd = [
+        sys.executable, "-m", "vllm.entrypoints.openai.api_server",
+        "--model", model_path,
+        "--host", "0.0.0.0",
+        "--port", str(vllm_port),
+        "--trust-remote-code",
+        "--gpu-memory-utilization", "0.8",
+        "--max-model-len", "16384",
+        "--limit-mm-per-prompt", '{"video": 1}',
+        "--enforce-eager",
+        "--allowed-local-media-path", "/",
+    ]
+
+    print(f"Starting vLLM server: {model_path} on port {vllm_port}")
+    print(f"  Command: {' '.join(cmd)}")
+    vllm_process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
+
+    # Wait for vLLM to become ready (poll /v1/models)
+    print("Waiting for vLLM to load model (this may take 1-5 minutes) ...")
+    max_wait = 300  # 5 minutes
+    start = time.time()
+    while time.time() - start < max_wait:
+        detected = check_vllm_health(vllm_url)
+        if detected is not None:
+            print(f"vLLM ready — model: {detected}")
+            return vllm_url
+
+        # Check if process died
+        if vllm_process.poll() is not None:
+            print("=" * 60)
+            print(f"ERROR: vLLM process exited with code {vllm_process.returncode}")
+            print("=" * 60)
+            exit(1)
+
+        time.sleep(3)
+
+    print("=" * 60)
+    print(f"ERROR: vLLM did not become ready within {max_wait}s")
+    print("=" * 60)
+    vllm_process.terminate()
+    exit(1)
+
+
+def cleanup_vllm():
+    """Terminate vLLM subprocess on exit."""
+    global vllm_process
+    if vllm_process and vllm_process.poll() is None:
+        print("Stopping vLLM server ...")
+        vllm_process.terminate()
+        try:
+            vllm_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            vllm_process.kill()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="In-Cabin VLM Server")
-    parser.add_argument("--port", type=int, default=8000, help="Server port (default: 8000)")
-    parser.add_argument("--camera", type=int, default=0, help="Camera device ID (default: 0)")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen3-VL-4B-Instruct",
-                        help="VLM model name (default: Qwen/Qwen3-VL-4B-Instruct)")
-    parser.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
-    parser.add_argument("--fps", type=float, default=2.0, help="Inference FPS (default: 2.0)")
+    parser = argparse.ArgumentParser(
+        description="In-Cabin VLM Bridge Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Connect to already-running vLLM (without VLM):
+  python vlm_server.py --vllm-url http://localhost:8080
+
+  # Start vLLM + bridge server together (with VLM):
+  python vlm_server.py --start-vllm --model-path /home/kpit/code/qwen3_offline_4B
+
+  # Mock mode for testing:
+  python vlm_server.py --mock
+""")
+    parser.add_argument("--port", type=int, default=8000, help="This server's port (default: 8000)")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
+    parser.add_argument("--camera", type=int, default=0, help="Camera device ID (default: 0)")
+    parser.add_argument("--fps", type=float, default=2.0, help="Inference FPS (default: 2.0)")
+    parser.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
     parser.add_argument("--scenario", type=str, choices=["test-all"], default=None,
                         help="Run a test scenario: 'test-all' cycles through every detection")
+
+    # Mode 1: Connect to existing vLLM (without VLM)
+    parser.add_argument("--vllm-url", type=str, default=None,
+                        help="Connect to already-running vLLM server (e.g. http://localhost:8080)")
+
+    # Mode 2: Start vLLM + bridge (with VLM)
+    parser.add_argument("--start-vllm", action="store_true",
+                        help="Start vLLM server automatically (requires --model-path)")
+    parser.add_argument("--model-path", type=str, default=None,
+                        help="Local model path for vLLM (e.g. /home/kpit/code/qwen3_offline_4B)")
+    parser.add_argument("--vllm-port", type=int, default=8080,
+                        help="Port for vLLM server when using --start-vllm (default: 8080)")
+
     args = parser.parse_args()
 
     global model_name
@@ -484,16 +618,48 @@ def main():
         model_name = "mock"
         thread = threading.Thread(target=mock_inference_loop, args=(args.camera, args.fps), daemon=True)
     else:
-        # Pre-flight: verify VLM dependencies and model exist before starting
-        try:
-            from transformers import AutoModelForVision2Seq, AutoProcessor
-            import torch
-        except ImportError:
+        # Determine vLLM URL — either connect to existing or start new
+        vllm_url = args.vllm_url
+
+        if args.start_vllm:
+            # Mode 2: Start vLLM ourselves
+            if not args.model_path:
+                print("=" * 60)
+                print("ERROR: --model-path is required with --start-vllm")
+                print()
+                print("Usage:")
+                print("  python vlm_server.py --start-vllm --model-path /path/to/model")
+                print("=" * 60)
+                exit(1)
+            vllm_url = start_vllm_subprocess(args.model_path, args.vllm_port)
+            import atexit
+            atexit.register(cleanup_vllm)
+        elif not vllm_url:
+            # Neither --vllm-url nor --start-vllm
             print("=" * 60)
-            print("ERROR: VLM dependencies not installed.")
-            print("  pip install transformers torch Pillow")
+            print("ERROR: Specify how to connect to vLLM:")
+            print()
+            print("  Option 1 — Connect to already-running vLLM:")
+            print("    python vlm_server.py --vllm-url http://localhost:8080")
+            print()
+            print("  Option 2 — Start vLLM automatically:")
+            print("    python vlm_server.py --start-vllm --model-path /path/to/model")
             print("=" * 60)
             exit(1)
+
+        # Pre-flight: check vLLM is reachable
+        print(f"Checking vLLM server at {vllm_url} ...")
+        detected_model = check_vllm_health(vllm_url)
+        if detected_model is None:
+            print("=" * 60)
+            print(f"ERROR: Cannot reach vLLM server at {vllm_url}")
+            print()
+            print("Make sure vLLM is running, then retry.")
+            print("=" * 60)
+            exit(1)
+
+        model_name = detected_model
+        print(f"vLLM is running — model: {model_name}")
 
         if not HAS_OPENCV:
             print("=" * 60)
@@ -502,11 +668,14 @@ def main():
             print("=" * 60)
             exit(1)
 
-        model_name = args.model
-        thread = threading.Thread(target=vlm_inference_loop, args=(args.camera, args.model, args.fps), daemon=True)
+        thread = threading.Thread(
+            target=vlm_inference_loop,
+            args=(vllm_url, model_name, args.camera, args.fps),
+            daemon=True
+        )
 
     thread.start()
-    print(f"Starting VLM server on {args.host}:{args.port}")
+    print(f"Starting bridge server on {args.host}:{args.port}")
     print(f"  GET http://{args.host}:{args.port}/api/detect")
     print(f"  GET http://{args.host}:{args.port}/api/health")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
