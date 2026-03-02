@@ -31,7 +31,9 @@ Requirements:
 
 import argparse
 import base64
+import glob
 import json
+import os
 import subprocess
 import sys
 import time
@@ -243,6 +245,96 @@ def test_all_inference_loop(fps: float = 1.0):
                 time.sleep(interval)
 
         print("\n=== Cycle complete — restarting ===\n")
+
+
+# ---------------------------------------------------------------------------
+# File-based inference: read pre-computed JSON results from a folder
+# ---------------------------------------------------------------------------
+
+def parse_file_result(data: dict) -> dict:
+    """
+    Map a log_vllm_*.json file to our OutputResult format.
+    Only occupancy and driver presence are available — all danger
+    detections default to false.
+    """
+    result = default_result()
+
+    try:
+        results = data.get("results", {})
+
+        # Cabin occupancy count
+        cabin = results.get("CabinOverview", {})
+        count_str = cabin.get("CABIN_OCCUPANCY_COUNT", {}).get("answer", "1")
+        try:
+            result["passenger_count"] = max(0, int(count_str))
+        except (ValueError, TypeError):
+            result["passenger_count"] = 1
+
+        # Occupant analysis — per-seat states
+        occupants = results.get("OccupantAnalysis", {})
+
+        driver_state = occupants.get("DRIVER_STATE", {}).get("answer", "Vacant")
+        result["driver_detected"] = driver_state.lower() != "vacant"
+
+        # Count adults from non-vacant, non-driver seats
+        adult_count = 0
+        for seat in ("FRONT_PASSENGER_STATE", "REAR_LEFT_STATE", "REAR_RIGHT_STATE"):
+            state = occupants.get(seat, {}).get("answer", "Vacant")
+            if state.lower() != "vacant":
+                adult_count += 1
+        result["adult_count"] = adult_count
+
+    except Exception as e:
+        print(f"Error parsing file result: {e}")
+
+    return result
+
+
+def file_inference_loop(file_dir: str, poll_interval: float = 1.0):
+    """
+    Scan a folder for log_vllm_*.json files, pick the latest by filename,
+    parse it, and serve via /api/detect. No VLM or camera needed.
+    """
+    global latest_result, frame_count, vlm_ready
+
+    vlm_ready = True
+    last_file = None
+    print(f"File-based inference started (dir={file_dir}, interval={poll_interval}s)")
+
+    while True:
+        try:
+            # Find all matching JSON files and pick the latest by name
+            pattern = os.path.join(file_dir, "log_vllm_*.json")
+            files = sorted(glob.glob(pattern))
+
+            if files:
+                latest_file = files[-1]  # Sorted alphabetically = latest timestamp
+
+                if latest_file != last_file:
+                    with open(latest_file, "r") as f:
+                        data = json.load(f)
+                    result = parse_file_result(data)
+                    with latest_result_lock:
+                        latest_result = result
+                    frame_count += 1
+                    last_file = latest_file
+
+                    if frame_count % 10 == 1:
+                        fname = os.path.basename(latest_file)
+                        pcount = result["passenger_count"]
+                        driver = result["driver_detected"]
+                        print(f"[File] frame={frame_count}, file={fname}, "
+                              f"passengers={pcount}, driver={driver}")
+            else:
+                if frame_count == 0:
+                    print(f"No log_vllm_*.json files found in {file_dir}, waiting...")
+
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error: {e}")
+        except Exception as e:
+            print(f"File inference error: {e}")
+
+        time.sleep(poll_interval)
 
 
 # ---------------------------------------------------------------------------
@@ -589,11 +681,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Connect to already-running vLLM (without VLM):
+  # Connect to already-running vLLM:
   python vlm_server.py --vllm-url http://localhost:8080
 
-  # Start vLLM + bridge server together (with VLM):
+  # Start vLLM + bridge server together:
   python vlm_server.py --start-vllm --model-path /home/kpit/code/qwen3_offline_4B
+
+  # File-based inference (read pre-computed JSON results):
+  python vlm_server.py --file-dir /home/kpit/tests/logs/incabin/output
 
   # Mock mode for testing:
   python vlm_server.py --mock
@@ -614,6 +709,13 @@ Examples:
     mode_group.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
     mode_group.add_argument("--scenario", type=str, choices=["test-all"], default=None,
                             help="Run a test scenario: 'test-all' cycles through every detection")
+
+    # --- File-based inference ---
+    file_group = parser.add_argument_group("File-based inference")
+    file_group.add_argument("--file-dir", type=str, default=None,
+                            help="Read pre-computed JSON results from this folder (e.g. /home/kpit/tests/logs/incabin/output)")
+    file_group.add_argument("--file-poll-interval", type=float, default=1.0,
+                            help="Seconds between folder scans (default: 1.0)")
 
     # --- vLLM connection ---
     vllm_group = parser.add_argument_group("vLLM connection")
@@ -692,6 +794,16 @@ Examples:
     elif args.mock:
         model_name = "mock"
         thread = threading.Thread(target=mock_inference_loop, args=(args.camera, args.fps), daemon=True)
+    elif args.file_dir:
+        model_name = "file-based"
+        if not os.path.isdir(args.file_dir):
+            print(f"ERROR: File directory does not exist: {args.file_dir}")
+            exit(1)
+        thread = threading.Thread(
+            target=file_inference_loop,
+            args=(args.file_dir, args.file_poll_interval),
+            daemon=True
+        )
     else:
         # Determine vLLM URL — either connect to existing or start new
         vllm_url = args.vllm_url

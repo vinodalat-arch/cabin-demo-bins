@@ -202,6 +202,25 @@ class VlmLauncher:
         tk.Radiobutton(mode_row, text="Start vLLM",
                         variable=self.vllm_mode_var, value="start",
                         command=self._toggle_vllm_fields).pack(side=tk.LEFT, padx=(10, 0))
+        tk.Radiobutton(mode_row, text="File-based",
+                        variable=self.vllm_mode_var, value="file",
+                        command=self._toggle_vllm_fields).pack(side=tk.LEFT, padx=(10, 0))
+
+        # File-based mode: folder path + poll interval
+        self.file_frame = tk.Frame(vllm_frame)
+        self.file_frame.pack(fill=tk.X, pady=2)
+
+        self.file_dir_label = tk.Label(self.file_frame, text="JSON folder:")
+        self.file_dir_label.pack(side=tk.LEFT)
+        self.file_dir_var = tk.StringVar(value="/home/kpit/tests/logs/incabin/output")
+        self.file_dir_entry = tk.Entry(self.file_frame, textvariable=self.file_dir_var, width=32)
+        self.file_dir_entry.pack(side=tk.LEFT, padx=(2, 12), fill=tk.X, expand=True)
+
+        self.file_poll_label = tk.Label(self.file_frame, text="Poll (s):")
+        self.file_poll_label.pack(side=tk.LEFT)
+        self.file_poll_var = tk.StringVar(value="1.0")
+        self.file_poll_entry = tk.Entry(self.file_frame, textvariable=self.file_poll_var, width=5)
+        self.file_poll_entry.pack(side=tk.LEFT, padx=(2, 0))
 
         # Model path (shared by Connect + Start modes)
         self.model_frame = tk.Frame(vllm_frame)
@@ -345,6 +364,14 @@ class VlmLauncher:
                     elif isinstance(widget, tk.Label):
                         widget.config(fg=fg_start)
 
+        # File-based mode fields
+        state_file = tk.NORMAL if mode == "file" else tk.DISABLED
+        fg_file = "black" if mode == "file" else "gray"
+        self.file_dir_entry.config(state=state_file)
+        self.file_dir_label.config(fg=fg_file)
+        self.file_poll_entry.config(state=state_file)
+        self.file_poll_label.config(fg=fg_file)
+
     def _refresh_url(self):
         """Update the displayed URL based on target and host/port settings."""
         if self.target_var.get() == "emulator":
@@ -472,6 +499,13 @@ class VlmLauncher:
             cmd.extend(["--mock", "--scenario", "test-all"])
         elif mode == "mock":
             cmd.append("--mock")
+        elif mode == "file":
+            file_dir = self.file_dir_var.get().strip()
+            if not file_dir:
+                self._log("ERROR: JSON folder path is required")
+                return
+            poll_interval = self.file_poll_var.get().strip() or "1.0"
+            cmd.extend(["--file-dir", file_dir, "--file-poll-interval", poll_interval])
         elif mode == "connect":
             vllm_url = self.vllm_url_var.get().strip()
             if not vllm_url:
