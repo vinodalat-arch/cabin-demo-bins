@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, and remote VLM inference mode (HTTP polling to laptop-hosted VLM server with configurable FPS). Build verified (`assembleDebug` + all 583 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, and auto-switch VLM mode on URL save. Build verified (`assembleDebug` + all 644 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -9,7 +9,7 @@ Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug
 ## What it does
 Two inference modes (selectable at runtime):
 - **Local mode**: Captures USB webcam at configurable FPS (1-3), runs on-device ML inference on CPU
-- **Remote VLM mode**: Polls a laptop-hosted VLM server (Qwen2.5-VL) via HTTP at configurable FPS (1-3), no local camera or model loading needed
+- **Remote VLM mode**: Polls a laptop-hosted VLM bridge server via HTTP at configurable FPS (1-3). Bridge captures webcam and queries external vLLM (Qwen3-VL-4B). No local camera or model loading needed on device
 
 Both modes output JSON with 18 fields: passenger_count, driver_detected, driver_using_phone, driver_eyes_closed, driver_yawning, driver_distracted, driver_eating_drinking, dangerous_posture, child_present, child_slouching, risk_level, distraction_duration_s, ear_value, mar_value, head_yaw, head_pitch, driver_name, timestamp.
 
@@ -211,17 +211,25 @@ score >= 3 → high, >= 1 → medium, else → low
 - **MJPEG safety**: `onBgrFrame()` copies BGR data defensively to avoid data race with MjpegCameraManager's reused internal buffer
 - **Thread safety**: Camera retry thread cancelled via `@Volatile` flag on `onPause()`, preventing background camera reopen
 
-### Remote VLM Inference (VlmClient)
+### Remote VLM Inference (VlmClient + Bridge Server)
 - **Mode**: `Config.INFERENCE_MODE` = "local" (default) or "remote". Mode locked at service start, not changeable during monitoring
+- **Auto-switch**: Saving VLM URL in device app auto-switches to REMOTE mode and restarts monitoring. Clearing URL auto-switches back to LOCAL
 - **VlmClient**: HTTP polling client. Polls `{VLM_SERVER_URL}/api/detect` at `Config.inferenceIntervalMs()` interval
-- **Server**: `scripts/vlm_server.py` — FastAPI server running Qwen2.5-VL-7B on laptop GPU. Mock mode available for testing
+- **Bridge server**: `scripts/vlm_server.py` — FastAPI bridge that captures webcam on laptop, sends base64 JPEG to external vLLM (OpenAI-compatible API), parses response, serves detection results to SA8155
+- **Architecture**: Webcam → bridge server → external vLLM (`/v1/chat/completions`) → parse JSON → apply confidence thresholds → serve via `/api/detect`
+- **vLLM**: Runs externally via `vllm serve /path/to/model`. NOT loaded by bridge script. Default model: Qwen3-VL-4B-Instruct at `/home/kpit/code/qwen3_offline_4B`
+- **Two start modes**:
+  - `--vllm-url http://localhost:8080` — connect to already-running vLLM (bridge only)
+  - `--start-vllm --model-path /path/to/model` — launch vLLM subprocess + bridge together
+- **Dependencies**: fastapi, uvicorn, opencv-python only (no torch/transformers needed on bridge)
 - **Launcher GUI**: `scripts/vlm_launcher.py` — tkinter GUI to manage vlm_server.py (start/stop, health check, test query, log viewer)
-- **Pipeline**: VlmClient → JSON parse → OutputResult → smoother → alerts → dashboard. No camera, no local models
-- **Confidence scoring**: VLM returns per-detection confidence (0.0-1.0), server applies per-detection thresholds (phone=0.6, eyes=0.5, etc.)
+- **Pipeline**: VlmClient → JSON parse → OutputResult → smoother → alerts → dashboard. No camera, no local models on device
+- **Confidence scoring**: VLM returns per-detection confidence (0.0-1.0), bridge applies per-detection thresholds (phone=0.6, eyes=0.5, etc.) before sending booleans to device
 - **Safety**: `distraction_duration_s` always computed on-device regardless of mode
 - **Camera status**: Shows "VLM: Connecting/Active/Lost" in remote mode
 - **Inference badge**: Shows "LOCAL" (blue) or "VLM" (purple) pill during monitoring, captured at start time
-- **Health check**: One-shot `VlmClient.checkHealthOnce()` on URL save and monitoring start (advisory toast)
+- **Health check**: One-shot `VlmClient.checkHealthOnce()` on URL save and monitoring start. Three-state toast: "VLM Offline" / "VLM Loading" / "VLM Online"
+- **vlm_ready flag**: Bridge reports `ready: true/false` in `/api/health` — `true` once vLLM is reachable and inference loop is running
 - **Watchdog**: `restartPipeline()` is mode-aware — restarts VlmClient in remote mode
 - **Activity safety**: `@Volatile isActivityDestroyed` flag guards background health check threads
 - **Parsing**: `parseDetectResponse()` pure companion function — 13 unit tests
@@ -236,6 +244,24 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Speed-gating**: L1 suppressed when PARKED
 - **Platform gate**: `PlatformProfile.enableVehicleChannels` — true on SA8155/SA8255/SA8295, false on GENERIC
 - **Manifest**: `android.car` uses-library (required=false), 9 car permissions, `distractionOptimized=true` on all activities (required for vehicle-moving state)
+
+### Vehicle Speed + Speed-Scaled Escalation
+- **VHAL speed reading**: `Config.SPEED_VHAL_PROPERTY_ID` (0x11600207 = PERF_VEHICLE_SPEED, Float, m/s). Probe + dynamic listener via reflection, same pattern as gear
+- **Speed storage**: `Config.VEHICLE_SPEED_KMH` (`@JvmStatic @Volatile var`, -1f = unavailable). Converted from m/s via `* 3.6f`
+- **Speed tiers**: STATIONARY (0 km/h), SLOW (1-30), MODERATE (31-80), FAST (>80), UNAVAILABLE (-1)
+- **Compressed escalation thresholds** (higher speed = faster escalation):
+
+| Tier | Speed | L2 | L3 | L4 | L5 |
+|------|-------|----|----|----|----|
+| STATIONARY/SLOW | 0-30 km/h | 5s | 10s | 20s | 30s |
+| MODERATE | 31-80 km/h | 3s | 5s | 10s | 20s |
+| FAST | >80 km/h | 0s | 3s | 5s | 10s |
+| UNAVAILABLE | -1 | 5s | 10s | 20s | 30s |
+
+- **Pure functions**: `EscalationLevel.thresholdsForSpeed(speedKmh)` returns `IntArray[L2,L3,L4,L5]`. `resolveLevel()` accepts optional `speedKmh = -1f` parameter (backward compatible)
+- **AlertOrchestrator**: Passes `Config.VEHICLE_SPEED_KMH` to `resolveLevel()` (one-line change)
+- **UI**: Speed displayed in left panel ("-- km/h" when unavailable, "{speed} km/h" when available). Visible during monitoring only
+- **VehicleChannelManager**: `probeCurrentSpeed()`, `registerSpeedListener()`, `speedTier()` companion function
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
@@ -331,21 +357,21 @@ in_cabin_poc-sa8155/
 ```
 
 ## Testing
-- 583 unit tests (all passing):
+- 644 unit tests (all passing):
   - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
+  - ConfigConstantsTest: 37 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation constants)
   - AlertOrchestratorTest: 30 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
-  - ConfigConstantsTest: 33 tests (all Config constant values match documented spec)
   - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
   - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
+  - VehicleChannelManagerTest: 25 tests (VHAL property mapping, channel activation/deactivation, reflection-based Car API, speedTier pure function)
+  - EscalationLevelTest: 24 tests (level progression, duration thresholds, per-detection max level, speed-scaled thresholds, caps with speed)
   - TemporalSmootherTest: 23 tests (voting, face-gating, fast-clear, sustained thresholds incl. yawning min_frames, passenger mode, risk recomputation)
-  - VehicleChannelManagerTest: 20 tests (VHAL property mapping, channel activation/deactivation, reflection-based Car API)
   - MergerTest: 19 tests (risk scoring + merge logic)
   - FlowDriverIdentificationTest: 16 tests (seat-side selection, face region validation, driver_detected schema/merger/smoother, config toggle)
   - VlmClientTest: 13 tests (parseDetectResponse JSON→OutputResult, health check, error handling)
   - FlowMonitoringTest: 12 tests (full pipeline chain — mergeResults → smooth → validate for detection sequences)
   - FlowEscalationTest: 12 tests (escalation ladder timing, cooldown, multi-danger, all-clear reset, Japanese messages)
   - FlowMultiModalEscalationTest: 12 tests (L1-L5 escalation with vehicle channels, per-detection caps, speed gating)
-  - EscalationLevelTest: 10 tests (level progression, duration thresholds, per-detection max level)
   - FlowVlmRemoteTest: 10 tests (VLM pipeline end-to-end: polling → parse → smooth → validate)
   - ChannelPropertyTest: 8 tests (VHAL property IDs, pulse durations, channel enable/disable)
   - FlowConfigToggleTest: 8 tests (Config defaults, toggle state, language effects on alerts, smoother/risk config)

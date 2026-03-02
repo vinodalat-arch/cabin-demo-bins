@@ -248,6 +248,7 @@ def test_all_inference_loop(fps: float = 1.0):
 # ---------------------------------------------------------------------------
 # Confidence thresholds — VLM confidence must exceed these to flag a detection
 # Tuned to reduce false positives: higher = more conservative
+# Defaults here; overridden by CLI args at startup
 # ---------------------------------------------------------------------------
 CONFIDENCE_THRESHOLDS = {
     "driver_using_phone": 0.6,
@@ -260,6 +261,12 @@ CONFIDENCE_THRESHOLDS = {
     "child_present": 0.4,
     "child_slouching": 0.5,
 }
+
+# VLM request parameters — overridden by CLI args at startup
+VLM_MAX_TOKENS = 300
+VLM_TEMPERATURE = 0.1
+VLM_REQUEST_TIMEOUT = 30
+JPEG_QUALITY = 80
 
 
 # ---------------------------------------------------------------------------
@@ -383,8 +390,8 @@ def query_vllm(vllm_url: str, vllm_model: str, image_base64: str) -> Optional[di
                 ]
             }
         ],
-        "max_tokens": 300,
-        "temperature": 0.1,
+        "max_tokens": VLM_MAX_TOKENS,
+        "temperature": VLM_TEMPERATURE,
     }).encode("utf-8")
 
     req = urllib.request.Request(
@@ -395,7 +402,7 @@ def query_vllm(vllm_url: str, vllm_model: str, image_base64: str) -> Optional[di
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=VLM_REQUEST_TIMEOUT) as resp:
             body = json.loads(resp.read().decode("utf-8"))
             text = body["choices"][0]["message"]["content"]
             return extract_json_from_text(text)
@@ -462,7 +469,7 @@ def vlm_inference_loop(vllm_url: str, vllm_model: str, camera_id: int, fps: floa
 
             try:
                 # Encode frame as JPEG base64 for vLLM API
-                _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
                 image_b64 = base64.b64encode(jpeg.tobytes()).decode("utf-8")
 
                 # Query external vLLM
@@ -506,7 +513,10 @@ def vlm_inference_loop(vllm_url: str, vllm_model: str, camera_id: int, fps: floa
 vllm_process: Optional[subprocess.Popen] = None
 
 
-def start_vllm_subprocess(model_path: str, vllm_port: int) -> str:
+def start_vllm_subprocess(model_path: str, vllm_port: int,
+                          gpu_mem_util: float = 0.8,
+                          max_model_len: int = 16384,
+                          startup_timeout: int = 300) -> str:
     """
     Launch vLLM serve as a subprocess. Waits until it's ready.
     Returns the vLLM base URL.
@@ -520,8 +530,8 @@ def start_vllm_subprocess(model_path: str, vllm_port: int) -> str:
         "--host", "0.0.0.0",
         "--port", str(vllm_port),
         "--trust-remote-code",
-        "--gpu-memory-utilization", "0.8",
-        "--max-model-len", "16384",
+        "--gpu-memory-utilization", str(gpu_mem_util),
+        "--max-model-len", str(max_model_len),
         "--limit-mm-per-prompt", '{"video": 1}',
         "--enforce-eager",
         "--allowed-local-media-path", "/",
@@ -532,8 +542,8 @@ def start_vllm_subprocess(model_path: str, vllm_port: int) -> str:
     vllm_process = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
 
     # Wait for vLLM to become ready (poll /v1/models)
-    print("Waiting for vLLM to load model (this may take 1-5 minutes) ...")
-    max_wait = 300  # 5 minutes
+    print(f"Waiting for vLLM to load model (timeout: {startup_timeout}s) ...")
+    max_wait = startup_timeout
     start = time.time()
     while time.time() - start < max_wait:
         detected = check_vllm_health(vllm_url)
@@ -588,27 +598,92 @@ Examples:
   # Mock mode for testing:
   python vlm_server.py --mock
 """)
-    parser.add_argument("--port", type=int, default=8000, help="This server's port (default: 8000)")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
-    parser.add_argument("--camera", type=int, default=0, help="Camera device ID (default: 0)")
-    parser.add_argument("--fps", type=float, default=2.0, help="Inference FPS (default: 2.0)")
-    parser.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
-    parser.add_argument("--scenario", type=str, choices=["test-all"], default=None,
-                        help="Run a test scenario: 'test-all' cycles through every detection")
+    # --- Bridge server ---
+    server_group = parser.add_argument_group("Bridge server")
+    server_group.add_argument("--port", type=int, default=8000, help="This server's port (default: 8000)")
+    server_group.add_argument("--host", type=str, default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
 
-    # Mode 1: Connect to existing vLLM (without VLM)
-    parser.add_argument("--vllm-url", type=str, default=None,
-                        help="Connect to already-running vLLM server (e.g. http://localhost:8080)")
+    # --- Camera ---
+    cam_group = parser.add_argument_group("Camera")
+    cam_group.add_argument("--camera", type=int, default=0, help="Camera device ID (default: 0)")
+    cam_group.add_argument("--fps", type=float, default=2.0, help="Inference FPS (default: 2.0)")
+    cam_group.add_argument("--jpeg-quality", type=int, default=80, help="JPEG encode quality 1-100 (default: 80)")
 
-    # Mode 2: Start vLLM + bridge (with VLM)
-    parser.add_argument("--start-vllm", action="store_true",
-                        help="Start vLLM server automatically (requires --model-path)")
-    parser.add_argument("--model-path", type=str, default=None,
-                        help="Local model path for vLLM (e.g. /home/kpit/code/qwen3_offline_4B)")
-    parser.add_argument("--vllm-port", type=int, default=8080,
-                        help="Port for vLLM server when using --start-vllm (default: 8080)")
+    # --- Mode ---
+    mode_group = parser.add_argument_group("Mode")
+    mode_group.add_argument("--mock", action="store_true", help="Use mock inference (no real VLM)")
+    mode_group.add_argument("--scenario", type=str, choices=["test-all"], default=None,
+                            help="Run a test scenario: 'test-all' cycles through every detection")
+
+    # --- vLLM connection ---
+    vllm_group = parser.add_argument_group("vLLM connection")
+    vllm_group.add_argument("--vllm-url", type=str, default=None,
+                            help="Connect to already-running vLLM server (e.g. http://localhost:8080)")
+    vllm_group.add_argument("--start-vllm", action="store_true",
+                            help="Start vLLM server automatically (requires --model-path)")
+    vllm_group.add_argument("--model-path", type=str, default="/home/kpit/code/qwen3_offline_4B",
+                            help="Local model path for vLLM (default: /home/kpit/code/qwen3_offline_4B)")
+    vllm_group.add_argument("--vllm-port", type=int, default=8080,
+                            help="Port for vLLM server when using --start-vllm (default: 8080)")
+
+    # --- vLLM launch parameters (used with --start-vllm) ---
+    launch_group = parser.add_argument_group("vLLM launch parameters (used with --start-vllm)")
+    launch_group.add_argument("--gpu-memory-utilization", type=float, default=0.8,
+                              help="vLLM GPU memory fraction (default: 0.8)")
+    launch_group.add_argument("--max-model-len", type=int, default=16384,
+                              help="vLLM max model context length (default: 16384)")
+    launch_group.add_argument("--vllm-startup-timeout", type=int, default=300,
+                              help="Seconds to wait for vLLM to load model (default: 300)")
+
+    # --- VLM inference parameters ---
+    vlm_group = parser.add_argument_group("VLM inference parameters")
+    vlm_group.add_argument("--max-tokens", type=int, default=300,
+                           help="Max tokens for VLM response (default: 300)")
+    vlm_group.add_argument("--temperature", type=float, default=0.1,
+                           help="VLM sampling temperature (default: 0.1)")
+    vlm_group.add_argument("--request-timeout", type=int, default=30,
+                           help="Timeout in seconds for vLLM API requests (default: 30)")
+
+    # --- Confidence thresholds ---
+    thresh_group = parser.add_argument_group("Confidence thresholds (VLM confidence → boolean)")
+    thresh_group.add_argument("--thresh-phone", type=float, default=0.6,
+                              help="driver_using_phone threshold (default: 0.6)")
+    thresh_group.add_argument("--thresh-eyes", type=float, default=0.5,
+                              help="driver_eyes_closed threshold (default: 0.5)")
+    thresh_group.add_argument("--thresh-yawning", type=float, default=0.5,
+                              help="driver_yawning threshold (default: 0.5)")
+    thresh_group.add_argument("--thresh-distracted", type=float, default=0.5,
+                              help="driver_distracted threshold (default: 0.5)")
+    thresh_group.add_argument("--thresh-eating", type=float, default=0.5,
+                              help="driver_eating_drinking threshold (default: 0.5)")
+    thresh_group.add_argument("--thresh-hands", type=float, default=0.6,
+                              help="hands_off_wheel threshold (default: 0.6)")
+    thresh_group.add_argument("--thresh-posture", type=float, default=0.5,
+                              help="dangerous_posture threshold (default: 0.5)")
+    thresh_group.add_argument("--thresh-child", type=float, default=0.4,
+                              help="child_present threshold (default: 0.4)")
+    thresh_group.add_argument("--thresh-slouching", type=float, default=0.5,
+                              help="child_slouching threshold (default: 0.5)")
 
     args = parser.parse_args()
+
+    # Apply CLI args to global config
+    global CONFIDENCE_THRESHOLDS, VLM_MAX_TOKENS, VLM_TEMPERATURE, VLM_REQUEST_TIMEOUT, JPEG_QUALITY
+    CONFIDENCE_THRESHOLDS = {
+        "driver_using_phone": args.thresh_phone,
+        "driver_eyes_closed": args.thresh_eyes,
+        "driver_yawning": args.thresh_yawning,
+        "driver_distracted": args.thresh_distracted,
+        "driver_eating_drinking": args.thresh_eating,
+        "hands_off_wheel": args.thresh_hands,
+        "dangerous_posture": args.thresh_posture,
+        "child_present": args.thresh_child,
+        "child_slouching": args.thresh_slouching,
+    }
+    VLM_MAX_TOKENS = args.max_tokens
+    VLM_TEMPERATURE = args.temperature
+    VLM_REQUEST_TIMEOUT = args.request_timeout
+    JPEG_QUALITY = args.jpeg_quality
 
     global model_name
     if args.scenario == "test-all":
@@ -623,15 +698,12 @@ Examples:
 
         if args.start_vllm:
             # Mode 2: Start vLLM ourselves
-            if not args.model_path:
-                print("=" * 60)
-                print("ERROR: --model-path is required with --start-vllm")
-                print()
-                print("Usage:")
-                print("  python vlm_server.py --start-vllm --model-path /path/to/model")
-                print("=" * 60)
-                exit(1)
-            vllm_url = start_vllm_subprocess(args.model_path, args.vllm_port)
+            vllm_url = start_vllm_subprocess(
+                args.model_path, args.vllm_port,
+                gpu_mem_util=args.gpu_memory_utilization,
+                max_model_len=args.max_model_len,
+                startup_timeout=args.vllm_startup_timeout,
+            )
             import atexit
             atexit.register(cleanup_vllm)
         elif not vllm_url:

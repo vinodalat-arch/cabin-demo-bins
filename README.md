@@ -9,7 +9,7 @@ Real-time driver monitoring system for Android Automotive IVI platforms. Detects
 | Mode | How it works | What you need |
 |------|-------------|---------------|
 | **Local** (default) | USB webcam + on-device ML models (YOLO, MediaPipe, MobileFaceNet) | SA8155/SA8295 or any Android device with camera |
-| **Remote VLM** | Polls a laptop-hosted VLM server (Qwen2.5-VL) via HTTP | Laptop with GPU + Android device on same network |
+| **Remote VLM** | Polls a laptop-hosted bridge server that queries external vLLM (Qwen3-VL-4B) via HTTP | Laptop with GPU running vLLM + Android device on same network |
 
 ## Quick Start
 
@@ -48,36 +48,48 @@ Place these in `app/src/main/assets/` (gitignored due to size):
 
 ## Remote VLM Server (Laptop Setup)
 
-When you don't want to run ML models on-device (or want to use a more powerful VLM like Qwen2.5-VL-7B), you can run inference on your laptop and have the Android app poll results over HTTP.
+When you don't want to run ML models on-device (or want to use a more powerful VLM like Qwen3-VL-4B), you can run inference on your laptop and have the Android app poll results over HTTP.
+
+### Architecture
+
+```
+Laptop:  Webcam → vlm_server.py (bridge) → vLLM (OpenAI API) → parse → /api/detect
+Device:  SA8155 app → HTTP poll /api/detect → smoother → alerts → dashboard
+```
+
+The bridge server (`vlm_server.py`) captures webcam frames, sends base64 JPEG to an external vLLM server's OpenAI-compatible API, parses the VLM response, applies confidence thresholds, and serves detection results to the SA8155 device.
 
 ### What Runs on the Laptop
 
-All VLM server components are in the `scripts/` directory:
-
-| File | Purpose |
-|------|---------|
-| `vlm_server.py` | FastAPI server — captures webcam, runs VLM inference, serves results via REST API |
-| `vlm_launcher.py` | Desktop GUI (tkinter) — start/stop server, configure settings, monitor connection |
-| `requirements.txt` | Python dependencies for the server |
+| Component | Purpose |
+|-----------|---------|
+| **vLLM** | Serves the VLM model (Qwen3-VL-4B) with OpenAI-compatible API. Runs separately |
+| `vlm_server.py` | Bridge server — captures webcam, queries vLLM, serves results to device |
+| `vlm_launcher.py` | Desktop GUI (tkinter) — start/stop server, monitor connection |
+| `requirements.txt` | Python dependencies for bridge server (fastapi, uvicorn, opencv-python) |
 
 ### Server Setup
 
 ```bash
-# 1. Create a Python virtual environment
+# 1. Start vLLM (in a separate terminal)
+vllm serve /home/kpit/code/qwen3_offline_4B \
+  --host 0.0.0.0 --port 8080 \
+  --trust-remote-code --gpu-memory-utilization 0.8 \
+  --max-model-len 16384 --limit-mm-per-prompt '{"video": 1}' \
+  --enforce-eager --allowed-local-media-path /
+
+# 2. Install bridge server dependencies
 cd scripts
-python3 -m venv .venv
-source .venv/bin/activate   # macOS/Linux
-# .venv\Scripts\activate    # Windows
+pip install fastapi uvicorn opencv-python
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 3a. Connect bridge to already-running vLLM
+python vlm_server.py --vllm-url http://localhost:8080
 
-# 3a. Quick test (mock mode — no GPU needed)
+# 3b. OR start vLLM + bridge together (auto-launches vLLM)
+python vlm_server.py --start-vllm --model-path /home/kpit/code/qwen3_offline_4B
+
+# 3c. Mock mode for testing (no GPU needed)
 python vlm_server.py --mock
-
-# 3b. Real VLM inference (requires GPU + ~16GB VRAM)
-pip install transformers torch Pillow
-python vlm_server.py --model Qwen/Qwen2.5-VL-7B-Instruct --camera 0
 ```
 
 ### Server Endpoints
@@ -85,20 +97,54 @@ python vlm_server.py --model Qwen/Qwen2.5-VL-7B-Instruct --camera 0
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/detect` | GET | Returns latest detection result as JSON |
-| `/api/health` | GET | Returns server status, model info, client connection state |
+| `/api/health` | GET | Returns server + vLLM status (`ready: true/false`) |
 
 ### Server Options
+
+Every parameter is configurable via CLI args with sensible defaults:
 
 ```
 python vlm_server.py [OPTIONS]
 
-  --port PORT        Server port (default: 8000)
-  --host HOST        Bind address (default: 0.0.0.0)
-  --camera ID        Webcam device ID (default: 0)
-  --fps FPS          Inference rate (default: 2.0)
-  --model NAME       HuggingFace model (default: Qwen/Qwen2.5-VL-7B-Instruct)
-  --mock             Mock mode — cycles fake detections, no GPU needed
-  --scenario test-all  Cycles through every detection type for testing alerts
+  Bridge server:
+    --port PORT                    Bridge server port (default: 8000)
+    --host HOST                    Bind address (default: 0.0.0.0)
+
+  Camera:
+    --camera ID                    Webcam device ID (default: 0)
+    --fps FPS                      Inference rate (default: 2.0)
+    --jpeg-quality N               JPEG encode quality 1-100 (default: 80)
+
+  Mode:
+    --mock                         Mock mode — cycles fake detections, no vLLM needed
+    --scenario test-all            Cycles through every detection type for testing
+
+  vLLM connection (one required unless --mock):
+    --vllm-url URL                 Connect to already-running vLLM (e.g. http://localhost:8080)
+    --start-vllm                   Start vLLM server automatically
+    --model-path PATH              Local model path (default: /home/kpit/code/qwen3_offline_4B)
+    --vllm-port PORT               Port for auto-started vLLM (default: 8080)
+
+  vLLM launch parameters (used with --start-vllm):
+    --gpu-memory-utilization N     GPU memory fraction (default: 0.8)
+    --max-model-len N              Max context length (default: 16384)
+    --vllm-startup-timeout N       Seconds to wait for model load (default: 300)
+
+  VLM inference:
+    --max-tokens N                 Max tokens for VLM response (default: 300)
+    --temperature N                Sampling temperature (default: 0.1)
+    --request-timeout N            vLLM API request timeout in seconds (default: 30)
+
+  Confidence thresholds (VLM score → boolean):
+    --thresh-phone N               driver_using_phone (default: 0.6)
+    --thresh-eyes N                driver_eyes_closed (default: 0.5)
+    --thresh-yawning N             driver_yawning (default: 0.5)
+    --thresh-distracted N          driver_distracted (default: 0.5)
+    --thresh-eating N              driver_eating_drinking (default: 0.5)
+    --thresh-hands N               hands_off_wheel (default: 0.6)
+    --thresh-posture N             dangerous_posture (default: 0.5)
+    --thresh-child N               child_present (default: 0.4)
+    --thresh-slouching N           child_slouching (default: 0.5)
 ```
 
 ### Using the Launcher GUI
@@ -111,20 +157,21 @@ The launcher provides a desktop window with:
 - **Start/Stop** button for the server
 - **Server URL** display with copy-to-clipboard (paste into Android app settings)
 - **Target toggle**: Real device (LAN IP) vs Emulator (10.0.2.2)
-- **Settings**: Port, camera, FPS, mock mode, HuggingFace model name
+- **Settings**: Port, camera, FPS, mock mode
 - **Test buttons**: Health check and detection query
 - **Live log viewer**: Real-time server output
 - **Client status**: Shows whether the Android app is connected and polling
 
 ### Connecting Android App to VLM Server
 
-1. Start the VLM server on your laptop
+1. Start vLLM + bridge server on your laptop (see setup above)
 2. On the Android app, open settings (5-tap gesture)
-3. Select **REMOTE** inference mode
-4. Tap **VLM Server URL** and enter `http://<laptop-ip>:8000`
-5. Tap START — the app polls the server instead of using local camera/models
+3. Tap **VLM Server URL** and enter `http://<laptop-ip>:8000` — app auto-switches to REMOTE mode
+4. Tap START — the app polls the bridge server instead of using local camera/models
 
-The app shows a **VLM** badge (purple pill) during remote inference. Camera status dot shows VLM connection state (Connecting / Active / Lost).
+The app shows a **VLM** badge (purple pill) during remote inference. Camera status dot shows VLM connection state (Connecting / Active / Lost). Health check shows three states: "VLM Offline" / "VLM Loading" / "VLM Online".
+
+> **Note**: Saving a VLM URL auto-switches to REMOTE mode and restarts monitoring. Clearing the URL auto-switches back to LOCAL.
 
 > **Safety**: `distraction_duration_s` is always computed on-device regardless of inference mode.
 
@@ -161,6 +208,10 @@ Sustained distraction triggers progressively stronger responses:
 
 Vehicle hardware actions require SA8155/SA8295 with VHAL support. On generic Android, only app-level alerts (voice, dashboard, notification) are active.
 
+**Speed-scaled escalation**: At higher vehicle speeds, thresholds compress for faster response:
+- **Moderate (31-80 km/h)**: ~2x faster (L2=3s, L3=5s, L4=10s, L5=20s)
+- **Fast (>80 km/h)**: ~3x faster (L2=0s, L3=3s, L4=5s, L5=10s)
+
 ---
 
 ## Project Structure
@@ -172,7 +223,7 @@ in_cabin_poc-sa8155/
 │   ├── cpp/                 C++ inference (ONNX Runtime, V4L2, JNI)
 │   ├── kotlin/com/incabin/  Kotlin source (service, UI, analyzers, alerts)
 │   └── res/                 Layouts, strings, styles, drawables
-├── app/src/test/kotlin/     Unit tests (625 tests)
+├── app/src/test/kotlin/     Unit tests (644 tests)
 ├── scripts/
 │   ├── vlm_server.py        VLM inference server (laptop)
 │   ├── vlm_launcher.py      VLM server GUI launcher (laptop)
@@ -193,7 +244,7 @@ in_cabin_poc-sa8155/
 | Script | Runs On | Purpose |
 |--------|---------|---------|
 | `deploy.sh` | Dev machine | Build APK, install, grant permissions, launch app |
-| `vlm_server.py` | Laptop | VLM inference server (FastAPI + webcam + Qwen2.5-VL) |
+| `vlm_server.py` | Laptop | VLM bridge server (FastAPI + webcam + external vLLM) |
 | `vlm_launcher.py` | Laptop | GUI to manage vlm_server.py |
 | `requirements.txt` | Laptop | Python dependencies for VLM server |
 | `capture-logs.sh` | Dev machine | Capture device logcat for performance analysis |
@@ -211,7 +262,7 @@ in_cabin_poc-sa8155/
 ## Testing
 
 ```bash
-./gradlew test     # 625 unit tests
+./gradlew test     # 644 unit tests
 ```
 
 ## On-Device Performance
