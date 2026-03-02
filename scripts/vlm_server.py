@@ -100,6 +100,12 @@ def default_result() -> dict:
         "head_pitch": None,
         "driver_name": None,
         "driver_detected": True,
+        "seat_map": {
+            "driver": {"occupied": True, "state": "Upright"},
+            "front_passenger": {"occupied": False, "state": "Vacant"},
+            "rear_left": {"occupied": False, "state": "Vacant"},
+            "rear_right": {"occupied": False, "state": "Vacant"},
+        },
     }
 
 # ---------------------------------------------------------------------------
@@ -311,6 +317,20 @@ def parse_file_result(data: dict) -> dict:
         if result["driver_eating_drinking"]: score += 1
         result["risk_level"] = "high" if score >= 3 else "medium" if score >= 1 else "low"
 
+        # Per-seat map from occupant analysis
+        def seat_entry(seat_key, is_driver=False):
+            state_raw = occupants.get(seat_key, {}).get("answer", "Vacant").lower()
+            occupied = state_raw != "vacant"
+            state = state_raw.capitalize() if occupied else "Vacant"
+            return {"occupied": occupied, "state": state}
+
+        result["seat_map"] = {
+            "driver": seat_entry("DRIVER_STATE", is_driver=True),
+            "front_passenger": seat_entry("FRONT_PASSENGER_STATE"),
+            "rear_left": seat_entry("REAR_LEFT_STATE"),
+            "rear_right": seat_entry("REAR_RIGHT_STATE"),
+        }
+
     except Exception as e:
         print(f"Error parsing file result: {e}")
 
@@ -468,6 +488,29 @@ def apply_confidence_thresholds(vlm_result: dict) -> dict:
     if result.get("driver_eating_drinking"): score += 1
     if result.get("child_slouching"): score += 1
     result["risk_level"] = "high" if score >= 3 else "medium" if score >= 1 else "low"
+
+    # Derive seat_map from thresholded result (VLM mode)
+    driver_state = "Vacant"
+    if result["driver_detected"]:
+        if result.get("driver_eyes_closed"):
+            driver_state = "Sleeping"
+        elif result.get("driver_using_phone"):
+            driver_state = "Phone"
+        elif result.get("driver_distracted"):
+            driver_state = "Distracted"
+        elif result.get("driver_eating_drinking"):
+            driver_state = "Eating"
+        elif result.get("driver_yawning"):
+            driver_state = "Yawning"
+        else:
+            driver_state = "Upright"
+    pax_count = result.get("passenger_count", 1)
+    result["seat_map"] = {
+        "driver": {"occupied": result["driver_detected"], "state": driver_state},
+        "front_passenger": {"occupied": pax_count >= 2, "state": "Upright" if pax_count >= 2 else "Vacant"},
+        "rear_left": {"occupied": pax_count >= 3, "state": "Upright" if pax_count >= 3 else "Vacant"},
+        "rear_right": {"occupied": pax_count >= 4, "state": "Upright" if pax_count >= 4 else "Vacant"},
+    }
 
     return result
 

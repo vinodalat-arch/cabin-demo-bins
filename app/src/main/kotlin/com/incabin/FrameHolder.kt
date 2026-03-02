@@ -35,6 +35,12 @@ object FrameHolder {
 
     fun getPassengerPostures(): List<PassengerPosture> = latestPassengerPostures.get()
 
+    /** Per-seat occupancy and state for UI display. */
+    private val latestSeatMap = AtomicReference<SeatMap?>(null)
+
+    fun postSeatMap(seatMap: SeatMap) { latestSeatMap.set(seatMap) }
+    fun getSeatMap(): SeatMap? = latestSeatMap.get()
+
     /** BGR face crop for registration UI. */
     data class CaptureData(val bgrCrop: ByteArray, val cropWidth: Int, val cropHeight: Int)
     private val latestCapture = AtomicReference<CaptureData?>(null)
@@ -118,6 +124,7 @@ object FrameHolder {
         latestResult.set(null)
         latestCapture.set(null)
         latestPassengerPostures.set(emptyList())
+        latestSeatMap.set(null)
         cameraStatus.set(CameraStatus.NOT_CONNECTED)
         latestRearResult.set(null)
         rearCameraStatus.set(CameraStatus.NOT_CONNECTED)

@@ -891,6 +891,20 @@ class InCabinService : Service() {
                 Log.w(TAG, "Failed to post passenger postures", e)
             }
 
+            // Step 8.7: Per-seat position assignment (display-only, not in OutputResult)
+            try {
+                val driverState = SeatAssigner.deriveDriverState(finalResult)
+                val seatMap = SeatAssigner.assign(
+                    persons = poseResult.persons,
+                    driverSeatSide = Config.DRIVER_SEAT_SIDE,
+                    frameWidth = Config.CAMERA_WIDTH,
+                    driverState = driverState
+                )
+                FrameHolder.postSeatMap(seatMap)
+            } catch (e: Exception) {
+                Log.w(TAG, "Seat assignment failed", e)
+            }
+
             // Step 9: Render overlay and post bitmap to FrameHolder (skipped when preview disabled)
             if (Config.ENABLE_PREVIEW) {
                 try {

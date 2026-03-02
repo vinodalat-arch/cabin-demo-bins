@@ -285,6 +285,67 @@ class VlmClientTest {
     }
 
     // -------------------------------------------------------------------------
+    // parseSeatMap (3 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_parseSeatMap_valid() {
+        val json = """
+        {
+            "seat_map": {
+                "driver": {"occupied": true, "state": "Upright"},
+                "front_passenger": {"occupied": true, "state": "Sleeping"},
+                "rear_left": {"occupied": false, "state": "Vacant"},
+                "rear_right": {"occupied": true, "state": "Phone"}
+            }
+        }
+        """.trimIndent()
+        val obj = com.google.gson.Gson().fromJson(json, com.google.gson.JsonObject::class.java)
+        val seatMap = VlmClient.parseSeatMap(obj)
+        assertNotNull(seatMap)
+        seatMap!!
+        assertTrue(seatMap.driver.occupied)
+        assertEquals("Upright", seatMap.driver.state)
+        assertTrue(seatMap.frontPassenger.occupied)
+        assertEquals("Sleeping", seatMap.frontPassenger.state)
+        assertFalse(seatMap.rearLeft.occupied)
+        assertEquals("Vacant", seatMap.rearLeft.state)
+        assertTrue(seatMap.rearRight.occupied)
+        assertEquals("Phone", seatMap.rearRight.state)
+    }
+
+    @Test
+    fun test_parseSeatMap_missing() {
+        val json = """{"timestamp": "2025-01-01T00:00:00Z"}"""
+        val obj = com.google.gson.Gson().fromJson(json, com.google.gson.JsonObject::class.java)
+        val seatMap = VlmClient.parseSeatMap(obj)
+        assertNull(seatMap)
+    }
+
+    @Test
+    fun test_parseSeatMap_partial() {
+        // Only driver and front_passenger, missing rear seats → defaults to Vacant
+        val json = """
+        {
+            "seat_map": {
+                "driver": {"occupied": true, "state": "Distracted"},
+                "front_passenger": {"occupied": false, "state": "Vacant"}
+            }
+        }
+        """.trimIndent()
+        val obj = com.google.gson.Gson().fromJson(json, com.google.gson.JsonObject::class.java)
+        val seatMap = VlmClient.parseSeatMap(obj)
+        assertNotNull(seatMap)
+        seatMap!!
+        assertTrue(seatMap.driver.occupied)
+        assertEquals("Distracted", seatMap.driver.state)
+        assertFalse(seatMap.rearLeft.occupied)
+        assertEquals("Vacant", seatMap.rearLeft.state)
+        assertFalse(seatMap.rearRight.occupied)
+        assertEquals("Vacant", seatMap.rearRight.state)
+    }
+
+    // -------------------------------------------------------------------------
     // buildHealthUrl / buildDetectUrl (2 tests)
     // -------------------------------------------------------------------------
 

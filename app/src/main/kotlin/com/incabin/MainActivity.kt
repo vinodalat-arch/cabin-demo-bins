@@ -393,7 +393,7 @@ class MainActivity : Activity() {
                         updateAiStatus(result)
                         updateTicker(result)
                         updateBottomWidget(result)
-                        updatePassengerPostures()
+                        updateSeatMap()
                         updateAsimoPose(result)
                         totalFrames++
                         scoreSum += drivingScore
@@ -1987,23 +1987,49 @@ class MainActivity : Activity() {
         tv.animate().alpha(1f).setDuration(200).start()
     }
 
-    // --- Passenger posture display ---
-    private var currentPassengerPostures = emptyList<FrameHolder.PassengerPosture>()
+    // --- Seat map display ---
+    private var currentSeatMap: SeatMap? = null
 
-    private fun updatePassengerPostures() {
-        val postures = FrameHolder.getPassengerPostures()
-        if (postures == currentPassengerPostures) return
-        currentPassengerPostures = postures
+    private fun updateSeatMap() {
+        val seatMap = FrameHolder.getSeatMap()
+        if (seatMap == currentSeatMap) return
+        currentSeatMap = seatMap
 
         passengerPostureContainer.removeAllViews()
-        for (p in postures) {
-            if (!p.hasBadPosture) continue
-            val isJa = Config.LANGUAGE == "ja"
-            val label = if (isJa) "\u25CF  乗客${p.index}: 姿勢不良" else "\u25CF  Passenger ${p.index}: Bad Posture"
+        if (seatMap == null) return
+
+        val isJa = Config.LANGUAGE == "ja"
+        val seats = listOf(
+            (if (isJa) "ドライバー" else "Driver") to seatMap.driver,
+            (if (isJa) "助手席" else "Front Passenger") to seatMap.frontPassenger,
+            (if (isJa) "後席左" else "Rear Left") to seatMap.rearLeft,
+            (if (isJa) "後席右" else "Rear Right") to seatMap.rearRight
+        )
+
+        for ((name, state) in seats) {
+            if (!state.occupied && state.state == "Vacant") continue
+            val color = when (state.state) {
+                "Upright" -> colorSafe
+                "Vacant" -> colorTextMuted
+                else -> colorCaution  // Sleeping, Distracted, Phone, Eating, Yawning
+            }
+            val stateLabel = if (isJa) {
+                when (state.state) {
+                    "Upright" -> "正常"
+                    "Sleeping" -> "居眠り"
+                    "Distracted" -> "よそ見"
+                    "Phone" -> "スマホ"
+                    "Eating" -> "飲食"
+                    "Yawning" -> "あくび"
+                    "Vacant" -> "空席"
+                    else -> state.state
+                }
+            } else state.state
+            val label = "\u25CF  $name: $stateLabel"
             val tv = TextView(this).apply {
                 text = label
                 textSize = 20f
-                setTextColor(colorCaution)
+                setTextColor(color)
                 setPadding(0, dpToPx(2), 0, dpToPx(2))
                 alpha = 0f
             }

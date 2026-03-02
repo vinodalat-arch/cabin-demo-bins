@@ -392,4 +392,13 @@ class ConfigConstantsTest {
         assertEquals(5, Config.CLIMATE_DEBOUNCE_FRAMES)
         assertEquals(0.5f, Config.CLIMATE_RAMP_STEP_C, 0.001f)
     }
+
+    // -------------------------------------------------------------------------
+    // Seat assignment (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_seat_front_row_area_ratio() {
+        assertEquals(0.40f, Config.SEAT_FRONT_ROW_AREA_RATIO, 0.001f)
+    }
 }

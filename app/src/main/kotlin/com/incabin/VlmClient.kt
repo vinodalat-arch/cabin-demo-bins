@@ -29,6 +29,38 @@ class VlmClient(
         private val gson = Gson()
 
         /**
+         * Parse an optional seat_map object from VLM /api/detect JSON.
+         * Returns null if the field is missing or malformed. Pure function.
+         */
+        fun parseSeatMap(obj: JsonObject): SeatMap? {
+            val seatMapObj = obj.getAsJsonObject("seat_map") ?: return null
+            return try {
+                val parseSeat = { key: String ->
+                    val seatObj = seatMapObj.getAsJsonObject(key)
+                    if (seatObj == null) {
+                        SeatState(false, "Vacant")
+                    } else {
+                        val occupied = seatObj.get("occupied")?.takeIf {
+                            it.isJsonPrimitive && it.asJsonPrimitive.isBoolean
+                        }?.asBoolean ?: false
+                        val state = seatObj.get("state")?.takeIf {
+                            it.isJsonPrimitive && it.asJsonPrimitive.isString
+                        }?.asString ?: "Vacant"
+                        SeatState(occupied, state)
+                    }
+                }
+                SeatMap(
+                    driver = parseSeat("driver"),
+                    frontPassenger = parseSeat("front_passenger"),
+                    rearLeft = parseSeat("rear_left"),
+                    rearRight = parseSeat("rear_right")
+                )
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        /**
          * Parse a VLM /api/detect JSON response into an OutputResult.
          * Returns null on malformed input. Pure function — fully unit-testable.
          */
@@ -204,6 +236,16 @@ class VlmClient(
                                     wasConnected = true
                                 }
                                 backoffMs = Config.V4L2_RECONNECT_INITIAL_DELAY_MS
+                                // Parse and post seat_map if present
+                                try {
+                                    val jsonObj = gson.fromJson(body, JsonObject::class.java)
+                                    val seatMap = parseSeatMap(jsonObj)
+                                    if (seatMap != null) {
+                                        FrameHolder.postSeatMap(seatMap)
+                                    }
+                                } catch (e: Exception) {
+                                    // Seat map parsing is display-only, don't disrupt pipeline
+                                }
                                 onResult(result)
                             } else {
                                 Log.w(TAG, "Malformed VLM response, skipping")

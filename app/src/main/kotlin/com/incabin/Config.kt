@@ -174,6 +174,9 @@ object Config {
     // In-cabin risk dampening during reverse
     const val REVERSE_RISK_CAP = "medium"  // cap in-cabin risk at medium during reverse
 
+    // Seat assignment
+    const val SEAT_FRONT_ROW_AREA_RATIO = 0.40f  // bbox area ratio for front/rear discrimination
+
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3
     const val RISK_WEIGHT_EYES = 3
