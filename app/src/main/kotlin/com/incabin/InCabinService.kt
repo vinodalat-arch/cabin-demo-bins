@@ -772,8 +772,10 @@ class InCabinService : Service() {
         if (!pipelineLock.tryLock()) return
         try {
             // Step 1: Run PoseAnalyzer (C++/JNI) with seat-side selection
+            // Config stores user perspective (which side of the car the driver sits on).
+            // Camera faces the occupants, so left/right are mirrored — invert for frame detection.
             val poseStartMs = System.currentTimeMillis()
-            val seatOnLeft = Config.DRIVER_SEAT_SIDE == "left"
+            val seatOnLeft = Config.DRIVER_SEAT_SIDE == "right"
             val poseResult = poseAnalyzer?.analyze(bgrData, width, height, seatOnLeft) ?: PoseResult()
             val poseElapsed = System.currentTimeMillis() - poseStartMs
 
@@ -894,9 +896,11 @@ class InCabinService : Service() {
             // Step 8.7: Per-seat position assignment (display-only, not in OutputResult)
             try {
                 val driverState = SeatAssigner.deriveDriverState(finalResult)
+                // Invert side for frame coordinates (camera mirrors left/right)
+                val frameSide = if (Config.DRIVER_SEAT_SIDE == "left") "right" else "left"
                 val seatMap = SeatAssigner.assign(
                     persons = poseResult.persons,
-                    driverSeatSide = Config.DRIVER_SEAT_SIDE,
+                    driverSeatSide = frameSide,
                     frameWidth = Config.CAMERA_WIDTH,
                     driverState = driverState
                 )

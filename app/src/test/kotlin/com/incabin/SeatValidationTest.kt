@@ -104,11 +104,11 @@ class SeatValidationTest {
     @Test fun color_upright()    = assertEquals("safe",   CarSeatMapView.seatColor("Upright"))
     @Test fun color_sleeping()   = assertEquals("danger", CarSeatMapView.seatColor("Sleeping"))
     @Test fun color_phone()      = assertEquals("danger", CarSeatMapView.seatColor("Phone"))
-    @Test fun color_distracted() = assertEquals("danger", CarSeatMapView.seatColor("Distracted"))
-    @Test fun color_eating()     = assertEquals("danger", CarSeatMapView.seatColor("Eating"))
-    @Test fun color_yawning()    = assertEquals("danger", CarSeatMapView.seatColor("Yawning"))
+    @Test fun color_distracted() = assertEquals("caution", CarSeatMapView.seatColor("Distracted"))
+    @Test fun color_eating()     = assertEquals("caution", CarSeatMapView.seatColor("Eating"))
+    @Test fun color_yawning()    = assertEquals("caution", CarSeatMapView.seatColor("Yawning"))
     @Test fun color_vacant()     = assertEquals("vacant", CarSeatMapView.seatColor("Vacant"))
-    @Test fun color_unknown()    = assertEquals("danger", CarSeatMapView.seatColor("SomethingElse"))
+    @Test fun color_unknown()    = assertEquals("caution", CarSeatMapView.seatColor("SomethingElse"))
 
     // =====================================================================
     // 3. CarSeatMapView companion — stateIcon (8 tests)
@@ -724,8 +724,14 @@ class SeatValidationTest {
             driver = "Phone", frontPax = "Sleeping",
             rearL = "Distracted", rearC = "Eating", rearR = "Yawning"
         )
+        // Critical states → "danger", warning states → "caution"
+        assertEquals("danger", CarSeatMapView.seatColor(m.driver.state))      // Phone
+        assertEquals("danger", CarSeatMapView.seatColor(m.frontPassenger.state)) // Sleeping
+        assertEquals("caution", CarSeatMapView.seatColor(m.rearLeft.state))    // Distracted
+        assertEquals("caution", CarSeatMapView.seatColor(m.rearCenter.state))  // Eating
+        assertEquals("caution", CarSeatMapView.seatColor(m.rearRight.state))   // Yawning
+        // All are non-safe (isDanger returns true for all)
         listOf(m.driver, m.frontPassenger, m.rearLeft, m.rearCenter, m.rearRight).forEach {
-            assertEquals("danger", CarSeatMapView.seatColor(it.state))
             assertTrue(CarSeatMapView.isDanger(it.state))
         }
     }
