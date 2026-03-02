@@ -34,6 +34,7 @@ import base64
 import glob
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -818,6 +819,12 @@ Examples:
             )
             import atexit
             atexit.register(cleanup_vllm)
+            # Ensure vLLM subprocess is killed on SIGTERM (atexit doesn't run on signals)
+            def _sigterm_handler(signum, frame):
+                cleanup_vllm()
+                sys.exit(0)
+            signal.signal(signal.SIGTERM, _sigterm_handler)
+            signal.signal(signal.SIGINT, _sigterm_handler)
         elif not vllm_url:
             # Neither --vllm-url nor --start-vllm
             print("=" * 60)
