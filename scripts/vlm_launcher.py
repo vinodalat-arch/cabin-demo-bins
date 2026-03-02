@@ -203,6 +203,16 @@ class VlmLauncher:
                         variable=self.vllm_mode_var, value="start",
                         command=self._toggle_vllm_fields).pack(side=tk.LEFT, padx=(10, 0))
 
+        # Model path (shared by Connect + Start modes)
+        self.model_frame = tk.Frame(vllm_frame)
+        self.model_frame.pack(fill=tk.X, pady=2)
+
+        self.model_path_label = tk.Label(self.model_frame, text="Model path:")
+        self.model_path_label.pack(side=tk.LEFT)
+        self.model_path_var = tk.StringVar(value="/home/kpit/code/qwen3_offline_4B")
+        self.model_path_entry = tk.Entry(self.model_frame, textvariable=self.model_path_var, width=36)
+        self.model_path_entry.pack(side=tk.LEFT, padx=(2, 0), fill=tk.X, expand=True)
+
         # Connect mode: vLLM URL
         self.connect_frame = tk.Frame(vllm_frame)
         self.connect_frame.pack(fill=tk.X, pady=2)
@@ -213,17 +223,9 @@ class VlmLauncher:
         self.vllm_url_entry = tk.Entry(self.connect_frame, textvariable=self.vllm_url_var, width=30)
         self.vllm_url_entry.pack(side=tk.LEFT, padx=(2, 0))
 
-        # Start mode: model path + vLLM port + GPU settings
+        # Start mode: vLLM port + GPU settings
         self.start_frame = tk.Frame(vllm_frame)
         self.start_frame.pack(fill=tk.X, pady=2)
-
-        start_row1 = tk.Frame(self.start_frame)
-        start_row1.pack(fill=tk.X, pady=1)
-        self.model_path_label = tk.Label(start_row1, text="Model path:")
-        self.model_path_label.pack(side=tk.LEFT)
-        self.model_path_var = tk.StringVar(value="/home/kpit/code/qwen3_offline_4B")
-        self.model_path_entry = tk.Entry(start_row1, textvariable=self.model_path_var, width=36)
-        self.model_path_entry.pack(side=tk.LEFT, padx=(2, 0), fill=tk.X, expand=True)
 
         start_row2 = tk.Frame(self.start_frame)
         start_row2.pack(fill=tk.X, pady=1)
@@ -320,6 +322,12 @@ class VlmLauncher:
         """Enable/disable fields based on vLLM connection mode."""
         mode = self.vllm_mode_var.get()
 
+        # Model path (shared by Connect + Start)
+        state_model = tk.NORMAL if mode in ("connect", "start") else tk.DISABLED
+        fg_model = "black" if mode in ("connect", "start") else "gray"
+        self.model_path_entry.config(state=state_model)
+        self.model_path_label.config(fg=fg_model)
+
         # Connect mode fields
         state_connect = tk.NORMAL if mode == "connect" else tk.DISABLED
         fg_connect = "black" if mode == "connect" else "gray"
@@ -329,8 +337,6 @@ class VlmLauncher:
         # Start mode fields
         state_start = tk.NORMAL if mode == "start" else tk.DISABLED
         fg_start = "black" if mode == "start" else "gray"
-        self.model_path_entry.config(state=state_start)
-        self.model_path_label.config(fg=fg_start)
         for child in self.start_frame.winfo_children():
             if isinstance(child, tk.Frame):
                 for widget in child.winfo_children():
