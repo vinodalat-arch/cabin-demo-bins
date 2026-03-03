@@ -154,6 +154,14 @@ object Config {
     // Auto climate toggle (toggleable at runtime via UI; persisted in SharedPreferences)
     @JvmStatic @Volatile var ENABLE_AUTO_CLIMATE = false
 
+    // HVAC zone control — per-zone temperature management
+    @JvmStatic @Volatile var ENABLE_ZONE_HVAC = false
+    const val HVAC_ZONE_ECO_OFFSET_C = 3.0f
+    const val HVAC_AREA_ROW1_LEFT = 0x0001
+    const val HVAC_AREA_ROW1_RIGHT = 0x0004
+    const val HVAC_AREA_ROW2_LEFT = 0x0010
+    const val HVAC_AREA_ROW2_RIGHT = 0x0040
+
     // Vehicle action pulse durations (ms)
     const val VEHICLE_PULSE_CABIN_LIGHTS_MS = 3000L
     const val VEHICLE_PULSE_LUMBAR_MS = 2000L
@@ -173,6 +181,29 @@ object Config {
 
     // In-cabin risk dampening during reverse
     const val REVERSE_RISK_CAP = "medium"  // cap in-cabin risk at medium during reverse
+
+    // Driver profiles (per-driver preference persistence)
+    @JvmStatic @Volatile var ENABLE_DRIVER_PROFILES = false
+    @JvmStatic @Volatile var CURRENT_DRIVER_AMBIENT_COLOR = ""
+
+    // Child left-behind alert (safety feature — on by default)
+    @JvmStatic @Volatile var ENABLE_CHILD_LEFT_BEHIND = true
+    const val CHILD_LEFT_BEHIND_DEBOUNCE_FRAMES = 3
+    const val CHILD_LEFT_BEHIND_CABIN_FLASH_MS = 500L
+
+    // Seat massage / drowsiness wake-up
+    @JvmStatic @Volatile var ENABLE_SEAT_MASSAGE = true
+    const val SEAT_MASSAGE_COOLDOWN_MS = 30_000L
+    const val SEAT_MASSAGE_DURATION_MS = 3_000L
+
+    // Ambient light zones
+    @JvmStatic @Volatile var ENABLE_AMBIENT_LIGHT = false
+    @JvmStatic @Volatile var ENABLE_AMBIENT_COMFORT = false
+
+    // Emergency score override
+    const val EMERGENCY_SCORE_THRESHOLD = 20
+    const val EMERGENCY_HORN_CHIRP_MS = 300L
+    const val EMERGENCY_HYSTERESIS = 10
 
     // Seat assignment
     const val SEAT_FRONT_ROW_AREA_RATIO = 0.40f  // bbox area ratio for front/rear discrimination

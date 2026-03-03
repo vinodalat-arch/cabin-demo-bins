@@ -140,4 +140,97 @@ class ClimateControllerTest {
         val msg = ClimateController.formatAlertMessage(adj, isJapanese = false)
         assertEquals("Temperature adjusted to 22.0 degrees, 1 occupants", msg)
     }
+
+    // -------------------------------------------------------------------------
+    // computeZoneTemps (per-zone HVAC)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun computeZoneTemps_driverOnly_leftDrive() {
+        val seatMap = SeatMap(
+            driver = SeatState(true, "Upright"),
+            frontPassenger = SeatState(false),
+            rearLeft = SeatState(false),
+            rearCenter = SeatState(false),
+            rearRight = SeatState(false)
+        )
+        val zones = ClimateController.computeZoneTemps(21.0f, seatMap, "left")
+        // Driver zone: target temp, all others: eco (target + 3 = 24)
+        assertEquals(21.0f, zones[Config.HVAC_AREA_ROW1_LEFT]!!, 0.001f)
+        assertEquals(24.0f, zones[Config.HVAC_AREA_ROW1_RIGHT]!!, 0.001f)
+        assertEquals(24.0f, zones[Config.HVAC_AREA_ROW2_LEFT]!!, 0.001f)
+        assertEquals(24.0f, zones[Config.HVAC_AREA_ROW2_RIGHT]!!, 0.001f)
+    }
+
+    @Test
+    fun computeZoneTemps_allOccupied() {
+        val seatMap = SeatMap(
+            driver = SeatState(true),
+            frontPassenger = SeatState(true),
+            rearLeft = SeatState(true),
+            rearCenter = SeatState(false),
+            rearRight = SeatState(true)
+        )
+        val zones = ClimateController.computeZoneTemps(20.0f, seatMap, "left")
+        // All zones: target temp
+        for ((_, temp) in zones) {
+            assertEquals(20.0f, temp, 0.001f)
+        }
+    }
+
+    @Test
+    fun computeZoneTemps_empty_allEco() {
+        val seatMap = SeatMap()
+        val zones = ClimateController.computeZoneTemps(22.0f, seatMap, "left")
+        for ((_, temp) in zones) {
+            assertEquals(25.0f, temp, 0.001f) // 22 + 3 eco offset
+        }
+    }
+
+    @Test
+    fun computeZoneTemps_rearCenter_mapsToRearZones() {
+        val seatMap = SeatMap(
+            driver = SeatState(false),
+            frontPassenger = SeatState(false),
+            rearLeft = SeatState(false),
+            rearCenter = SeatState(true, "Upright"),
+            rearRight = SeatState(false)
+        )
+        val zones = ClimateController.computeZoneTemps(21.0f, seatMap, "left")
+        // Front zones: eco, rear zones: target (rear center maps to both)
+        assertEquals(24.0f, zones[Config.HVAC_AREA_ROW1_LEFT]!!, 0.001f)
+        assertEquals(24.0f, zones[Config.HVAC_AREA_ROW1_RIGHT]!!, 0.001f)
+        assertEquals(21.0f, zones[Config.HVAC_AREA_ROW2_LEFT]!!, 0.001f)
+        assertEquals(21.0f, zones[Config.HVAC_AREA_ROW2_RIGHT]!!, 0.001f)
+    }
+
+    @Test
+    fun computeZoneTemps_ecoClampedAtMax() {
+        // target=27, eco offset=3 → 30 but capped at 28 (CLIMATE_MAX_TEMP_C)
+        val seatMap = SeatMap(
+            driver = SeatState(true),
+            frontPassenger = SeatState(false),
+            rearLeft = SeatState(false),
+            rearCenter = SeatState(false),
+            rearRight = SeatState(false)
+        )
+        val zones = ClimateController.computeZoneTemps(27.0f, seatMap, "left")
+        assertEquals(27.0f, zones[Config.HVAC_AREA_ROW1_LEFT]!!, 0.001f)
+        assertEquals(28.0f, zones[Config.HVAC_AREA_ROW1_RIGHT]!!, 0.001f) // capped
+    }
+
+    @Test
+    fun computeZoneTemps_rightDrive_driverMapsToRight() {
+        val seatMap = SeatMap(
+            driver = SeatState(true, "Upright"),
+            frontPassenger = SeatState(false),
+            rearLeft = SeatState(false),
+            rearCenter = SeatState(false),
+            rearRight = SeatState(false)
+        )
+        val zones = ClimateController.computeZoneTemps(21.0f, seatMap, "right")
+        // Right-hand drive: driver area is ROW1_RIGHT
+        assertEquals(21.0f, zones[Config.HVAC_AREA_ROW1_RIGHT]!!, 0.001f)
+        assertEquals(24.0f, zones[Config.HVAC_AREA_ROW1_LEFT]!!, 0.001f)
+    }
 }

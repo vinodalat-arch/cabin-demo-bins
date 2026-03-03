@@ -78,9 +78,44 @@ class ClimateController(private val propertyManager: Any) {
                 currentTemp + if (diff > 0) stepSize else -stepSize
             }
         }
+
+        /**
+         * Pure function: compute per-zone temperatures based on occupancy.
+         * Occupied zones use the target temperature; unoccupied zones raise by
+         * ecoOffsetC (capped at CLIMATE_MAX_TEMP_C) to save energy.
+         *
+         * @param targetTempC computed target temperature for occupied zones
+         * @param seatMap current seat occupancy
+         * @param driverSide "left" or "right" to map driver to correct area ID
+         * @param ecoOffsetC temperature offset for unoccupied zones
+         * @return map of VHAL area ID to temperature
+         */
+        fun computeZoneTemps(
+            targetTempC: Float,
+            seatMap: SeatMap,
+            driverSide: String,
+            ecoOffsetC: Float = Config.HVAC_ZONE_ECO_OFFSET_C
+        ): Map<Int, Float> {
+            val driverArea = if (driverSide == "left") Config.HVAC_AREA_ROW1_LEFT else Config.HVAC_AREA_ROW1_RIGHT
+            val paxArea = if (driverSide == "left") Config.HVAC_AREA_ROW1_RIGHT else Config.HVAC_AREA_ROW1_LEFT
+
+            val zoneOccupied = mapOf(
+                driverArea to seatMap.driver.occupied,
+                paxArea to seatMap.frontPassenger.occupied,
+                Config.HVAC_AREA_ROW2_LEFT to (seatMap.rearLeft.occupied || seatMap.rearCenter.occupied),
+                Config.HVAC_AREA_ROW2_RIGHT to (seatMap.rearRight.occupied || seatMap.rearCenter.occupied)
+            )
+
+            val ecoTemp = (targetTempC + ecoOffsetC).coerceAtMost(Config.CLIMATE_MAX_TEMP_C)
+
+            return zoneOccupied.mapValues { (_, occupied) ->
+                if (occupied) targetTempC else ecoTemp
+            }
+        }
     }
 
     val available: Boolean
+    val hasZoneControl: Boolean
     private var currentTemp: Float = Config.HVAC_BASE_TEMP_C
     private var targetTemp: Float = Config.HVAC_BASE_TEMP_C
     private var lastStableCount: Int = -1
@@ -89,10 +124,34 @@ class ClimateController(private val propertyManager: Any) {
 
     init {
         available = probeAndReadBase()
+        hasZoneControl = if (available) probeZoneControl() else false
         if (available) {
-            Log.i(TAG, "ClimateController available, base temp=${Config.HVAC_BASE_TEMP_C}°C")
+            Log.i(TAG, "ClimateController available, base temp=${Config.HVAC_BASE_TEMP_C}°C, zone=$hasZoneControl")
         } else {
             Log.i(TAG, "ClimateController not available (HVAC_TEMPERATURE_SET property missing)")
+        }
+    }
+
+    /**
+     * Probe whether per-zone HVAC control is supported.
+     * Checks if HVAC_TEMPERATURE_SET property has multiple area IDs.
+     */
+    private fun probeZoneControl(): Boolean {
+        return try {
+            val getListMethod = propertyManager.javaClass.getMethod("getPropertyList")
+            val propertyList = getListMethod.invoke(propertyManager) as? List<*> ?: return false
+            for (config in propertyList) {
+                if (config == null) continue
+                val propIdField = config.javaClass.getField("propertyId")
+                if (propIdField.getInt(config) == Config.HVAC_TEMPERATURE_SET_PROPERTY_ID) {
+                    val areaIdsField = config.javaClass.getMethod("getAreaIds")
+                    val areaIds = areaIdsField.invoke(config) as? IntArray ?: return false
+                    return areaIds.size > 1
+                }
+            }
+            false
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -137,12 +196,13 @@ class ClimateController(private val propertyManager: Any) {
     }
 
     /**
-     * Called once per frame with current passenger count.
+     * Called once per frame with current passenger count and optional seat map.
      * Handles debounce, target computation, ramping, and VHAL write.
+     * When zone HVAC is enabled and seat map is provided, writes per-zone temperatures.
      * Returns [ClimateAdjustment] when target temperature changes (for audio announcement),
      * null otherwise.
      */
-    fun update(passengerCount: Int): ClimateAdjustment? {
+    fun update(passengerCount: Int, seatMap: SeatMap? = null): ClimateAdjustment? {
         if (!available) return null
         if (!Config.ENABLE_AUTO_CLIMATE) return null
 
@@ -172,7 +232,16 @@ class ClimateController(private val propertyManager: Any) {
         val nextTemp = rampStep(currentTemp, targetTemp, Config.CLIMATE_RAMP_STEP_C)
         if (nextTemp != currentTemp) {
             currentTemp = nextTemp
-            writeTemperature(currentTemp)
+
+            // Per-zone HVAC: write different temps per zone based on occupancy
+            if (Config.ENABLE_ZONE_HVAC && seatMap != null && hasZoneControl) {
+                val zoneTemps = computeZoneTemps(currentTemp, seatMap, Config.DRIVER_SEAT_SIDE)
+                for ((areaId, temp) in zoneTemps) {
+                    writeTemperature(temp, areaId)
+                }
+            } else {
+                writeTemperature(currentTemp)
+            }
         }
 
         return adjustment
@@ -196,15 +265,15 @@ class ClimateController(private val propertyManager: Any) {
         restore()
     }
 
-    private fun writeTemperature(tempC: Float) {
+    private fun writeTemperature(tempC: Float, areaId: Int = 0) {
         try {
             val setMethod = propertyManager.javaClass.getMethod(
                 "setFloatProperty", Int::class.java, Int::class.java, Float::class.java
             )
-            setMethod.invoke(propertyManager, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, 0, tempC)
-            Log.d(TAG, "HVAC temperature set to ${tempC}°C")
+            setMethod.invoke(propertyManager, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, areaId, tempC)
+            Log.d(TAG, "HVAC temperature set to ${tempC}°C (area=0x${areaId.toString(16)})")
         } catch (e: Exception) {
-            Log.w(TAG, "writeTemperature($tempC) failed", e)
+            Log.w(TAG, "writeTemperature($tempC, area=$areaId) failed", e)
         }
     }
 }

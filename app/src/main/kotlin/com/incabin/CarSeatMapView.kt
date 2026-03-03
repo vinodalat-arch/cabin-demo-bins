@@ -84,7 +84,6 @@ class CarSeatMapView @JvmOverloads constructor(
     private val colorDanger = ContextCompat.getColor(context, R.color.danger)
     private val colorVacant = Color.rgb(0x1E, 0x1F, 0x2A)
     private val colorTextPrimary = ContextCompat.getColor(context, R.color.text_primary)
-    private val colorTextMuted = Color.rgb(0x3D, 0x3F, 0x4A)
 
     // Pre-allocated Paints — gradients set dynamically in onDraw when size is known
     private val bodyFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -115,12 +114,6 @@ class CarSeatMapView @JvmOverloads constructor(
     }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER; color = colorTextPrimary; isFakeBoldText = true
-    }
-    private val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER; color = colorTextPrimary
-    }
-    private val orientPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER; color = colorTextMuted; isFakeBoldText = true
     }
     private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.rgb(0x2A, 0x2B, 0x35)
@@ -165,7 +158,6 @@ class CarSeatMapView @JvmOverloads constructor(
     private val rearWindowPath = Path()
     private val sideWindowLeftPath = Path()
     private val sideWindowRightPath = Path()
-    private val interiorPath = Path()
 
     // Animation state
     private var pulseAnimator: ValueAnimator? = null
@@ -182,10 +174,10 @@ class CarSeatMapView @JvmOverloads constructor(
 
     // Rear warning paints (pre-allocated)
     private val rearBumperPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 4f; strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
     }
     private val rearBumperGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = 8f; strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
     }
     private val rearRipplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
@@ -329,12 +321,12 @@ class CarSeatMapView @JvmOverloads constructor(
 
         val dp = resources.displayMetrics.density
 
-        // --- Car bounding box: 52% width, 90% height, offset 20% left of center ---
-        val carW = w * 0.52f
-        val carH = h * 0.90f
-        val carCX = w * 0.40f - 50f * dp  // shifted left ~0.8cm total from center
+        // --- Car bounding box: 55% width, 96% height, centered ---
+        val carW = w * 0.55f
+        val carH = h * 0.96f
+        val carCX = w * 0.40f - 30f * dp  // shifted left ~0.5cm from center
         val carL = carCX - carW / 2f
-        val carT = h * 0.05f
+        val carT = h * 0.02f
         val carR = carL + carW
         val carB = carT + carH
 
@@ -420,8 +412,8 @@ class CarSeatMapView @JvmOverloads constructor(
 
         // 7. Side mirrors
         val mirrorY = cabinTop + cabinH * 0.08f
-        val mirrorW = carW * 0.08f
-        val mirrorH = carW * 0.05f
+        val mirrorW = carW * 0.04f
+        val mirrorH = carW * 0.025f
         // Left mirror
         tempRect.set(carL - mirrorW - 1f * dp, mirrorY, carL - 1f * dp, mirrorY + mirrorH)
         canvas.drawOval(tempRect, mirrorPaint)
@@ -581,15 +573,6 @@ class CarSeatMapView @JvmOverloads constructor(
                 intL + zoneW, benchTop + benchH - 3f * dp, dividerPaint)
         }
 
-        // 15. Orientation indicator
-        orientPaint.textSize = 9f * dp
-        // Upward chevron
-        val chevCX = carCX
-        val chevY = hoodTop - 6f * dp
-        canvas.drawText("\u25B2", chevCX, chevY, orientPaint)
-        canvas.drawText("FRONT", chevCX, chevY - 8f * dp, orientPaint)
-
-        // Driver name below car removed — shown in dashboard instead
     }
 
     private fun updateGradients(carL: Float, carR: Float, carT: Float, carB: Float, dp: Float) {
@@ -665,16 +648,18 @@ class CarSeatMapView @JvmOverloads constructor(
         val bumperY = carB
 
         // 1. Glowing bumper edge (glow layer first, then solid)
+        rearBumperGlowPaint.strokeWidth = 8f * dp
         rearBumperGlowPaint.color = Color.argb(100, Color.red(riskColor), Color.green(riskColor), Color.blue(riskColor))
         rearBumperGlowPaint.maskFilter = BlurMaskFilter(8f * dp, BlurMaskFilter.Blur.NORMAL)
         canvas.drawLine(bumperL, bumperY, bumperR, bumperY, rearBumperGlowPaint)
         rearBumperGlowPaint.maskFilter = null
 
+        rearBumperPaint.strokeWidth = 4f * dp
         rearBumperPaint.color = riskColor
         canvas.drawLine(bumperL, bumperY, bumperR, bumperY, rearBumperPaint)
 
         // 2. Sonar ripple waves (3 arcs expanding from bumper)
-        val maxExpand = carH * 0.15f
+        val maxExpand = carH * 0.08f
         val bumperW = bumperR - bumperL
         val arcCX = carCX
         val arcTop = bumperY

@@ -22,6 +22,12 @@ object ConfigPrefs {
     const val PREF_BOTTOM_WIDGET = "bottom_widget"
     const val PREF_BRAND = "brand"
     const val PREF_AUTO_CLIMATE = "auto_climate"
+    const val PREF_DRIVER_PROFILES = "driver_profiles_enabled"
+    const val PREF_CHILD_LEFT_BEHIND = "child_left_behind_enabled"
+    const val PREF_SEAT_MASSAGE = "seat_massage_enabled"
+    const val PREF_AMBIENT_LIGHT = "ambient_light_enabled"
+    const val PREF_AMBIENT_COMFORT = "ambient_comfort_enabled"
+    const val PREF_ZONE_HVAC = "zone_hvac_enabled"
 
     /** Load all persisted preferences into Config volatile fields. */
     fun loadIntoConfig(context: Context) {
@@ -39,5 +45,11 @@ object ConfigPrefs {
         Config.BOTTOM_WIDGET = prefs.getString(PREF_BOTTOM_WIDGET, "none") ?: "none"
         Config.BRAND = prefs.getString(PREF_BRAND, "honda") ?: "honda"
         Config.ENABLE_AUTO_CLIMATE = prefs.getBoolean(PREF_AUTO_CLIMATE, false)
+        Config.ENABLE_DRIVER_PROFILES = prefs.getBoolean(PREF_DRIVER_PROFILES, false)
+        Config.ENABLE_CHILD_LEFT_BEHIND = prefs.getBoolean(PREF_CHILD_LEFT_BEHIND, true)
+        Config.ENABLE_SEAT_MASSAGE = prefs.getBoolean(PREF_SEAT_MASSAGE, true)
+        Config.ENABLE_AMBIENT_LIGHT = prefs.getBoolean(PREF_AMBIENT_LIGHT, false)
+        Config.ENABLE_AMBIENT_COMFORT = prefs.getBoolean(PREF_AMBIENT_COMFORT, false)
+        Config.ENABLE_ZONE_HVAC = prefs.getBoolean(PREF_ZONE_HVAC, false)
     }
 }

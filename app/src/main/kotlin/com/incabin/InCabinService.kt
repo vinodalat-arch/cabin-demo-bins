@@ -91,6 +91,9 @@ class InCabinService : Service() {
     private var lastFaceDetected = false
     private var lastWelcomedDriverName: String? = null
 
+    // --- Driver profiles ---
+    private var driverProfileStore: DriverProfileStore? = null
+
     // --- Thread safety: guards processFrame() vs onDestroy() (C1, H6) ---
     private val pipelineLock = ReentrantLock()
 
@@ -265,6 +268,7 @@ class InCabinService : Service() {
             faceRecognizer?.close()
             faceRecognizer = null
             faceStore = null
+            driverProfileStore = null
             cachedDriverName = null
             lastWelcomedDriverName = null
 
@@ -413,6 +417,14 @@ class InCabinService : Service() {
                 Log.i(TAG, "FaceStore initialized (${faceStore?.count() ?: 0} faces)")
             } catch (e: Exception) {
                 Log.e(TAG, "FaceStore initialization failed", e)
+            }
+
+            // DriverProfileStore (fast disk I/O, init on main thread)
+            try {
+                driverProfileStore = DriverProfileStore.getInstance(this)
+                Log.i(TAG, "DriverProfileStore initialized (${driverProfileStore?.count() ?: 0} profiles)")
+            } catch (e: Exception) {
+                Log.e(TAG, "DriverProfileStore initialization failed", e)
             }
         } else {
             Log.i(TAG, "Remote VLM mode — skipping local model initialization")
@@ -847,12 +859,31 @@ class InCabinService : Service() {
                 riskLevel = cappedRisk
             )
 
-            // Step 6.5: Welcome greeting on first driver name recognition in this session
+            // Step 6.5: Welcome greeting + driver profile load on first recognition
             if (recognizedName != null && recognizedName != lastWelcomedDriverName) {
                 lastWelcomedDriverName = recognizedName
                 val isJapanese = Config.LANGUAGE == "ja"
-                val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
-                alertOrchestrator?.enqueueWelcome(welcomeText)
+
+                // Load driver profile if enabled
+                if (Config.ENABLE_DRIVER_PROFILES) {
+                    val profile = driverProfileStore?.get(recognizedName)
+                    if (profile != null) {
+                        Config.HVAC_BASE_TEMP_C = profile.preferredTempC
+                        Config.CURRENT_DRIVER_AMBIENT_COLOR = profile.ambientColorHex
+                        val welcomeText = if (isJapanese)
+                            "ようこそ、${recognizedName}さん。設定を読み込みました"
+                        else
+                            "Welcome, $recognizedName. Loading your preferences"
+                        alertOrchestrator?.enqueueWelcome(welcomeText)
+                        Log.i(TAG, "Loaded driver profile: $recognizedName (temp=${profile.preferredTempC}°C)")
+                    } else {
+                        val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
+                        alertOrchestrator?.enqueueWelcome(welcomeText)
+                    }
+                } else {
+                    val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
+                    alertOrchestrator?.enqueueWelcome(welcomeText)
+                }
             }
 
             // Step 7: Alert orchestrator (core — must run even if overlay fails)

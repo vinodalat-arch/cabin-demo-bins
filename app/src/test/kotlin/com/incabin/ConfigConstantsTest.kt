@@ -401,4 +401,85 @@ class ConfigConstantsTest {
     fun test_seat_front_row_area_ratio() {
         assertEquals(0.40f, Config.SEAT_FRONT_ROW_AREA_RATIO, 0.001f)
     }
+
+    // -------------------------------------------------------------------------
+    // Driver profile constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_driver_profile_defaults() {
+        assertFalse(Config.ENABLE_DRIVER_PROFILES)
+        assertEquals("", Config.CURRENT_DRIVER_AMBIENT_COLOR)
+    }
+
+    // -------------------------------------------------------------------------
+    // Child left-behind constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_child_left_behind_constants() {
+        assertTrue(Config.ENABLE_CHILD_LEFT_BEHIND)  // on by default (safety)
+        assertEquals(3, Config.CHILD_LEFT_BEHIND_DEBOUNCE_FRAMES)
+        assertEquals(500L, Config.CHILD_LEFT_BEHIND_CABIN_FLASH_MS)
+    }
+
+    // -------------------------------------------------------------------------
+    // Seat massage constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_seat_massage_constants() {
+        assertTrue(Config.ENABLE_SEAT_MASSAGE)
+        assertEquals(30_000L, Config.SEAT_MASSAGE_COOLDOWN_MS)
+        assertEquals(3_000L, Config.SEAT_MASSAGE_DURATION_MS)
+    }
+
+    // -------------------------------------------------------------------------
+    // Ambient light constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_ambient_light_defaults() {
+        assertFalse(Config.ENABLE_AMBIENT_LIGHT)
+        assertFalse(Config.ENABLE_AMBIENT_COMFORT)
+    }
+
+    // -------------------------------------------------------------------------
+    // Emergency override constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_emergency_override_constants() {
+        assertEquals(20, Config.EMERGENCY_SCORE_THRESHOLD)
+        assertEquals(300L, Config.EMERGENCY_HORN_CHIRP_MS)
+        assertEquals(10, Config.EMERGENCY_HYSTERESIS)
+    }
+
+    // -------------------------------------------------------------------------
+    // HVAC zone constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_hvac_zone_constants() {
+        assertFalse(Config.ENABLE_ZONE_HVAC)
+        assertEquals(3.0f, Config.HVAC_ZONE_ECO_OFFSET_C, 0.001f)
+        assertEquals(0x0001, Config.HVAC_AREA_ROW1_LEFT)
+        assertEquals(0x0004, Config.HVAC_AREA_ROW1_RIGHT)
+        assertEquals(0x0010, Config.HVAC_AREA_ROW2_LEFT)
+        assertEquals(0x0040, Config.HVAC_AREA_ROW2_RIGHT)
+    }
+
+    // -------------------------------------------------------------------------
+    // ConfigPrefs new keys exist (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_configPrefs_new_keys() {
+        assertEquals("driver_profiles_enabled", ConfigPrefs.PREF_DRIVER_PROFILES)
+        assertEquals("child_left_behind_enabled", ConfigPrefs.PREF_CHILD_LEFT_BEHIND)
+        assertEquals("seat_massage_enabled", ConfigPrefs.PREF_SEAT_MASSAGE)
+        assertEquals("ambient_light_enabled", ConfigPrefs.PREF_AMBIENT_LIGHT)
+        assertEquals("ambient_comfort_enabled", ConfigPrefs.PREF_AMBIENT_COMFORT)
+        assertEquals("zone_hvac_enabled", ConfigPrefs.PREF_ZONE_HVAC)
+    }
 }

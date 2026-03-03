@@ -635,6 +635,15 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     }
 
     /**
+     * Enqueue a critical alert that bypasses per-danger cooldown.
+     * Used for safety-critical one-shot alerts (e.g., child left behind, emergency override).
+     */
+    fun enqueueCritical(text: String) {
+        val msg = AlertMessage(AlertPriority.CRITICAL, text, null, true, SystemClock.elapsedRealtime())
+        enqueueWithPriority(msg)
+    }
+
+    /**
      * Check for rear camera alert transitions. Called from InCabinService rear pipeline.
      * Person behind vehicle → CRITICAL (immediate danger).
      * Cat/dog behind vehicle → WARNING.

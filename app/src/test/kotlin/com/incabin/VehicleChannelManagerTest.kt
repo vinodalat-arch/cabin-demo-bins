@@ -157,4 +157,28 @@ class VehicleChannelManagerTest {
     fun speedTier_unavailable() {
         assertEquals(SpeedTier.UNAVAILABLE, VehicleChannelManager.speedTier(-1f))
     }
+
+    // -------------------------------------------------------------------------
+    // isParkGear (pure companion)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun isParkGear_parkGearValue_returnsTrue() {
+        assertTrue(VehicleChannelManager.isParkGear(VehicleChannelManager.GEAR_PARK))
+    }
+
+    @Test
+    fun isParkGear_reverseGearValue_returnsFalse() {
+        assertFalse(VehicleChannelManager.isParkGear(VehicleChannelManager.GEAR_REVERSE))
+    }
+
+    @Test
+    fun isParkGear_driveGear_returnsFalse() {
+        assertFalse(VehicleChannelManager.isParkGear(0x0008)) // typical drive gear
+    }
+
+    @Test
+    fun gearPark_constant() {
+        assertEquals(0x0001, VehicleChannelManager.GEAR_PARK)
+    }
 }

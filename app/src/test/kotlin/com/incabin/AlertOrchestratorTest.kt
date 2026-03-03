@@ -164,4 +164,85 @@ class AlertOrchestratorTest {
         // BEEP is a software channel (AudioAlerter handles it)
         assertFalse(AlertOrchestrator.shouldDispatchVehicle(setOf(VehicleChannelId.BEEP)))
     }
+
+    // -------------------------------------------------------------------------
+    // computeScore
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun computeScore_allClear_returns100() {
+        assertEquals(100, AlertOrchestrator.computeScore(result()))
+    }
+
+    @Test
+    fun computeScore_phoneAndEyes_deducts60() {
+        // phone=3*10=30, eyes=3*10=30 → 100-60=40
+        assertEquals(40, AlertOrchestrator.computeScore(result(phone = true, eyes = true)))
+    }
+
+    @Test
+    fun computeScore_allDangers_flooredAtZero() {
+        val r = result(
+            phone = true, eyes = true, handsOff = true,
+            yawning = true, distracted = true, eating = true,
+            posture = true, slouching = true
+        )
+        assertEquals(0, AlertOrchestrator.computeScore(r))
+    }
+
+    @Test
+    fun computeScore_singleYawning() {
+        // yawn=2*10=20 → 100-20=80
+        assertEquals(80, AlertOrchestrator.computeScore(result(yawning = true)))
+    }
+
+    // -------------------------------------------------------------------------
+    // shouldTriggerEmergency
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun shouldTriggerEmergency_belowThreshold_notTriggered_returnsTrue() {
+        assertTrue(AlertOrchestrator.shouldTriggerEmergency(15, 20, false))
+    }
+
+    @Test
+    fun shouldTriggerEmergency_aboveThreshold_returnsFalse() {
+        assertFalse(AlertOrchestrator.shouldTriggerEmergency(25, 20, false))
+    }
+
+    @Test
+    fun shouldTriggerEmergency_alreadyTriggered_returnsFalse() {
+        assertFalse(AlertOrchestrator.shouldTriggerEmergency(15, 20, true))
+    }
+
+    @Test
+    fun shouldTriggerEmergency_atThreshold_returnsFalse() {
+        // score == threshold → not below threshold
+        assertFalse(AlertOrchestrator.shouldTriggerEmergency(20, 20, false))
+    }
+
+    // -------------------------------------------------------------------------
+    // shouldResetEmergency
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun shouldResetEmergency_scoreRecovered_returnsTrue() {
+        // threshold=20, hysteresis=10 → reset when score >= 30
+        assertTrue(AlertOrchestrator.shouldResetEmergency(30, 20, 10, true))
+    }
+
+    @Test
+    fun shouldResetEmergency_notTriggered_returnsFalse() {
+        assertFalse(AlertOrchestrator.shouldResetEmergency(30, 20, 10, false))
+    }
+
+    @Test
+    fun shouldResetEmergency_scoreBelowRecovery_returnsFalse() {
+        assertFalse(AlertOrchestrator.shouldResetEmergency(25, 20, 10, true))
+    }
+
+    @Test
+    fun shouldResetEmergency_atExactRecovery_returnsTrue() {
+        assertTrue(AlertOrchestrator.shouldResetEmergency(30, 20, 10, true))
+    }
 }

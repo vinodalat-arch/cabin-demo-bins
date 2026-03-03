@@ -21,7 +21,15 @@ class VehicleChannelManager(context: Context) {
         const val DRIVING_STATE_MOVING = 2
 
         // Gear selection constants (mirrors android.car.VehicleGear values)
+        const val GEAR_PARK = 0x0001
         const val GEAR_REVERSE = 0x0020
+
+        /**
+         * Pure function: is the given VHAL gear value PARK?
+         */
+        fun isParkGear(gearValue: Int): Boolean {
+            return gearValue == GEAR_PARK
+        }
 
         /**
          * Pure function: should we suppress vehicle channel dispatch for this driving state?
@@ -56,6 +64,27 @@ class VehicleChannelManager(context: Context) {
 
     /** Occupancy-based HVAC climate controller (comfort feature, independent of escalation). */
     var climateController: ClimateController? = null
+        private set
+
+    /** Seat massage channel for drowsiness wake-up. */
+    var seatMassageChannel: com.incabin.channels.SeatMassageChannel? = null
+        private set
+
+    /** Drowsiness wake controller (rising-edge trigger for seat massage). */
+    var drowsinessWakeController: DrowsinessWakeController? = null
+        private set
+
+    /** Ambient light controller (per-zone lighting). */
+    var ambientLightController: AmbientLightController? = null
+        private set
+
+    /** Child left-behind monitor. */
+    var childLeftBehindMonitor: ChildLeftBehindMonitor? = null
+        private set
+
+    /** Whether the vehicle is currently in PARK gear. */
+    @Volatile
+    var isParked: Boolean = false
         private set
 
     private val channels = mutableListOf<VehicleActionChannel>()
@@ -135,6 +164,20 @@ class VehicleChannelManager(context: Context) {
             climateController = ClimateController(propertyManager)
         } catch (e: Exception) { Log.w(TAG, "ClimateController init failed", e) }
 
+        try {
+            val massage = com.incabin.channels.SeatMassageChannel(propertyManager)
+            channels.add(massage)
+            seatMassageChannel = massage
+        } catch (e: Exception) { Log.w(TAG, "SeatMassageChannel init failed", e) }
+
+        try {
+            ambientLightController = AmbientLightController(propertyManager)
+        } catch (e: Exception) { Log.w(TAG, "AmbientLightController init failed", e) }
+
+        // Non-VHAL controllers (no property manager dependency)
+        drowsinessWakeController = DrowsinessWakeController()
+        childLeftBehindMonitor = ChildLeftBehindMonitor()
+
         val availableCount = channels.count { it.available }
         Log.i(TAG, "Registered ${channels.size} channels, $availableCount available")
     }
@@ -193,7 +236,8 @@ class VehicleChannelManager(context: Context) {
                         val gearValue = (getValueMethod.invoke(event) as? Number)?.toInt() ?: 0
                         val isReverse = gearValue == GEAR_REVERSE
                         Config.REVERSE_GEAR_ACTIVE = isReverse
-                        Log.i(TAG, "Gear changed: value=0x${gearValue.toString(16)}, reverse=$isReverse")
+                        isParked = isParkGear(gearValue)
+                        Log.i(TAG, "Gear changed: value=0x${gearValue.toString(16)}, reverse=$isReverse, parked=$isParked")
                         onGearChanged?.invoke(isReverse)
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to process gear change event", e)
@@ -226,7 +270,8 @@ class VehicleChannelManager(context: Context) {
                 val gearValue = (getValueMethod.invoke(result) as? Number)?.toInt() ?: 0
                 val isReverse = isReverseGear(gearValue)
                 Config.REVERSE_GEAR_ACTIVE = isReverse
-                Log.i(TAG, "Initial gear: value=0x${gearValue.toString(16)}, reverse=$isReverse")
+                isParked = isParkGear(gearValue)
+                Log.i(TAG, "Initial gear: value=0x${gearValue.toString(16)}, reverse=$isReverse, parked=$isParked")
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not probe current gear — defaulting to non-reverse", e)
@@ -319,6 +364,27 @@ class VehicleChannelManager(context: Context) {
     }
 
     /**
+     * Flash cabin lights rapidly for child-left-behind alert.
+     * 5 rapid on/off cycles at CHILD_LEFT_BEHIND_CABIN_FLASH_MS interval.
+     */
+    fun flashForChildAlert() {
+        val cabinLight = channels.firstOrNull { it.id == VehicleChannelId.CABIN_LIGHTS }
+        if (cabinLight == null || !cabinLight.available) return
+
+        Thread({
+            try {
+                for (i in 0 until 5) {
+                    cabinLight.activate(EscalationLevel.L5_EMERGENCY)
+                    Thread.sleep(Config.CHILD_LEFT_BEHIND_CABIN_FLASH_MS)
+                    cabinLight.restore()
+                    Thread.sleep(Config.CHILD_LEFT_BEHIND_CABIN_FLASH_MS)
+                }
+            } catch (_: InterruptedException) {}
+        }, "ChildAlert-Flash").start()
+        Log.w(TAG, "Child left-behind: cabin light flash triggered")
+    }
+
+    /**
      * Restore all channels to their saved state (all-clear).
      */
     fun restoreAll() {
@@ -350,6 +416,12 @@ class VehicleChannelManager(context: Context) {
             Log.w(TAG, "ClimateController close failed", e)
         }
         climateController = null
+        drowsinessWakeController?.reset()
+        drowsinessWakeController = null
+        childLeftBehindMonitor?.reset()
+        childLeftBehindMonitor = null
+        seatMassageChannel = null
+        ambientLightController = null
         channels.clear()
         carConnected = false
         Log.i(TAG, "VehicleChannelManager closed")

@@ -159,5 +159,9 @@ enum class VehicleChannelId {
     SEAT_THERMAL,
     STEERING_HEAT,
     WINDOW,
-    ADAS_STATE
+    ADAS_STATE,
+    // Independent channels (not in escalation ladder — controlled by dedicated controllers)
+    SEAT_MASSAGE,
+    AMBIENT_LIGHT,
+    HORN
 }

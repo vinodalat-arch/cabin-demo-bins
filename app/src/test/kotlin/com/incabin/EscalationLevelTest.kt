@@ -291,4 +291,26 @@ class EscalationLevelTest {
         assertTrue(channels.contains(VehicleChannelId.SEAT_THERMAL))
         assertTrue(channels.contains(VehicleChannelId.STEERING_HEAT))
     }
+
+    // -------------------------------------------------------------------------
+    // Independent channels not in escalation ladder
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun independentChannels_notInAnyEscalationLevel() {
+        val independentChannels = setOf(
+            VehicleChannelId.SEAT_MASSAGE,
+            VehicleChannelId.AMBIENT_LIGHT,
+            VehicleChannelId.HORN
+        )
+        for (level in EscalationLevel.values()) {
+            val ladderChannels = EscalationLevel.channelsForLevel(level)
+            for (ch in independentChannels) {
+                assertFalse(
+                    "Channel $ch should not be in $level escalation ladder",
+                    ladderChannels.contains(ch)
+                )
+            }
+        }
+    }
 }
