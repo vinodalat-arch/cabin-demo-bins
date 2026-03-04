@@ -569,4 +569,80 @@ class AudioAlerterTest {
         )
         assertTrue(alerts.isEmpty())
     }
+
+    // -------------------------------------------------------------------------
+    // buildWelcomeGreeting Tests (12 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_greeting_en_morning_with_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("Alice", 7, hasProfile = true, isJapanese = false)
+        assertEquals("Good morning, Alice. Customizing the cabin with your preferences", msg)
+    }
+
+    @Test
+    fun test_greeting_en_afternoon_with_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("Bob", 14, hasProfile = true, isJapanese = false)
+        assertEquals("Good afternoon, Bob. Customizing the cabin with your preferences", msg)
+    }
+
+    @Test
+    fun test_greeting_en_evening_with_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("Charlie", 19, hasProfile = true, isJapanese = false)
+        assertEquals("Good evening, Charlie. Customizing the cabin with your preferences", msg)
+    }
+
+    @Test
+    fun test_greeting_en_night_with_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("Dave", 23, hasProfile = true, isJapanese = false)
+        assertEquals("Good evening, Dave. Customizing the cabin with your preferences", msg)
+    }
+
+    @Test
+    fun test_greeting_en_morning_no_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("Alice", 8, hasProfile = false, isJapanese = false)
+        assertEquals("Good morning, Alice", msg)
+    }
+
+    @Test
+    fun test_greeting_en_afternoon_no_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("Bob", 12, hasProfile = false, isJapanese = false)
+        assertEquals("Good afternoon, Bob", msg)
+    }
+
+    @Test
+    fun test_greeting_boundary_5am_is_morning() {
+        val msg = AudioAlerter.buildWelcomeGreeting("X", 5, hasProfile = false, isJapanese = false)
+        assertTrue(msg.startsWith("Good morning"))
+    }
+
+    @Test
+    fun test_greeting_boundary_11am_is_afternoon() {
+        val msg = AudioAlerter.buildWelcomeGreeting("X", 11, hasProfile = false, isJapanese = false)
+        assertTrue(msg.startsWith("Good afternoon"))
+    }
+
+    @Test
+    fun test_greeting_boundary_17pm_is_evening() {
+        val msg = AudioAlerter.buildWelcomeGreeting("X", 17, hasProfile = false, isJapanese = false)
+        assertTrue(msg.startsWith("Good evening"))
+    }
+
+    @Test
+    fun test_greeting_ja_morning_with_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("太郎", 7, hasProfile = true, isJapanese = true)
+        assertEquals("おはようございます、太郎さん。お好みの設定に調整しています", msg)
+    }
+
+    @Test
+    fun test_greeting_ja_afternoon_no_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("花子", 14, hasProfile = false, isJapanese = true)
+        assertEquals("こんにちは、花子さん", msg)
+    }
+
+    @Test
+    fun test_greeting_ja_evening_with_profile() {
+        val msg = AudioAlerter.buildWelcomeGreeting("次郎", 19, hasProfile = true, isJapanese = true)
+        assertEquals("こんばんは、次郎さん。お好みの設定に調整しています", msg)
+    }
 }

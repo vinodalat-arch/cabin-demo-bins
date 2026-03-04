@@ -74,4 +74,32 @@ class DriverProfileStoreTest {
         val profile = DriverProfile("Cold", 16.0f)
         assertEquals(16.0f, profile.preferredTempC, 0.001f)
     }
+
+    // -------------------------------------------------------------------------
+    // PRESET_COLORS (4 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun presetColors_has10Entries() {
+        assertEquals(10, DriverProfileStore.PRESET_COLORS.size)
+    }
+
+    @Test
+    fun presetColors_allValidHexFormat() {
+        for (hex in DriverProfileStore.PRESET_COLORS) {
+            val parsed = AmbientLightController.parseColorHex(hex)
+            assertTrue("Invalid color hex: $hex (parsed to $parsed)", parsed != 0)
+        }
+    }
+
+    @Test
+    fun presetColors_defaultMatchesProfileDefault() {
+        val defaultProfile = DriverProfile("Test")
+        assertTrue(DriverProfileStore.PRESET_COLORS.contains(defaultProfile.ambientColorHex))
+    }
+
+    @Test
+    fun presetColors_firstIsAccentBlue() {
+        assertEquals("#5B8DEF", DriverProfileStore.PRESET_COLORS[0])
+    }
 }

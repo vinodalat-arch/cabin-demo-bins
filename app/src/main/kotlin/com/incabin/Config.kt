@@ -166,7 +166,7 @@ object Config {
     const val VEHICLE_PULSE_CABIN_LIGHTS_MS = 3000L
     const val VEHICLE_PULSE_LUMBAR_MS = 2000L
     const val VEHICLE_PULSE_SEAT_THERMAL_MS = 5000L
-    const val VEHICLE_WINDOW_CRACK_MS = 30000L
+    const val VEHICLE_WINDOW_SLIDE_MS = 30000L
 
     // Rear camera (WiFi MJPEG rear-view)
     @JvmStatic @Volatile var REVERSE_GEAR_ACTIVE = false  // set by VHAL listener or manual toggle

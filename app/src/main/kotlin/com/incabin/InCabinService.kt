@@ -863,27 +863,16 @@ class InCabinService : Service() {
             if (recognizedName != null && recognizedName != lastWelcomedDriverName) {
                 lastWelcomedDriverName = recognizedName
                 val isJapanese = Config.LANGUAGE == "ja"
-
-                // Load driver profile if enabled
-                if (Config.ENABLE_DRIVER_PROFILES) {
-                    val profile = driverProfileStore?.get(recognizedName)
-                    if (profile != null) {
-                        Config.HVAC_BASE_TEMP_C = profile.preferredTempC
-                        Config.CURRENT_DRIVER_AMBIENT_COLOR = profile.ambientColorHex
-                        val welcomeText = if (isJapanese)
-                            "ようこそ、${recognizedName}さん。設定を読み込みました"
-                        else
-                            "Welcome, $recognizedName. Loading your preferences"
-                        alertOrchestrator?.enqueueWelcome(welcomeText)
-                        Log.i(TAG, "Loaded driver profile: $recognizedName (temp=${profile.preferredTempC}°C)")
-                    } else {
-                        val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
-                        alertOrchestrator?.enqueueWelcome(welcomeText)
-                    }
-                } else {
-                    val welcomeText = if (isJapanese) "ようこそ、${recognizedName}さん" else "Welcome, $recognizedName"
-                    alertOrchestrator?.enqueueWelcome(welcomeText)
+                val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                val profile = if (Config.ENABLE_DRIVER_PROFILES) driverProfileStore?.get(recognizedName) else null
+                if (profile != null) {
+                    Config.HVAC_BASE_TEMP_C = profile.preferredTempC
+                    Config.CURRENT_DRIVER_AMBIENT_COLOR = profile.ambientColorHex
+                    Log.i(TAG, "Loaded driver profile: $recognizedName (temp=${profile.preferredTempC}°C)")
                 }
+                alertOrchestrator?.enqueueWelcome(
+                    AudioAlerter.buildWelcomeGreeting(recognizedName, hourOfDay, profile != null, isJapanese)
+                )
             }
 
             // Step 7: Alert orchestrator (core — must run even if overlay fails)

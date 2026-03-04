@@ -26,6 +26,20 @@ class DriverProfileStore private constructor(context: Context) {
         private const val FILENAME = "driver_profiles.json"
         private val gson = Gson()
 
+        /** 10 preset ambient light colors for the driver preference picker. */
+        val PRESET_COLORS = listOf(
+            "#5B8DEF",  // Accent blue (default)
+            "#2ECC71",  // Green
+            "#E74C3C",  // Red
+            "#F39C12",  // Amber
+            "#9B59B6",  // Purple
+            "#1ABC9C",  // Teal
+            "#E91E63",  // Pink
+            "#FF9800",  // Orange
+            "#00BCD4",  // Cyan
+            "#F1C40F"   // Gold
+        )
+
         @Volatile
         private var instance: DriverProfileStore? = null
 

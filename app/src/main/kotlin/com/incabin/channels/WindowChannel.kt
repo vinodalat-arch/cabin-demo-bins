@@ -7,7 +7,7 @@ import com.incabin.VehicleActionChannel
 import com.incabin.VehicleChannelId
 
 /**
- * VHAL window channel. Crack open driver window 10% for 30s at L5 only.
+ * VHAL window channel. Slide open driver window 10% for 30s at L5 only.
  *
  * Uses WINDOW_MOVE (0x0BC0) — positive values open the window.
  * Only activated at L5_EMERGENCY level.
@@ -50,18 +50,18 @@ class WindowChannel(private val propertyManager: Any) : VehicleActionChannel {
 
     override fun activate(level: EscalationLevel) {
         if (!available) return
-        // Only crack window at emergency level
+        // Only slide window at emergency level
         if (level != EscalationLevel.L5_EMERGENCY) return
 
         try {
-            // Crack open ~10% (small positive move value)
+            // Slide open ~10% (small positive move value)
             setIntProperty(WINDOW_MOVE, 1)
             Thread({
                 try {
-                    Thread.sleep(Config.VEHICLE_WINDOW_CRACK_MS)
+                    Thread.sleep(Config.VEHICLE_WINDOW_SLIDE_MS)
                     restore()
                 } catch (_: InterruptedException) {}
-            }, "Window-Crack").start()
+            }, "Window-Slide").start()
         } catch (e: Exception) {
             Log.w(TAG, "Activate failed", e)
         }

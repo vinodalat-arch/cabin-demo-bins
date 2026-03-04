@@ -13,6 +13,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import android.graphics.drawable.GradientDrawable
 import androidx.core.content.ContextCompat
 
 /**
@@ -56,6 +57,7 @@ class FaceRegistrationActivity : Activity() {
     private var colorDanger = 0
 
     private var faceStore: FaceStore? = null
+    private var driverProfileStore: DriverProfileStore? = null
     private var capturedEmbedding: FloatArray? = null
 
     // Camera (self-owned)
@@ -128,6 +130,12 @@ class FaceRegistrationActivity : Activity() {
             Log.e(TAG, "Failed to init FaceStore", e)
             statusText.text = "Error: Could not load face store"
             statusText.setTextColor(colorDanger)
+        }
+
+        try {
+            driverProfileStore = DriverProfileStore.getInstance(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to init DriverProfileStore", e)
         }
 
         try {
@@ -628,6 +636,7 @@ class FaceRegistrationActivity : Activity() {
             statusText.text = "Saved: $name"
             statusText.setTextColor(colorSafe)
             refreshFaceList()
+            showPreferencesDialog(name, driverProfileStore?.get(name), newRegistration = true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save face", e)
             statusText.text = "Save failed"
@@ -653,6 +662,11 @@ class FaceRegistrationActivity : Activity() {
         val rowHeight = (48 * resources.displayMetrics.density).toInt()
         val hPad = resources.getDimensionPixelSize(R.dimen.space_sm)
 
+        val dp = resources.displayMetrics.density
+        val btnW = (56 * dp).toInt()
+        val btnH = (32 * dp).toInt()
+        val dotSize = (14 * dp).toInt()
+
         for (name in names) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -661,17 +675,41 @@ class FaceRegistrationActivity : Activity() {
                 setPadding(0, hPad, 0, hPad)
             }
 
-            val dp = resources.displayMetrics.density
-            val btnW = (56 * dp).toInt()
-            val btnH = (32 * dp).toInt()
+            // Ambient color dot — shows driver's chosen color, or muted if no profile
+            val profile = driverProfileStore?.get(name)
+            row.addView(View(this).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    if (profile != null) {
+                        setColor(AmbientLightController.parseColorHex(profile.ambientColorHex))
+                    } else {
+                        setColor(colorTextMuted)
+                    }
+                }
+            }, LinearLayout.LayoutParams(dotSize, dotSize).apply {
+                marginEnd = (8 * dp).toInt()
+            })
 
-            row.addView(TextView(this).apply {
+            // Name + temp subtitle
+            val nameCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            nameCol.addView(TextView(this@FaceRegistrationActivity).apply {
                 text = name
                 textSize = 16f
                 setTextColor(colorTextPrimary)
                 setSingleLine(true)
                 ellipsize = android.text.TextUtils.TruncateAt.END
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            })
+            if (profile != null) {
+                nameCol.addView(TextView(this@FaceRegistrationActivity).apply {
+                    text = "%.1f°C".format(profile.preferredTempC)
+                    textSize = 11f
+                    setTextColor(colorTextMuted)
+                    setSingleLine(true)
+                })
+            }
+            row.addView(nameCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (12 * dp).toInt()
             })
 
@@ -687,7 +725,7 @@ class FaceRegistrationActivity : Activity() {
                 minimumWidth = 0
                 minHeight = 0
                 minimumHeight = 0
-                setOnClickListener { showRenameDialog(name) }
+                setOnClickListener { showEditDialog(name) }
             }, LinearLayout.LayoutParams(btnW, btnH).apply {
                 marginEnd = (6 * dp).toInt()
             })
@@ -711,18 +749,40 @@ class FaceRegistrationActivity : Activity() {
         }
     }
 
-    private fun showRenameDialog(currentName: String) {
+    private fun showEditDialog(currentName: String) {
         try {
+            val dp = resources.displayMetrics.density
+            val pad = (16 * dp).toInt()
+
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(pad, pad, pad, pad)
+            }
+
             val input = EditText(this).apply {
                 setText(currentName)
                 setSelectAllOnFocus(true)
                 setTextColor(colorTextPrimary)
-                val pad = (16 * resources.displayMetrics.density).toInt()
-                setPadding(pad, pad, pad, pad)
+                setPadding(pad, pad / 2, pad, pad / 2)
             }
-            AlertDialog.Builder(this)
-                .setTitle("Rename Face")
-                .setView(input)
+            container.addView(input)
+
+            val prefsButton = Button(this).apply {
+                text = "Edit Preferences..."
+                textSize = 13f
+                setTextColor(colorAccent)
+                isAllCaps = false
+                stateListAnimator = null
+                setBackgroundResource(R.drawable.bg_button)
+            }
+            container.addView(prefsButton, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * dp).toInt() })
+
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Edit Face")
+                .setView(container)
                 .setPositiveButton("Rename") { _, _ ->
                     val newName = input.text.toString().trim()
                     if (newName.isEmpty()) {
@@ -733,6 +793,12 @@ class FaceRegistrationActivity : Activity() {
                     if (newName == currentName) return@setPositiveButton
                     val success = faceStore?.rename(currentName, newName) ?: false
                     if (success) {
+                        // Rename profile too: delete old, save copy with new name
+                        val existingProfile = driverProfileStore?.get(currentName)
+                        if (existingProfile != null) {
+                            driverProfileStore?.delete(currentName)
+                            driverProfileStore?.save(existingProfile.copy(name = newName))
+                        }
                         statusText.text = "Renamed: $currentName → $newName"
                         statusText.setTextColor(colorSafe)
                         refreshFaceList()
@@ -742,9 +808,181 @@ class FaceRegistrationActivity : Activity() {
                     }
                 }
                 .setNegativeButton("Cancel", null)
+                .create()
+
+            prefsButton.setOnClickListener {
+                dialog.dismiss()
+                showPreferencesDialog(currentName, driverProfileStore?.get(currentName), newRegistration = false)
+            }
+
+            dialog.show()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to show edit dialog", e)
+        }
+    }
+
+    /**
+     * Show a preferences dialog with color swatch picker and temperature slider.
+     * [existingProfile] pre-fills values if editing; null uses defaults.
+     * [newRegistration] controls the negative button label (Skip vs Cancel).
+     */
+    private fun showPreferencesDialog(name: String, existingProfile: DriverProfile?, newRegistration: Boolean) {
+        try {
+            val dp = resources.displayMetrics.density
+            val pad = (16 * dp).toInt()
+
+            val container = ScrollView(this)
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(pad, pad, pad, pad)
+            }
+            container.addView(layout)
+
+            // --- Color swatch section ---
+            layout.addView(TextView(this).apply {
+                text = "Ambient Light Color"
+                textSize = 14f
+                setTextColor(colorTextPrimary)
+            })
+
+            val colors = DriverProfileStore.PRESET_COLORS
+            val swatchSize = (40 * dp).toInt()
+            val swatchMargin = (6 * dp).toInt()
+            val selectedColor = existingProfile?.ambientColorHex ?: colors[0]
+            var currentSelectedIndex = colors.indexOf(selectedColor).coerceAtLeast(0)
+            val swatchViews = mutableListOf<View>()
+
+            val grid = GridLayout(this).apply {
+                columnCount = 5
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = (8 * dp).toInt()
+                layoutParams = lp
+            }
+
+            for ((index, colorHex) in colors.withIndex()) {
+                val swatch = View(this).apply {
+                    val drawable = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(AmbientLightController.parseColorHex(colorHex))
+                    }
+                    background = drawable
+                }
+
+                val glp = GridLayout.LayoutParams().apply {
+                    width = swatchSize
+                    height = swatchSize
+                    setMargins(swatchMargin, swatchMargin, swatchMargin, swatchMargin)
+                }
+                grid.addView(swatch, glp)
+                swatchViews.add(swatch)
+
+                swatch.setOnClickListener {
+                    currentSelectedIndex = index
+                    updateSwatchBorders(swatchViews, currentSelectedIndex)
+                }
+            }
+
+            // Set initial selection border
+            layout.addView(grid)
+            updateSwatchBorders(swatchViews, currentSelectedIndex)
+
+            // --- Temperature section ---
+            layout.addView(TextView(this).apply {
+                text = "Preferred Temperature"
+                textSize = 14f
+                setTextColor(colorTextPrimary)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = (16 * dp).toInt()
+                layoutParams = lp
+            })
+
+            val tempLabel = TextView(this).apply {
+                textSize = 16f
+                setTextColor(colorAccent)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = (4 * dp).toInt()
+                layoutParams = lp
+            }
+
+            // SeekBar: 0..24 maps to 16.0-28.0 in 0.5 steps
+            val initialTemp = existingProfile?.preferredTempC ?: 22.0f
+            val seekBar = SeekBar(this).apply {
+                max = 24
+                progress = ((initialTemp - 16.0f) / 0.5f).toInt().coerceIn(0, 24)
+            }
+            tempLabel.text = "%.1f °C".format(initialTemp)
+
+            val minMaxRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                layoutParams = lp
+            }
+            minMaxRow.addView(TextView(this).apply {
+                text = "16°C"
+                textSize = 11f
+                setTextColor(colorTextMuted)
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            minMaxRow.addView(TextView(this).apply {
+                text = "28°C"
+                textSize = 11f
+                setTextColor(colorTextMuted)
+                gravity = Gravity.END
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+            layout.addView(tempLabel)
+            layout.addView(seekBar, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (4 * dp).toInt() })
+            layout.addView(minMaxRow)
+
+            seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    val temp = 16.0f + progress * 0.5f
+                    tempLabel.text = "%.1f °C".format(temp)
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+
+            AlertDialog.Builder(this)
+                .setTitle("Preferences — $name")
+                .setView(container)
+                .setPositiveButton("Save") { _, _ ->
+                    val tempValue = 16.0f + seekBar.progress * 0.5f
+                    val colorValue = colors[currentSelectedIndex]
+                    driverProfileStore?.save(DriverProfile(name, tempValue, colorValue))
+                    statusText.text = "Preferences saved for $name"
+                    statusText.setTextColor(colorSafe)
+                }
+                .setNegativeButton(if (newRegistration) "Skip" else "Cancel", null)
                 .show()
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to show rename dialog", e)
+            Log.w(TAG, "Failed to show preferences dialog", e)
+        }
+    }
+
+    private fun updateSwatchBorders(swatchViews: List<View>, selectedIndex: Int) {
+        val dp = resources.displayMetrics.density
+        for ((i, swatch) in swatchViews.withIndex()) {
+            val drawable = swatch.background as? GradientDrawable ?: continue
+            if (i == selectedIndex) {
+                drawable.setStroke((3 * dp).toInt(), colorAccent)
+            } else {
+                drawable.setStroke((1 * dp).toInt(), colorTextMuted)
+            }
         }
     }
 
@@ -755,6 +993,7 @@ class FaceRegistrationActivity : Activity() {
                 .setMessage("Remove \"$name\" from registered faces?")
                 .setPositiveButton("Delete") { _, _ ->
                     faceStore?.delete(name)
+                    driverProfileStore?.delete(name)
                     statusText.text = "Deleted: $name"
                     statusText.setTextColor(colorTextSecondary)
                     refreshFaceList()
