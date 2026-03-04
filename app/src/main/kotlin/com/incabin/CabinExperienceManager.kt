@@ -73,24 +73,45 @@ class CabinExperienceManager(private val audioAlerter: AudioAlerter?) {
 
         // Feature 1: Journey Wellness Coach
         try {
-            wellnessCoach.update(result, now, isJapanese)?.let {
-                events.add(it)
+            wellnessCoach.update(result, now, isJapanese)?.let { event ->
+                events.add(event)
                 comfortEventCount++
+                // Apply HVAC cooling offset for long drives
+                if (event.hvacOffset != 0f) {
+                    applyHvac?.invoke(currentHvac + event.hvacOffset)
+                }
             }
         } catch (e: Exception) { Log.w(TAG, "WellnessCoach failed", e) }
 
         // Feature 4: Nap Mode (before Quiet Mode — it can activate quiet mode)
         try {
+            val prevSleeping = napMode.getSleepingSeats()
             val napEvents = napMode.update(seatMap, isJapanese)
             events.addAll(napEvents)
             if (napEvents.isNotEmpty()) comfortEventCount += napEvents.size
+            // Warm zone for new sleepers, restore for wakers
+            val currSleeping = napMode.getSleepingSeats()
+            if (currSleeping != prevSleeping) {
+                if (currSleeping.isNotEmpty()) {
+                    applyHvac?.invoke(currentHvac + Config.NAP_HVAC_WARM_OFFSET_C)
+                } else {
+                    applyHvac?.invoke(currentHvac)  // restore
+                }
+            }
         } catch (e: Exception) { Log.w(TAG, "NapMode failed", e) }
 
         // Feature 6: Child Comfort
         try {
+            val hadChild = childComfort.hasChildInRear()
             childComfort.update(result, seatMap, isJapanese)?.let {
                 events.add(it)
                 comfortEventCount++
+            }
+            // Warm rear zone when child first detected
+            if (!hadChild && childComfort.hasChildInRear()) {
+                applyHvac?.invoke(currentHvac + Config.CHILD_COMFORT_HVAC_OFFSET_C)
+            } else if (hadChild && !childComfort.hasChildInRear()) {
+                applyHvac?.invoke(currentHvac)  // restore
             }
         } catch (e: Exception) { Log.w(TAG, "ChildComfort failed", e) }
 
@@ -113,9 +134,16 @@ class CabinExperienceManager(private val audioAlerter: AudioAlerter?) {
                 currentBrightness,
                 isJapanese,
                 applyBrightness
-            )?.let {
-                events.add(it)
+            )?.let { event ->
+                events.add(event)
                 comfortEventCount++
+                // Apply HVAC offset: negative = cool, 0 = restore base
+                if (event.hvacOffset != 0f) {
+                    applyHvac?.invoke(currentHvac + event.hvacOffset)
+                } else if (!fatigueComfort.active) {
+                    // Deactivated — restore base HVAC
+                    applyHvac?.invoke(currentHvac)
+                }
             }
         } catch (e: Exception) { Log.w(TAG, "FatigueComfort failed", e) }
 

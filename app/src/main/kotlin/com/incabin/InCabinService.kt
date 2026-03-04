@@ -629,7 +629,7 @@ class InCabinService : Service() {
                 if (!prevAudioEnabled) {
                     alertOrchestrator?.resetState()
                 }
-                alertOrchestrator?.evaluate(finalResult)
+                alertOrchestrator?.evaluate(finalResult, applicationContext)
             }
             prevAudioEnabled = audioEnabled
 
@@ -890,7 +890,7 @@ class InCabinService : Service() {
                 if (!prevAudioEnabled) {
                     alertOrchestrator?.resetState()
                 }
-                alertOrchestrator?.evaluate(finalResult)
+                alertOrchestrator?.evaluate(finalResult, applicationContext)
             }
             prevAudioEnabled = audioEnabled
 

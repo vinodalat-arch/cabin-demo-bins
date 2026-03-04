@@ -1,5 +1,7 @@
 package com.incabin
 
+import android.content.Context
+import android.provider.Settings
 import android.util.Log
 
 /**
@@ -109,7 +111,7 @@ class AlertOrchestrator(
      * 4. Restores all channels on all-clear
      * 5. Feature sub-steps: climate, child-left-behind, drowsiness wake, ambient light, emergency
      */
-    fun evaluate(result: OutputResult) {
+    fun evaluate(result: OutputResult, context: Context? = null) {
         // Step 1: Existing audio behavior (always runs first — safety-critical path)
         audioAlerter.checkAndAnnounce(result)
 
@@ -222,10 +224,26 @@ class AlertOrchestrator(
         // Step 6: Smart cabin comfort features (pipeline-isolated)
         try {
             val seatMap = FrameHolder.getSeatMap()
+
+            // Wire real hardware callbacks when context and VHAL are available
+            val brightnessCallback: ((Int) -> Unit)? = context?.let { ctx ->
+                { brightness: Int -> ThemeApplier.applyBrightness(brightness, ctx) }
+            }
+            val hvacCallback: ((Float) -> Unit)? = vehicleChannelManager?.climateController?.let { cc ->
+                { tempC: Float -> cc.setTemperatureOverride(tempC) }
+            }
+
+            val currentBrightness = try {
+                context?.let {
+                    Settings.System.getInt(it.contentResolver, Settings.System.SCREEN_BRIGHTNESS, -1)
+                } ?: -1
+            } catch (_: Exception) { -1 }
+
             val events = cabinExperienceManager.evaluate(
                 result, seatMap,
                 vehicleChannelManager?.isParked ?: false,
-                -1, Config.HVAC_BASE_TEMP_C, null, null
+                currentBrightness, Config.HVAC_BASE_TEMP_C,
+                brightnessCallback, hvacCallback
             )
             events.forEach { event ->
                 if (event.priority == CabinEvent.IMPORTANT) {

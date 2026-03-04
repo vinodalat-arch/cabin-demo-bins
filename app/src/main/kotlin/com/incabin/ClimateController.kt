@@ -265,6 +265,15 @@ class ClimateController(private val propertyManager: Any) {
         restore()
     }
 
+    /**
+     * Public write for comfort features (fatigue cooling, eco shutdown, etc.).
+     * Does not affect the occupancy-based target — caller manages restore.
+     */
+    fun setTemperatureOverride(tempC: Float) {
+        if (!available) return
+        writeTemperature(tempC.coerceIn(Config.CLIMATE_MIN_TEMP_C, Config.CLIMATE_MAX_TEMP_C))
+    }
+
     private fun writeTemperature(tempC: Float, areaId: Int = 0) {
         try {
             val setMethod = propertyManager.javaClass.getMethod(
