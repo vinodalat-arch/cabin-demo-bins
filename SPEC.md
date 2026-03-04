@@ -1479,14 +1479,14 @@ object Config {
     const val HEAD_YAW_THRESHOLD = 30.0f   // degrees
     @JvmStatic @Volatile var HEAD_PITCH_THRESHOLD = 35.0f // degrees (tuned: camera mount angle)
     const val PITCH_BASELINE_DEVIATION = 25.0f
-    const val BASELINE_FRAMES = 10
+    const val BASELINE_FRAMES = 5
     const val ANGLE_SMOOTH_WINDOW = 3
 
     // Pose analysis
     const val POSTURE_LEAN_THRESHOLD = 30.0f   // degrees from vertical
     const val CHILD_SLOUCH_THRESHOLD = 20.0f   // degrees
     const val HEAD_TURN_THRESHOLD = 0.3f       // nose offset / shoulder width
-    const val CHILD_BBOX_RATIO = 0.65f
+    const val CHILD_BBOX_RATIO = 0.50f       // tightened: rear adults were misclassified
     const val KP_CONF_THRESHOLD = 0.5f
     const val WRIST_CROP_SIZE = 200            // pixels
 
@@ -1494,11 +1494,11 @@ object Config {
     const val SMOOTHER_WINDOW = 3              // tuned: 3-frame window for ~2s detection latency
     const val SMOOTHER_THRESHOLD = 0.6f
     const val FAST_CLEAR_FRAMES = 2
-    const val EYES_CLOSED_MIN_FRAMES = 2
+    const val EYES_CLOSED_MIN_FRAMES = 1
     const val DISTRACTED_MIN_FRAMES = 2
     const val EATING_MIN_FRAMES = 2
     const val POSTURE_MIN_FRAMES = 2
-    const val YAWNING_MIN_FRAMES = 2
+    const val YAWNING_MIN_FRAMES = 1
     const val HANDS_OFF_MIN_FRAMES = 3
     const val CHILD_SLOUCH_MIN_FRAMES = 3
 

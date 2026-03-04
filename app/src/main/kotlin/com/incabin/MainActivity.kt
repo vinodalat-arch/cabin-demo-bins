@@ -1918,32 +1918,48 @@ class MainActivity : Activity() {
             driverNameText.visibility = View.GONE
         }
 
-        // Driver position (seat side) — static at bottom of right panel
-        driverPositionText.text = "Driver Position: ${Config.DRIVER_SEAT_SIDE.uppercase()}"
-        if (driverPositionText.visibility != View.VISIBLE) {
-            driverPositionText.visibility = View.VISIBLE
-        }
+        val isMinimal = Config.PASSENGER_INFO_DETAIL == "minimal"
 
-        // Engineering metrics (hidden, but kept updated)
-        earText.text = "EAR: ${result.earValue?.let { "%.3f".format(it) } ?: "--"}"
-        marText.text = "MAR: ${result.marValue?.let { "%.3f".format(it) } ?: "--"}"
-        yawText.text = "Yaw: ${result.headYaw?.let { "%.1f".format(it) } ?: "--"}"
-        pitchText.text = "Pitch: ${result.headPitch?.let { "%.1f".format(it) } ?: "--"}"
-
-        // Info — passenger count (simple)
+        // Info — passenger count
         val pCount = result.passengerCount
         passengerText.text = "$pCount passenger${if (pCount != 1) "s" else ""}"
-        val distS = result.distractionDurationS
-        if (distS > 0) {
-            distractionText.text = "Distraction: ${distS}s"
-            distractionText.setTextColor(if (distS >= 10) colorDanger else colorCaution)
-        } else {
-            distractionText.text = "Distraction: 0s"
-            distractionText.setTextColor(colorTextSecondary)
-        }
 
-        // --- Detection labels with animated appear/disappear ---
-        updateDetectionLabels(result)
+        if (isMinimal) {
+            // Minimal mode: hide engineering text, show compact detection summary
+            driverPositionText.visibility = View.GONE
+            earText.visibility = View.GONE
+            marText.visibility = View.GONE
+            yawText.visibility = View.GONE
+            pitchText.visibility = View.GONE
+            distractionText.visibility = View.GONE
+
+            updateDetectionLabelsCompact(result)
+        } else {
+            // Detailed mode: show all fields
+            driverPositionText.text = "Driver Position: ${Config.DRIVER_SEAT_SIDE.uppercase()}"
+            driverPositionText.visibility = View.VISIBLE
+
+            earText.text = "EAR: ${result.earValue?.let { "%.3f".format(it) } ?: "--"}"
+            marText.text = "MAR: ${result.marValue?.let { "%.3f".format(it) } ?: "--"}"
+            yawText.text = "Yaw: ${result.headYaw?.let { "%.1f".format(it) } ?: "--"}"
+            pitchText.text = "Pitch: ${result.headPitch?.let { "%.1f".format(it) } ?: "--"}"
+            earText.visibility = View.VISIBLE
+            marText.visibility = View.VISIBLE
+            yawText.visibility = View.VISIBLE
+            pitchText.visibility = View.VISIBLE
+
+            val distS = result.distractionDurationS
+            distractionText.visibility = View.VISIBLE
+            if (distS > 0) {
+                distractionText.text = "Distraction: ${distS}s"
+                distractionText.setTextColor(if (distS >= 10) colorDanger else colorCaution)
+            } else {
+                distractionText.text = "Distraction: 0s"
+                distractionText.setTextColor(colorTextSecondary)
+            }
+
+            updateDetectionLabels(result)
+        }
     }
 
     // --- Risk pill color animation ---
@@ -2062,6 +2078,53 @@ class MainActivity : Activity() {
         tv.animate().alpha(1f).setDuration(200).start()
     }
 
+    // --- Compact detection summary for minimal mode ---
+    private var lastCompactSummary: String = ""
+
+    private fun updateDetectionLabelsCompact(result: OutputResult) {
+        val labelMap = if (Config.LANGUAGE == "ja") AsimoHub.COMPACT_LABELS_JA else AsimoHub.COMPACT_LABELS_EN
+
+        val activeLabels = mutableListOf<String>()
+        if (!result.driverDetected && result.passengerCount > 0)
+            labelMap["noDriverDetected"]?.let { activeLabels.add(it) }
+        if (result.driverUsingPhone) labelMap["driverUsingPhone"]?.let { activeLabels.add(it) }
+        if (result.driverEyesClosed) labelMap["driverEyesClosed"]?.let { activeLabels.add(it) }
+        if (result.driverYawning) labelMap["driverYawning"]?.let { activeLabels.add(it) }
+        if (result.driverDistracted) labelMap["driverDistracted"]?.let { activeLabels.add(it) }
+        if (result.driverEatingDrinking) labelMap["driverEatingDrinking"]?.let { activeLabels.add(it) }
+        if (result.handsOffWheel) labelMap["handsOffWheel"]?.let { activeLabels.add(it) }
+        if (result.dangerousPosture) labelMap["dangerousPosture"]?.let { activeLabels.add(it) }
+        if (result.childSlouching) labelMap["childSlouching"]?.let { activeLabels.add(it) }
+
+        val summary = if (activeLabels.isEmpty()) {
+            if (Config.LANGUAGE == "ja") "安全" else "All Clear"
+        } else {
+            activeLabels.joinToString(", ")
+        }
+
+        if (summary == lastCompactSummary) return
+        lastCompactSummary = summary
+
+        detectionsContainer.removeAllViews()
+        val hasDanger = activeLabels.isNotEmpty()
+        val highestIsDanger = result.driverUsingPhone || result.driverEyesClosed || result.handsOffWheel
+        val textColor = when {
+            !hasDanger -> colorSafe
+            highestIsDanger -> colorDanger
+            else -> colorCaution
+        }
+
+        val tv = TextView(this).apply {
+            text = summary
+            textSize = 18f
+            setTextColor(textColor)
+            setPadding(0, dpToPx(2), 0, dpToPx(2))
+            alpha = 0f
+        }
+        detectionsContainer.addView(tv)
+        tv.animate().alpha(1f).setDuration(200).start()
+    }
+
     // --- Seat map display ---
     private var currentSeatMap: SeatMap? = null
 
@@ -2076,9 +2139,15 @@ class MainActivity : Activity() {
             return
         }
         carSeatMapView.visibility = View.VISIBLE
-        seatStatusContainer.visibility = View.VISIBLE
         val name = FrameHolder.getLatestResult()?.driverName
         carSeatMapView.setSeatMap(seatMap, Config.DRIVER_SEAT_SIDE, name)
+
+        // In minimal mode, hide per-seat text labels (car diagram is sufficient)
+        if (Config.PASSENGER_INFO_DETAIL == "minimal") {
+            seatStatusContainer.visibility = View.GONE
+            return
+        }
+        seatStatusContainer.visibility = View.VISIBLE
 
         // Text status labels below car diagram
         seatStatusContainer.removeAllViews()

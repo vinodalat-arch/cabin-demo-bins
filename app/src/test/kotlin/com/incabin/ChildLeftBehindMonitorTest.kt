@@ -1,5 +1,6 @@
 package com.incabin
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -14,7 +15,11 @@ class ChildLeftBehindMonitorTest {
 
     @Before
     fun setUp() {
-        // Ensure feature is enabled for tests
+        Config.ENABLE_CHILD_LEFT_BEHIND = true
+    }
+
+    @After
+    fun tearDown() {
         Config.ENABLE_CHILD_LEFT_BEHIND = true
     }
 

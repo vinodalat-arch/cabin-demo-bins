@@ -125,7 +125,7 @@ class ConfigConstantsTest {
 
     @Test
     fun test_child_bbox_ratio() {
-        assertEquals(0.65f, Config.CHILD_BBOX_RATIO, 0.001f)
+        assertEquals(0.50f, Config.CHILD_BBOX_RATIO, 0.001f)
     }
 
     @Test
@@ -481,5 +481,96 @@ class ConfigConstantsTest {
         assertEquals("ambient_light_enabled", ConfigPrefs.PREF_AMBIENT_LIGHT)
         assertEquals("ambient_comfort_enabled", ConfigPrefs.PREF_AMBIENT_COMFORT)
         assertEquals("zone_hvac_enabled", ConfigPrefs.PREF_ZONE_HVAC)
+    }
+
+    // -------------------------------------------------------------------------
+    // Wellness coach constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_wellness_coach_constants() {
+        assertTrue(Config.ENABLE_WELLNESS_COACH)
+        assertEquals(45, Config.WELLNESS_MILESTONE_1_MIN)
+        assertEquals(90, Config.WELLNESS_MILESTONE_2_MIN)
+        assertEquals(120, Config.WELLNESS_MILESTONE_3_MIN)
+        assertEquals(30, Config.WELLNESS_REPEAT_INTERVAL_MIN)
+    }
+
+    // -------------------------------------------------------------------------
+    // Quiet mode constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_quiet_mode_default() {
+        assertTrue(Config.ENABLE_QUIET_MODE)
+    }
+
+    // -------------------------------------------------------------------------
+    // Fatigue comfort constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_fatigue_comfort_constants() {
+        assertTrue(Config.ENABLE_FATIGUE_COMFORT)
+        assertEquals(50, Config.FATIGUE_BRIGHTNESS_BOOST)
+        assertEquals(-1.5f, Config.FATIGUE_HVAC_OFFSET_C, 0.001f)
+        assertEquals(30, Config.FATIGUE_DEACTIVATE_FRAMES)
+    }
+
+    // -------------------------------------------------------------------------
+    // Nap mode constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_nap_mode_constants() {
+        assertTrue(Config.ENABLE_NAP_MODE)
+        assertEquals(1.0f, Config.NAP_HVAC_WARM_OFFSET_C, 0.001f)
+    }
+
+    // -------------------------------------------------------------------------
+    // Child comfort constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_child_comfort_constants() {
+        assertTrue(Config.ENABLE_CHILD_COMFORT)
+        assertEquals(1.0f, Config.CHILD_COMFORT_HVAC_OFFSET_C, 0.001f)
+        assertEquals(30, Config.CHILD_REMINDER_INTERVAL_MIN)
+    }
+
+    // -------------------------------------------------------------------------
+    // Eco cabin constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_eco_cabin_constants() {
+        assertTrue(Config.ENABLE_ECO_CABIN)
+        assertEquals(10, Config.ECO_DEBOUNCE_FRAMES)
+        assertEquals(20, Config.ECO_BRIGHTNESS)
+    }
+
+    // -------------------------------------------------------------------------
+    // Arrival prep constants (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_arrival_prep_constants() {
+        assertTrue(Config.ENABLE_ARRIVAL_PREP)
+        assertEquals(10, Config.ARRIVAL_SPEED_HISTORY_SIZE)
+    }
+
+    // -------------------------------------------------------------------------
+    // ConfigPrefs comfort feature keys (1 test)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_configPrefs_comfort_keys() {
+        assertEquals("wellness_coach_enabled", ConfigPrefs.PREF_WELLNESS_COACH)
+        assertEquals("quiet_mode_enabled", ConfigPrefs.PREF_QUIET_MODE)
+        assertEquals("fatigue_comfort_enabled", ConfigPrefs.PREF_FATIGUE_COMFORT)
+        assertEquals("nap_mode_enabled", ConfigPrefs.PREF_NAP_MODE)
+        assertEquals("child_comfort_enabled", ConfigPrefs.PREF_CHILD_COMFORT)
+        assertEquals("eco_cabin_enabled", ConfigPrefs.PREF_ECO_CABIN)
+        assertEquals("arrival_prep_enabled", ConfigPrefs.PREF_ARRIVAL_PREP)
     }
 }

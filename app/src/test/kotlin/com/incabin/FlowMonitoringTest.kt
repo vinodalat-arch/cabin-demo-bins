@@ -149,22 +149,19 @@ class FlowMonitoringTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_distraction_duration_increments() {
-        // Simulate the main loop's increment logic: +1 each frame while any active
-        var duration = 0
-        for (i in 1..5) {
-            duration++ // phone active → increment
-        }
-        assertEquals(5, duration)
+    fun test_distraction_duration_field_present_in_output() {
+        // distractionDurationS is set by InCabinService post-smoothing, verify it survives schema validation
+        val result = makeResult(phone = true, distractionDuration = 5)
+        val errors = OutputResult.validate(result.toMap())
+        assertTrue("Schema should validate with distractionDuration=5: $errors", errors.isEmpty())
+        assertEquals(5, result.distractionDurationS)
     }
 
     @Test
-    fun test_distraction_duration_resets_on_all_clear() {
-        var duration = 5
-        // All clear → reset
-        val anyActive = false
-        if (!anyActive) duration = 0
-        assertEquals(0, duration)
+    fun test_distraction_duration_zero_when_all_clear() {
+        val result = makeResult(distractionDuration = 0)
+        assertEquals(0, result.distractionDurationS)
+        assertEquals("low", result.riskLevel)
     }
 
     // -------------------------------------------------------------------------

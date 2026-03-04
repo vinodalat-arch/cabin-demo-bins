@@ -43,6 +43,18 @@ class CarSeatMapView @JvmOverloads constructor(
             else -> "caution"                      // Yawning, Distracted, Eating (warning)
         }
 
+        /**
+         * Color category for non-driver (passenger) seats.
+         * Passengers aren't driving — only sustained bad posture (Sleeping) warrants red.
+         * Everything else caps at caution (yellow).
+         */
+        fun passengerSeatColor(state: String): String = when (state) {
+            "Upright" -> "safe"
+            "Vacant" -> "vacant"
+            "Sleeping" -> "danger"                // sustained bad posture — safety concern
+            else -> "caution"                     // all other states cap at yellow
+        }
+
         /** Short icon label for each seat state. */
         fun stateIcon(state: String): String = when (state) {
             "Upright" -> "OK"
@@ -216,10 +228,12 @@ class CarSeatMapView @JvmOverloads constructor(
         }
         hasDanger = anyDanger
 
-        // Animate underglow: red if any critical, amber if any caution, green if all safe
-        val allStates = listOf(map.driver, map.frontPassenger, map.rearLeft, map.rearCenter, map.rearRight)
-        val hasCritical = allStates.any { seatColor(it.state) == "danger" }
-        val hasCaution = allStates.any { seatColor(it.state) == "caution" }
+        // Animate underglow: red if driver critical or passenger sleeping, amber if any caution
+        val hasCritical = seatColor(map.driver.state) == "danger" ||
+            listOf(map.frontPassenger, map.rearLeft, map.rearCenter, map.rearRight)
+                .any { passengerSeatColor(it.state) == "danger" }
+        val hasCaution = listOf(map.driver, map.frontPassenger, map.rearLeft, map.rearCenter, map.rearRight)
+            .any { seatColor(it.state) == "caution" || seatColor(it.state) == "danger" }
         val targetGlow = when {
             hasCritical -> colorDanger
             hasCaution -> colorCaution
@@ -267,16 +281,19 @@ class CarSeatMapView @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun resolveColor(state: SeatState): Int = when (seatColor(state.state)) {
-        "safe" -> colorSafe
-        "caution" -> colorCaution
-        "danger" -> colorDanger
-        else -> colorVacant
+    private fun resolveColor(state: SeatState, seat: Seat = Seat.DRIVER): Int {
+        val category = if (seat == Seat.DRIVER) seatColor(state.state) else passengerSeatColor(state.state)
+        return when (category) {
+            "safe" -> colorSafe
+            "caution" -> colorCaution
+            "danger" -> colorDanger
+            else -> colorVacant
+        }
     }
 
     private fun animateSeatColor(seat: Seat, old: SeatState, new: SeatState) {
         val oldColor = currentColors[seat.ordinal]
-        val newColor = resolveColor(new)
+        val newColor = resolveColor(new, seat)
         if (oldColor == newColor) return
 
         seatColorAnimators[seat]?.cancel()

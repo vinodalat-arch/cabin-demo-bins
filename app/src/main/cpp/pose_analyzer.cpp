@@ -17,8 +17,8 @@ namespace incabin {
 static constexpr float POSTURE_LEAN_THRESHOLD = 30.0f;
 static constexpr float CHILD_SLOUCH_THRESHOLD = 20.0f;
 static constexpr float HEAD_TURN_THRESHOLD = 0.3f;
-static constexpr float CHILD_BBOX_RATIO = 0.65f;
-static constexpr float CHILD_SHOULDER_RATIO = 0.7f;
+static constexpr float CHILD_BBOX_RATIO = 0.50f;
+static constexpr float CHILD_SHOULDER_RATIO = 0.55f;
 static constexpr float CHILD_MIN_BBOX_HEIGHT = 50.0f;
 static constexpr int WRIST_CROP_SIZE = 200;
 static constexpr int YOLO_PHONE_CLASS = 67;

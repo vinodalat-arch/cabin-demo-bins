@@ -860,20 +860,27 @@ class InCabinService : Service() {
             )
 
             // Step 6.5: Welcome greeting + theme apply on first recognition
-            if (recognizedName != null && recognizedName != lastWelcomedDriverName) {
-                lastWelcomedDriverName = recognizedName
-                val isJapanese = Config.LANGUAGE == "ja"
-                val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                val profile = if (Config.ENABLE_DRIVER_PROFILES) driverProfileStore?.get(recognizedName) else null
-                val theme = if (profile != null) CabinTheme.findById(profile.themeId) else null
-                if (theme != null) {
-                    ThemeApplier.applyAll(theme, applicationContext)
-                    Log.i(TAG, "Applied theme '${theme.id}' for $recognizedName")
+            // Wrapped in try-catch: comfort feature must never abort core pipeline
+            try {
+                if (recognizedName != null && recognizedName != lastWelcomedDriverName) {
+                    val isJapanese = Config.LANGUAGE == "ja"
+                    val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                    val profile = if (Config.ENABLE_DRIVER_PROFILES) driverProfileStore?.get(recognizedName) else null
+                    val theme = if (profile != null) CabinTheme.findById(profile.themeId) else null
+                    if (theme != null) {
+                        ThemeApplier.applyAll(theme, applicationContext)
+                        // Reset ClimateController to new base so ramp starts from new temp
+                        vehicleChannelManager?.climateController?.restore()
+                        Log.i(TAG, "Applied theme '${theme.id}' for $recognizedName")
+                    }
+                    val themeName = if (isJapanese) theme?.displayNameJa else theme?.displayName
+                    alertOrchestrator?.enqueueWelcome(
+                        AudioAlerter.buildWelcomeGreeting(recognizedName, hourOfDay, themeName, isJapanese)
+                    )
+                    lastWelcomedDriverName = recognizedName // set AFTER success
                 }
-                val themeName = if (isJapanese) theme?.displayNameJa else theme?.displayName
-                alertOrchestrator?.enqueueWelcome(
-                    AudioAlerter.buildWelcomeGreeting(recognizedName, hourOfDay, themeName, isJapanese)
-                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Theme apply/greeting failed, will retry next frame", e)
             }
 
             // Step 7: Alert orchestrator (core — must run even if overlay fails)

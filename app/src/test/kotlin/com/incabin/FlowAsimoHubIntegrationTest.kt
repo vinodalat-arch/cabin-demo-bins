@@ -143,7 +143,7 @@ class FlowAsimoHubIntegrationTest {
             passengerCount = 2, childPresent = true, childSlouching = true
         )
 
-        // Child slouching needs 5 sustained frames (CHILD_SLOUCH_MIN_FRAMES = 5)
+        // Child slouching needs 3 sustained frames (CHILD_SLOUCH_MIN_FRAMES = 3)
         lateinit var smoothed: OutputResult
         repeat(6) {
             smoothed = smoother.smooth(mergeResults(face, pose))

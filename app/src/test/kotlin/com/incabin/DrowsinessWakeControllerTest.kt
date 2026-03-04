@@ -1,5 +1,6 @@
 package com.incabin
 
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -13,6 +14,11 @@ class DrowsinessWakeControllerTest {
 
     @Before
     fun setUp() {
+        Config.ENABLE_SEAT_MASSAGE = true
+    }
+
+    @After
+    fun tearDown() {
         Config.ENABLE_SEAT_MASSAGE = true
     }
 

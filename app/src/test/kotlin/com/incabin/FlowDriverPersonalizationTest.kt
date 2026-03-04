@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -13,12 +14,25 @@ import org.junit.Test
  */
 class FlowDriverPersonalizationTest {
 
+    private var savedTemp = 0f
+    private var savedColor = ""
+    private var savedProfiles = false
+
     @Before
     fun setUp() {
-        // Reset Config to defaults before each test
+        savedTemp = Config.HVAC_BASE_TEMP_C
+        savedColor = Config.CURRENT_DRIVER_AMBIENT_COLOR
+        savedProfiles = Config.ENABLE_DRIVER_PROFILES
         Config.HVAC_BASE_TEMP_C = 22.0f
         Config.CURRENT_DRIVER_AMBIENT_COLOR = ""
         Config.ENABLE_DRIVER_PROFILES = false
+    }
+
+    @After
+    fun tearDown() {
+        Config.HVAC_BASE_TEMP_C = savedTemp
+        Config.CURRENT_DRIVER_AMBIENT_COLOR = savedColor
+        Config.ENABLE_DRIVER_PROFILES = savedProfiles
     }
 
     // -------------------------------------------------------------------------

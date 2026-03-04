@@ -14,7 +14,8 @@ import android.util.Log
  */
 class AlertOrchestrator(
     private val audioAlerter: AudioAlerter,
-    private val vehicleChannelManager: VehicleChannelManager?
+    private val vehicleChannelManager: VehicleChannelManager?,
+    val cabinExperienceManager: CabinExperienceManager = CabinExperienceManager(audioAlerter)
 ) {
     companion object {
         private const val TAG = "AlertOrchestrator"
@@ -217,6 +218,25 @@ class AlertOrchestrator(
         } catch (e: Exception) {
             Log.w(TAG, "Emergency score override failed", e)
         }
+
+        // Step 6: Smart cabin comfort features (pipeline-isolated)
+        try {
+            val seatMap = FrameHolder.getSeatMap()
+            val events = cabinExperienceManager.evaluate(
+                result, seatMap,
+                vehicleChannelManager?.isParked ?: false,
+                -1, Config.HVAC_BASE_TEMP_C, null, null
+            )
+            events.forEach { event ->
+                if (event.priority == CabinEvent.IMPORTANT) {
+                    audioAlerter.enqueueCritical(event.message)
+                } else {
+                    audioAlerter.enqueueWelcome(event.message)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "CabinExperienceManager failed", e)
+        }
     }
 
     /**
@@ -294,6 +314,11 @@ class AlertOrchestrator(
         audioAlerter.resetState()
         previousLevel = null
         emergencyTriggered = false
+        try {
+            cabinExperienceManager.resetState()
+        } catch (e: Exception) {
+            Log.w(TAG, "CabinExperienceManager reset failed", e)
+        }
         try {
             vehicleChannelManager?.climateController?.restore()
         } catch (e: Exception) {

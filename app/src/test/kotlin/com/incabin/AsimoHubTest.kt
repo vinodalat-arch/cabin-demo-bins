@@ -513,4 +513,28 @@ class AsimoHubTest {
         assertEquals(AsimoHub.GlowCategory.SAFE, AsimoHub.resolveGlowCategory(""))
         assertFalse(AsimoHub.shouldPulse(""))
     }
+
+    // -------------------------------------------------------------------------
+    // Compact label maps (3 tests)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun test_compact_en_and_ja_maps_have_same_keys() {
+        assertEquals(AsimoHub.COMPACT_LABELS_EN.keys, AsimoHub.COMPACT_LABELS_JA.keys)
+    }
+
+    @Test
+    fun test_compact_maps_cover_all_detection_keys() {
+        for (key in AsimoHub.DETECTION_LABELS_EN.keys) {
+            assertTrue("Compact EN missing: $key", AsimoHub.COMPACT_LABELS_EN.containsKey(key))
+            assertTrue("Compact JA missing: $key", AsimoHub.COMPACT_LABELS_JA.containsKey(key))
+        }
+    }
+
+    @Test
+    fun test_compact_labels_are_short() {
+        for ((key, label) in AsimoHub.COMPACT_LABELS_EN) {
+            assertTrue("Compact label too long for $key: '$label'", label.length <= 12)
+        }
+    }
 }

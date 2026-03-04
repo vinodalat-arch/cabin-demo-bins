@@ -656,7 +656,11 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
      * Enqueue a welcome message (e.g. "Welcome, Alice") at INFO priority.
      * Used for driver greeting on first recognition in a session.
      */
+    /** When true, INFO-tier announcements are suppressed (quiet mode for sleeping passengers). */
+    @Volatile var quietMode = false
+
     fun enqueueWelcome(text: String) {
+        if (quietMode) return
         val msg = AlertMessage(AlertPriority.INFO, text, null, false, SystemClock.elapsedRealtime())
         enqueueWithPriority(msg)
     }

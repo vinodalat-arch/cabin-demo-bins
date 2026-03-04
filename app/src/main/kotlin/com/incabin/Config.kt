@@ -25,7 +25,7 @@ object Config {
     const val POSTURE_LEAN_THRESHOLD = 30.0f
     const val CHILD_SLOUCH_THRESHOLD = 20.0f
     const val HEAD_TURN_THRESHOLD = 0.3f
-    const val CHILD_BBOX_RATIO = 0.65f
+    const val CHILD_BBOX_RATIO = 0.50f
     const val KP_CONF_THRESHOLD = 0.5f
     const val WRIST_CROP_SIZE = 200
 
@@ -207,6 +207,40 @@ object Config {
 
     // Seat assignment
     const val SEAT_FRONT_ROW_AREA_RATIO = 0.40f  // bbox area ratio for front/rear discrimination
+
+    // Journey Wellness Coach
+    @JvmStatic @Volatile var ENABLE_WELLNESS_COACH = true
+    const val WELLNESS_MILESTONE_1_MIN = 45
+    const val WELLNESS_MILESTONE_2_MIN = 90
+    const val WELLNESS_MILESTONE_3_MIN = 120
+    const val WELLNESS_REPEAT_INTERVAL_MIN = 30
+
+    // Quiet Mode (suppress INFO TTS when passenger sleeping)
+    @JvmStatic @Volatile var ENABLE_QUIET_MODE = true
+
+    // Fatigue Comfort (cool + brighten on drowsiness)
+    @JvmStatic @Volatile var ENABLE_FATIGUE_COMFORT = true
+    const val FATIGUE_BRIGHTNESS_BOOST = 50
+    const val FATIGUE_HVAC_OFFSET_C = -1.5f
+    const val FATIGUE_DEACTIVATE_FRAMES = 30
+
+    // Nap Mode (warm zone + quiet mode for sleeping passengers)
+    @JvmStatic @Volatile var ENABLE_NAP_MODE = true
+    const val NAP_HVAC_WARM_OFFSET_C = 1.0f
+
+    // Child Comfort (warm rear + periodic reminders)
+    @JvmStatic @Volatile var ENABLE_CHILD_COMFORT = true
+    const val CHILD_COMFORT_HVAC_OFFSET_C = 1.0f
+    const val CHILD_REMINDER_INTERVAL_MIN = 30
+
+    // Eco Cabin (shutdown when empty + parked)
+    @JvmStatic @Volatile var ENABLE_ECO_CABIN = true
+    const val ECO_DEBOUNCE_FRAMES = 10
+    const val ECO_BRIGHTNESS = 20
+
+    // Arrival Preparation
+    @JvmStatic @Volatile var ENABLE_ARRIVAL_PREP = true
+    const val ARRIVAL_SPEED_HISTORY_SIZE = 10
 
     // Risk weights
     const val RISK_WEIGHT_PHONE = 3

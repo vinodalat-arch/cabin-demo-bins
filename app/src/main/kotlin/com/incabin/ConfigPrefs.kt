@@ -28,6 +28,13 @@ object ConfigPrefs {
     const val PREF_AMBIENT_LIGHT = "ambient_light_enabled"
     const val PREF_AMBIENT_COMFORT = "ambient_comfort_enabled"
     const val PREF_ZONE_HVAC = "zone_hvac_enabled"
+    const val PREF_WELLNESS_COACH = "wellness_coach_enabled"
+    const val PREF_QUIET_MODE = "quiet_mode_enabled"
+    const val PREF_FATIGUE_COMFORT = "fatigue_comfort_enabled"
+    const val PREF_NAP_MODE = "nap_mode_enabled"
+    const val PREF_CHILD_COMFORT = "child_comfort_enabled"
+    const val PREF_ECO_CABIN = "eco_cabin_enabled"
+    const val PREF_ARRIVAL_PREP = "arrival_prep_enabled"
 
     /** Load all persisted preferences into Config volatile fields. */
     fun loadIntoConfig(context: Context) {
@@ -51,5 +58,12 @@ object ConfigPrefs {
         Config.ENABLE_AMBIENT_LIGHT = prefs.getBoolean(PREF_AMBIENT_LIGHT, false)
         Config.ENABLE_AMBIENT_COMFORT = prefs.getBoolean(PREF_AMBIENT_COMFORT, false)
         Config.ENABLE_ZONE_HVAC = prefs.getBoolean(PREF_ZONE_HVAC, false)
+        Config.ENABLE_WELLNESS_COACH = prefs.getBoolean(PREF_WELLNESS_COACH, true)
+        Config.ENABLE_QUIET_MODE = prefs.getBoolean(PREF_QUIET_MODE, true)
+        Config.ENABLE_FATIGUE_COMFORT = prefs.getBoolean(PREF_FATIGUE_COMFORT, true)
+        Config.ENABLE_NAP_MODE = prefs.getBoolean(PREF_NAP_MODE, true)
+        Config.ENABLE_CHILD_COMFORT = prefs.getBoolean(PREF_CHILD_COMFORT, true)
+        Config.ENABLE_ECO_CABIN = prefs.getBoolean(PREF_ECO_CABIN, true)
+        Config.ENABLE_ARRIVAL_PREP = prefs.getBoolean(PREF_ARRIVAL_PREP, true)
     }
 }

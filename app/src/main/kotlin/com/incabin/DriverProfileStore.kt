@@ -35,6 +35,27 @@ class DriverProfileStore private constructor(context: Context) {
                 instance ?: DriverProfileStore(context.applicationContext).also { instance = it }
             }
         }
+
+        /**
+         * Gson bypasses Kotlin default parameter values — fields missing from old JSON
+         * are set to JVM defaults (null for String, 0.0 for Float) instead of Kotlin defaults.
+         * This fixes null fields to their intended defaults.
+         */
+        @JvmStatic
+        fun fixNulls(profile: DriverProfile): DriverProfile {
+            @Suppress("SENSELESS_COMPARISON")
+            val needsFix = profile.name == null || profile.themeId == null || profile.ambientColorHex == null
+            return if (needsFix) {
+                DriverProfile(
+                    name = profile.name ?: "",
+                    preferredTempC = if (profile.preferredTempC == 0.0f) 22.0f else profile.preferredTempC,
+                    ambientColorHex = profile.ambientColorHex ?: "#5B8DEF",
+                    themeId = profile.themeId ?: "comfort"
+                )
+            } else {
+                profile
+            }
+        }
     }
 
     private val file: File = File(context.filesDir, FILENAME)
@@ -85,7 +106,7 @@ class DriverProfileStore private constructor(context: Context) {
             val type = object : TypeToken<List<DriverProfile>>() {}.type
             val loaded: List<DriverProfile> = gson.fromJson(json, type) ?: return
             profiles.clear()
-            profiles.addAll(loaded)
+            profiles.addAll(loaded.map { fixNulls(it) })
             Log.i(TAG, "Loaded ${profiles.size} profiles from disk")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load profiles from disk", e)

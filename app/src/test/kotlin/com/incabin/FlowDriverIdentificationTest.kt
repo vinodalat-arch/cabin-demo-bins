@@ -207,7 +207,7 @@ class FlowDriverIdentificationTest {
 
     @Test
     fun test_config_seat_side_default_is_left() {
-        assertEquals("left", "left") // Config.DRIVER_SEAT_SIDE default
+        assertEquals("left", Config.DRIVER_SEAT_SIDE)
     }
 
     @Test

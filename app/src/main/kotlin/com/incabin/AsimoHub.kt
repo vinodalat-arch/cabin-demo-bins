@@ -46,6 +46,31 @@ object AsimoHub {
         "childSlouching" to "子供の姿勢不良"
     )
 
+    /** Short labels for compact/minimal display mode — comma-joined on one line. */
+    val COMPACT_LABELS_EN = mapOf(
+        "noDriverDetected" to "No Driver",
+        "driverUsingPhone" to "Phone",
+        "driverEyesClosed" to "Eyes Closed",
+        "handsOffWheel" to "Hands Off",
+        "driverYawning" to "Yawning",
+        "driverDistracted" to "Distracted",
+        "driverEatingDrinking" to "Eating",
+        "dangerousPosture" to "Bad Posture",
+        "childSlouching" to "Child Slouch"
+    )
+
+    val COMPACT_LABELS_JA = mapOf(
+        "noDriverDetected" to "運転者なし",
+        "driverUsingPhone" to "スマホ",
+        "driverEyesClosed" to "閉眼",
+        "handsOffWheel" to "手放し",
+        "driverYawning" to "あくび",
+        "driverDistracted" to "よそ見",
+        "driverEatingDrinking" to "飲食",
+        "dangerousPosture" to "姿勢不良",
+        "childSlouching" to "子供姿勢"
+    )
+
     // Critical (danger-colored) fields
     val DANGER_FIELDS = setOf("driverUsingPhone", "driverEyesClosed", "handsOffWheel")
 

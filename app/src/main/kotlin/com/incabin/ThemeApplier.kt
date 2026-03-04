@@ -19,9 +19,13 @@ object ThemeApplier {
         Config.CURRENT_DRIVER_AMBIENT_COLOR = theme.ambientColorHex
     }
 
-    /** Sets screen brightness (0-255) via Settings.System. */
+    /** Sets screen brightness (0-255) via Settings.System. Requires WRITE_SETTINGS permission. */
     fun applyBrightness(brightness: Int, context: Context) {
         try {
+            if (!Settings.System.canWrite(context)) {
+                Log.w(TAG, "No WRITE_SETTINGS permission — skipping brightness")
+                return
+            }
             Settings.System.putInt(
                 context.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,

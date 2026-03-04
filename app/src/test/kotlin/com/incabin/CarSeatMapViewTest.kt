@@ -51,6 +51,46 @@ class CarSeatMapViewTest {
     }
 
     // -------------------------------------------------------------------------
+    // passengerSeatColor() — non-driver seats cap at caution except Sleeping
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun passengerSeatColor_sleeping_returnsDanger() {
+        assertEquals("danger", CarSeatMapView.passengerSeatColor("Sleeping"))
+    }
+
+    @Test
+    fun passengerSeatColor_phone_returnsCaution() {
+        // Phone in passenger seat is NOT danger (they're not driving)
+        assertEquals("caution", CarSeatMapView.passengerSeatColor("Phone"))
+    }
+
+    @Test
+    fun passengerSeatColor_distracted_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.passengerSeatColor("Distracted"))
+    }
+
+    @Test
+    fun passengerSeatColor_upright_returnsSafe() {
+        assertEquals("safe", CarSeatMapView.passengerSeatColor("Upright"))
+    }
+
+    @Test
+    fun passengerSeatColor_vacant_returnsVacant() {
+        assertEquals("vacant", CarSeatMapView.passengerSeatColor("Vacant"))
+    }
+
+    @Test
+    fun passengerSeatColor_eating_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.passengerSeatColor("Eating"))
+    }
+
+    @Test
+    fun passengerSeatColor_yawning_returnsCaution() {
+        assertEquals("caution", CarSeatMapView.passengerSeatColor("Yawning"))
+    }
+
+    // -------------------------------------------------------------------------
     // stateIcon() tests
     // -------------------------------------------------------------------------
 

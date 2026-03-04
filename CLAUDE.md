@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, per-seat passenger position detection, premium CarSeatMapView with metallic sedan rendering, and mock VLM test server with 15 controllable scenarios. Build verified (`assembleDebug` + all 712 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, per-seat passenger position detection, premium CarSeatMapView with metallic sedan rendering, mock VLM test server with 15 controllable scenarios, smart cabin IVI features (child left-behind, drowsiness wake, seat massage, ambient light, per-zone HVAC, emergency score override), ASIMO companion hub with animated mascot, driver personalization with named cabin themes (5 presets: Comfort/Energize/Relax/Night Drive/Eco), minimal/detailed dashboard mode with passenger seat color capping, and 8 smart cabin comfort features (journey wellness coach, quiet mode, fatigue comfort, nap mode, trip stats with badges, child comfort, eco cabin, arrival detection) via CabinExperienceManager. Child detection ratio tightened (0.65→0.50 bbox, 0.7→0.55 shoulder) to reduce rear-seat adult misclassification. Build verified (`assembleDebug` + all 1092 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -128,11 +128,11 @@ Runtime toggle in settings panel (hidden by default, 5-tap to open) enables/disa
 - Phone: COCO class 67, Food/drink: classes 39-48
 - Posture lean > 30°, Child slouch > 20°
 - Head turn: nose offset > 30% of shoulder width
-- Child: bbox height < 65% of driver
+- Child: bbox height < 50% of driver, shoulders < 55% of driver
 - Keypoint confidence threshold: 0.5
 - Wrist crop: 200x200px
 - Smoother: 3-frame window, 60% threshold, fast-clear on 2 consecutive high-EAR frames
-- Sustained detection: eyes 2 frames, yawning 2 frames, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames
+- Sustained detection: eyes 1 frame, yawning 1 frame, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 - Face recognition: cosine similarity > 0.5, every 5th frame, 512-dim embedding
 - Seat assignment: front row if bbox area >= 40% of driver bbox area
@@ -147,13 +147,13 @@ score >= 3 → high, >= 1 → medium, else → low
 
 ### Face Analysis (Kotlin + MediaPipe + OpenCV)
 - **EAR**: Right eye [33,160,158,133,153,144], Left eye [362,385,387,263,373,380]. Formula: (dist(p2,p6)+dist(p3,p5))/(2*dist(p1,p4))
-- **EAR auto-baseline**: First 10 frames with face detected accumulate EAR samples; baseline = mean. After calibration, eyes closed = `ear < baseline × 0.65` (adapts to individual eye geometry). Before calibration, falls back to fixed `ear < 0.21`
+- **EAR auto-baseline**: First 5 frames with face detected accumulate EAR samples; baseline = mean. After calibration, eyes closed = `ear < baseline × 0.65` (adapts to individual eye geometry). Before calibration, falls back to fixed `ear < 0.21`
 - **MAR**: Landmarks 13,14,61,291,0,17. Formula: (dist(top,bottom)+dist(upper_mid,lower_mid))/(2*dist(left,right))
 - **Head Pose**: solvePnP with landmarks [1,152,33,263,61,291], 3D model points, Euler angle extraction
 - **Angle smoothing**: Yaw and pitch values smoothed via 3-frame moving average (`ArrayDeque`) before boolean thresholding. Eliminates solvePnP single-frame spikes
-- **Pitch auto-baseline**: First 10 frames accumulate smoothed pitch; baseline = mean. After calibration, distracted = `|pitch - baseline| > 25°` (eliminates camera mounting angle bias). Before calibration, falls back to fixed `|pitch| > 35°`
+- **Pitch auto-baseline**: First 5 frames accumulate smoothed pitch; baseline = mean. After calibration, distracted = `|pitch - baseline| > 25°` (eliminates camera mounting angle bias). Before calibration, falls back to fixed `|pitch| > 35°`
 - **Baseline lifecycle**: FaceAnalyzer is recreated each monitoring session — baselines reset automatically on stop/start
-- **Face-to-driver spatial validation**: When driver bbox is available from pose analysis, nose landmark (index 1) must fall within the driver bbox expanded by 20% margin. Face outside driver region → returns `FaceResult.NO_FACE`. Pure `isFaceInDriverRegion()` companion function for testability
+- **Face-to-driver spatial validation**: When driver bbox is available from pose analysis, nose landmark (index 1) must fall within the driver bbox expanded by 35% margin. Face outside driver region → returns `FaceResult.NO_FACE`. Pure `isFaceInDriverRegion()` companion function for testability
 - **Import note**: `FaceLandmarkerOptions` is a nested class — import as `FaceLandmarker.FaceLandmarkerOptions`
 
 ### Pose Analysis (C++ + ONNX Runtime)
@@ -163,12 +163,12 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Posture**: 4 checks (torso lean, head droop, head turn, face not visible)
 - **Phone**: 2-strategy (driver ROI + 20% pad → wrist crops 200x200px), confidence 0.45 (higher than default 0.35 to reduce false positives)
 - **Food/drink**: Driver ROI + 20% pad, COCO classes 39-48, confidence 0.50
-- **Child**: bbox height ratio < 0.75, slouch check at 20°
+- **Child**: bbox height ratio < 0.50, shoulder ratio < 0.55, slouch check at 20°
 
 ### Temporal Smoother
 - Standard fields: majority voting over buffer
 - Face-gated fields: eyes→ear_value, yawning→mar_value, distracted→head_yaw (skip null frames)
-- Sustained detection thresholds (streak counters): eyes 2 frames, yawning 2 frames, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames. Majority voting must agree AND streak must reach min_frames before detection fires
+- Sustained detection thresholds (streak counters): eyes 1 frame, yawning 1 frame, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames. Majority voting must agree AND streak must reach min_frames before detection fires
 - Fast-clear: 2 consecutive frames with ear >= 0.21 → immediately clear eyes_closed
 - Passenger count: mode of buffer
 - Risk: recomputed from smoothed booleans
@@ -307,7 +307,8 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Metallic body**: `LinearGradient` from `#2A2C38` → `#383A48` → `#2A2C38` with `BlurMaskFilter` body highlight for depth
 - **Glass windows**: `RadialGradient` with blue tint (`#5B8DEF` at 40 alpha), chrome stroke border
 - **Seat rendering**: Ergonomic contoured shapes (backrest + cushion + headrest) with per-seat animated color transitions (`ArgbEvaluator`, 500ms)
-- **Seat states**: Color-coded — safe (`#2ECC71`), danger (`#E74C3C` with pulsing alpha 0.4→1.0, 800ms cycle), vacant (`#1E1F2A`)
+- **Seat states**: Color-coded — safe (`#2ECC71`), danger (`#E74C3C` with pulsing alpha 0.4→1.0, 800ms cycle), caution (`#F39C12`), vacant (`#1E1F2A`)
+- **Passenger seat color capping**: Non-driver seats use `passengerSeatColor()` — red only for sustained bad posture (Sleeping), all other states (Phone, Distracted, Eating, Yawning) cap at yellow/caution. Passengers aren't driving, so these are lower risk. Driver seat uses full 3-tier `seatColor()` (danger/caution/safe)
 - **State icons**: OK, Zzz, TEL, !!, EAT, ~, -- (rendered as text above each seat)
 - **Steering wheel**: 3-spoke design, rendered on correct side based on `Config.DRIVER_SEAT_SIDE`
 - **Rear bench**: Continuous bench seat with dynamic zone rendering — 2-zone (RL|RR) or 3-zone (RL|RC|RR) based on `rearCenter.occupied`
@@ -324,6 +325,31 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Seat map**: Full 5-seat `seat_map` JSON per scenario (driver, front_passenger, rear_left, rear_center, rear_right)
 - **Usage**: `python3 scripts/mock_server_test.py` (port 8000), emulator connects via `http://10.0.2.2:8000`
 - **No dependencies**: Pure Python stdlib (`http.server`, `json`)
+
+### Named Cabin Themes (CabinTheme + ThemeApplier)
+- **5 presets**: Comfort (22°C/200/auto/#5B8DEF), Energize (20°C/255/off/#2ECC71), Relax (24°C/150/on/#9B59B6), Night Drive (21°C/80/on/#E74C3C), Eco (26°C/180/auto/#1ABC9C)
+- **CabinTheme**: Pure data class with `id`, `displayName`, `displayNameJa`, `tempC`, `brightness` (0-255), `nightMode` (-1=auto/1=off/2=on), `ambientColorHex`, `description`, `descriptionJa`. Companion: `THEMES` list, `findById()`, `defaultTheme()`
+- **ThemeApplier**: Applies theme to device. `applyToConfig()` (pure — sets Config.HVAC_BASE_TEMP_C + CURRENT_DRIVER_AMBIENT_COLOR), `applyBrightness()` (Settings.System with `canWrite()` guard), `applyNightMode()` (UiModeManager), `applyAll()` (each step try-caught independently)
+- **DriverProfile.themeId**: Primary field replacing individual color/temp. `"comfort"` default. Gson backward compat via `fixNulls()` in `DriverProfileStore.loadFromDisk()` (Gson bypasses Kotlin defaults, sets missing String fields to null)
+- **Theme picker**: `FaceRegistrationActivity.showThemePickerDialog()` — 5 theme cards with color strip, name, description, temp/brightness badges. Replaces old color swatch + temp slider
+- **Welcome greeting**: `AudioAlerter.buildWelcomeGreeting(name, hourOfDay, themeName, isJapanese)` — "Good morning, Alice. Applying Relax theme" / "おはようございます、Aliceさん。リラックステーマを適用しています"
+- **Pipeline isolation**: Theme apply in InCabinService step 6.5 is wrapped in try-catch (comfort feature must never abort core pipeline). `lastWelcomedDriverName` set after success (retryable on failure). ClimateController reset after theme change via `restore()`
+- **Permissions**: `WRITE_SETTINGS` declared in manifest (required for brightness). `canWrite()` checked before `Settings.System.putInt`
+
+### Smart Cabin Comfort Features (CabinExperienceManager)
+- **CabinExperienceManager**: Coordination layer for 8 comfort features. Called from AlertOrchestrator.evaluate() Step 6, wrapped in try-catch (pipeline-isolated)
+- **JourneyWellnessCoach**: Track driving time, announce milestones (45/90/120min, then every 30min), cool cabin on long drives. HVAC offset: -1°C (45m), -1.5°C (90m), -2°C (120m+). Posture tracking (upright frame %)
+- **QuietModeController**: Suppress INFO-tier TTS when any non-driver passenger is sleeping. Sets `AudioAlerter.quietMode` flag. No announcement on activation (don't wake sleeper). "Everyone's awake" on deactivation
+- **FatigueComfortController**: On driver drowsiness (eyes closed or yawning), brighten display (+50) and cool cabin (-1.5°C). Restores after 30 consecutive clear frames. Rising-edge activation only
+- **NapModeController**: When passenger falls asleep, request HVAC zone warm (+1°C) and activate quiet mode. "Welcome back, front passenger" on wake
+- **TripStats**: Enhanced session summary with posture score, comfort events, and 8 badges (ZEN_DRIVER, NIGHT_OWL, ROAD_TRIP_PRO, PERFECT_POSTURE, COMFORT_CAPTAIN, MARATHON, REFRESHED, FAMILY_DRIVE). Pure data class + companion functions
+- **ChildComfortController**: Warm rear HVAC zone for children (+1°C), periodic reminders every 30 min. Activates quiet mode if child sleeping
+- **EcoCabinController**: When cabin fully empty + parked for 10 frames, set HVAC to 28°C and brightness to 20. Restores on occupant return. "Cabin secured. See you next time!"
+- **ArrivalController**: Detects deceleration→park transition (was >30km/h in speed history, now parked). Announces arrival with trip duration
+- **Cross-feature coordination**: Quiet mode shared (nap + child both activate), fatigue overrides HVAC temporarily, eco blocked by nap mode, arrival fires before eco
+- **Config toggles**: All features on by default, persisted via ConfigPrefs
+- **CabinEvent**: Data class (priority: INFO/IMPORTANT, message, hvacOffset). IMPORTANT events bypass quiet mode via enqueueCritical()
+- **Unit testable**: All features use pure companion functions. CabinExperienceManager accepts nowMs parameter to avoid SystemClock dependency in tests
 
 ### Distraction Duration
 - Fields: phone, eyes, yawning, distracted, eating (NOT posture/child)
@@ -365,6 +391,9 @@ score >= 3 → high, >= 1 → medium, else → low
   - Settings panel: translateX slide 300ms/200ms with scrim alpha fade
 - Risk pill: compact rounded-corner pill (12dp radius), states: LOW/MEDIUM/HIGH/NO OCCUPANTS
 - Detection labels: vertical stack, `● Phone Detected` with danger/caution colored dot, "All Clear" in safe color when empty
+- **Minimal/Detailed mode** (`Config.PASSENGER_INFO_DETAIL`): Toggled via settings overlay (MINIMAL/DETAILED segmented button)
+  - **Minimal**: Shows only driver name, passenger count, and compact detection summary (single line, e.g. "Phone, Eyes Closed, Yawning"). Hides distraction timer, driver position, EAR/MAR/Yaw/Pitch metrics, per-seat text labels. Car seat diagram still visible
+  - **Detailed**: Shows all fields including engineering metrics, distraction timer, per-seat text status labels
 - Ticker: static last 3 events on separate lines (replaces marquee)
 - Footer: 11sp `text_muted`, "KPIT Technologies, India"
 - Idle state: slim left status strip visible, center shows "Honda Smart Cabin" branding, right panel hidden
@@ -408,49 +437,83 @@ in_cabin_poc-sa8155/
 │   │   ├── FaceAnalyzer, FaceDetectorLite, FaceRecognizerBridge, FaceStore, PoseAnalyzerBridge
 │   │   ├── Merger, TemporalSmoother, AudioAlerter, OutputResult, NativeLib
 │   │   ├── AlertOrchestrator, VehicleChannelManager, ClimateController, VlmClient, SeatMap, SeatAssigner, CarSeatMapView
+│   │   ├── AsimoHub, AsimoBgGlowView, CabinTheme, ThemeApplier, DriverProfileStore
+│   │   ├── CabinExperienceManager, CabinEvent, JourneyWellnessCoach, QuietModeController
+│   │   ├── FatigueComfortController, NapModeController, TripStats, Badge
+│   │   ├── ChildComfortController, EcoCabinController, ArrivalController
+│   │   ├── ChildLeftBehindMonitor, DrowsinessWakeController, SeatMassageChannel, AmbientLightController
+│   │   ├── RearAnalyzer, RearResult, RearSmoother
 │   │   ├── PlatformProfile, DeviceSetup, BootReceiver
 │   │   ├── PipelineWatchdog, MemoryPolicy, CrashLog
 │   │   ├── MainActivity, FaceRegistrationActivity
 │   │   ├── OverlayRenderer, FrameHolder, ScoreArcView
 │   └── res/             (layout, strings, colors, dimens, styles, drawables, notification icon, app icon)
-├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest, SeatAssignerTest, SeatMapTest, CarSeatMapViewTest, SeatValidationTest)
+├── app/src/test/kotlin/  (AudioAlerterTest, MergerTest, TemporalSmootherTest, OutputResultTest, FaceStoreTest, PlatformProfileTest, FlowMonitoringTest, FlowEscalationTest, FlowConfigToggleTest, FlowFaceRecognitionTest, FlowWifiCameraTest, FlowDriverIdentificationTest, FlowVlmRemoteTest, FlowMultiModalEscalationTest, VlmClientTest, ConfigConstantsTest, EscalationLevelTest, AlertOrchestratorTest, VehicleChannelManagerTest, ChannelPropertyTest, BootReceiverTest, PipelineWatchdogTest, MemoryPolicyTest, CrashLogTest, ServiceHealthTest, MjpegReconnectTest, InferenceErrorTest, ClimateControllerTest, SeatAssignerTest, SeatMapTest, CarSeatMapViewTest, SeatValidationTest, AsimoHubTest, CabinThemeTest, ThemeApplierTest, DriverProfileStoreTest, FlowDriverPersonalizationTest, FlowAsimoHubIntegrationTest, ChildLeftBehindMonitorTest, DrowsinessWakeControllerTest, SeatMassageChannelTest, AmbientLightControllerTest, RearAnalyzerTest, RearResultTest, RearSmootherTest, OutputResultSerializationTest, ScoreAndDistractionTest, CabinExperienceManagerTest, JourneyWellnessCoachTest, QuietModeControllerTest, FatigueComfortControllerTest, NapModeControllerTest, TripStatsTest, ChildComfortControllerTest, EcoCabinControllerTest, ArrivalControllerTest)
 ├── scripts/              (vlm_server.py, vlm_launcher.py, requirements.txt, convert_fp16.py, mock_server_test.py)
 └── build configs         (build.gradle.kts, settings.gradle.kts, etc.)
 ```
 
 ## Testing
-- 712 unit tests (all passing):
-  - AudioAlerterTest: 35 tests (onset, priority ordering, all-clear flush, cooldown, escalation ladder, edge cases, Japanese locale, DangerSnapshot)
-  - ConfigConstantsTest: 42 tests (all Config constant values match documented spec, incl. speed tier + compressed escalation + climate + seat constants)
-  - AlertOrchestratorTest: 30 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
-  - OutputResultTest: 29 tests (schema validation — valid/invalid payloads + driver_name)
-  - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy, automotive BSP flag)
-  - VehicleChannelManagerTest: 25 tests (VHAL property mapping, channel activation/deactivation, reflection-based Car API, speedTier pure function)
-  - EscalationLevelTest: 24 tests (level progression, duration thresholds, per-detection max level, speed-scaled thresholds, caps with speed)
-  - TemporalSmootherTest: 23 tests (voting, face-gating, fast-clear, sustained thresholds incl. yawning min_frames, passenger mode, risk recomputation)
-  - MergerTest: 19 tests (risk scoring + merge logic)
-  - FlowDriverIdentificationTest: 16 tests (seat-side selection, face region validation, driver_detected schema/merger/smoother, config toggle)
-  - VlmClientTest: 16 tests (parseDetectResponse JSON→OutputResult, parseSeatMap, health check, error handling)
-  - FlowMonitoringTest: 12 tests (full pipeline chain — mergeResults → smooth → validate for detection sequences)
-  - FlowEscalationTest: 12 tests (escalation ladder timing, cooldown, multi-danger, all-clear reset, Japanese messages)
-  - FlowMultiModalEscalationTest: 12 tests (L1-L5 escalation with vehicle channels, per-detection caps, speed gating)
+- 1092 unit tests (all passing):
+  - SeatValidationTest: 105 tests (seat assignment edge cases, per-seat state validation)
+  - AsimoHubTest: 67 tests (detection key resolution, glow color/pulse, labels EN/JA, danger fields, hub mode, compact labels)
+  - ConfigConstantsTest: 70 tests (all Config constant values match documented spec, incl. themes + climate + seat + rear + emergency + comfort features)
+  - AudioAlerterTest: 61 tests (onset, priority, all-clear flush, cooldown, escalation, Japanese, welcome greeting with themes)
+  - EscalationLevelTest: 38 tests (level progression, duration thresholds, per-detection max level, speed-scaled thresholds)
+  - OutputResultTest: 35 tests (schema validation — valid/invalid payloads + driver_name)
+  - OutputResultSerializationTest: 28 tests (JSON round-trip, toMap, field serialization)
+  - PlatformProfileTest: 28 tests (SA8155/SA8295/generic detection, profile values, audio usage, camera strategy)
+  - AlertOrchestratorTest: 27 tests (escalation levels, vehicle channel activation, per-detection caps, speed gating)
+  - ScoreAndDistractionTest: 26 tests (risk scoring edge cases, distraction duration logic)
+  - ClimateControllerTest: 25 tests (computeTargetTemp occupancy + clamp, shouldAdjust debounce, rampStep, formatAlertMessage, zone temps)
+  - CarSeatMapViewTest: 25 tests (seatColor, passengerSeatColor, stateIcon, isDanger, benchZoneCount, rearRiskColor)
+  - TemporalSmootherTest: 25 tests (voting, face-gating, fast-clear, sustained thresholds, passenger mode, risk recomputation)
+  - MergerTest: 24 tests (risk scoring + merge logic)
+  - DataClassDefaultsTest: 24 tests (data class default values, copy semantics)
+  - SeatAssignerTest: 22 tests (assign empty/driver-only/front+rear/4-occupants/no-driver/left-right drive/bad-posture/rear-center)
+  - VehicleChannelManagerTest: 22 tests (VHAL property mapping, channel activation/deactivation, speedTier)
+  - AmbientLightControllerTest: 17 tests (zone colors, safety/comfort mode, feature toggle)
+  - FlowDriverIdentificationTest: 16 tests (seat-side, face region validation, driver_detected schema/merger/smoother)
+  - VlmClientTest: 16 tests (parseDetectResponse JSON→OutputResult, parseSeatMap, health check)
+  - FrameHolderTest: 16 tests (postFrame/postResult/getSeatMap, bitmap lifecycle, thread safety)
+  - ChannelPropertyTest: 14 tests (VHAL property IDs, pulse durations, channel enable/disable)
+  - DriverProfileStoreTest: 14 tests (profile defaults, copy, equality, themeId, Gson backward compat, fixNulls)
+  - ChildLeftBehindMonitorTest: 13 tests (shouldAlert, nextConsecutiveCount, update, feature toggle, reset)
+  - FlowMonitoringTest: 12 tests (full pipeline chain — mergeResults → smooth → validate)
+  - FlowEscalationTest: 12 tests (escalation ladder timing, cooldown, multi-danger, all-clear reset)
+  - RearResultTest: 12 tests (rear detection data model, defaults, equality)
+  - CabinThemeTest: 12 tests (5 themes, unique IDs, findById, defaultTheme, value ranges, hex format)
+  - FlowDriverPersonalizationTest: 11 tests (theme→Config, greeting with themes, profile rename)
+  - FlowAsimoHubIntegrationTest: 11 tests (full pipeline with ASIMO hub resolution, Japanese labels)
+  - DrowsinessWakeControllerTest: 11 tests (shouldTrigger, update, feature toggle, reset)
+  - RearSmootherTest: 11 tests (rear detection temporal smoothing)
+  - FlowMultiModalEscalationTest: 22 tests (L1-L5 escalation with vehicle channels, per-detection caps, speed gating)
   - FlowVlmRemoteTest: 10 tests (VLM pipeline end-to-end: polling → parse → smooth → validate)
-  - ChannelPropertyTest: 8 tests (VHAL property IDs, pulse durations, channel enable/disable)
-  - FlowConfigToggleTest: 8 tests (Config defaults, toggle state, language effects on alerts, smoother/risk config)
-  - FlowFaceRecognitionTest: 8 tests (driver name schema, cosine similarity matching, pipeline survival, JSON round-trip)
-  - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold, edge cases)
-  - CrashLogTest: 7 tests (formatLine format, field inclusion, shouldRotate boundary cases)
-  - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority logic)
-  - PipelineWatchdogTest: 6 tests (isStalled logic — not started, within timeout, beyond timeout, boundary, heartbeat reset)
-  - MemoryPolicyTest: 5 tests (decideAction at various trim levels — no action, low, critical, high, zero)
-  - BootReceiverTest: 4 tests (shouldAutoStart for SA8155, SA8255, SA8295, GENERIC)
-  - ServiceHealthTest: 3 tests (heartbeat age default, clear reset, isServiceRunning default)
-  - MjpegReconnectTest: 3 tests (nextBackoffDelay doubling, cap at max, stays at max)
-  - InferenceErrorTest: 2 tests (shouldReinitialize at threshold, below threshold)
-  - ClimateControllerTest: 19 tests (computeTargetTemp occupancy cases + clamp, shouldAdjust debounce, rampStep toward/overshoot/at-target, formatAlertMessage EN/JA)
-  - SeatAssignerTest: 22 tests (assign empty/driver-only/front+rear/4-occupants/no-driver/left-right drive/multiple-same-side/bad-posture/rear-center, deriveDriverState all states + priority)
-  - SeatMapTest: 5 tests (default all-vacant, occupied state, equality, enum values, rear center)
-  - CarSeatMapViewTest: 14 tests (seatColor safe/danger/vacant, stateIcon all states, isDanger true/false, benchZoneCount 2/3-zone)
+  - FlowConfigToggleTest: 10 tests (Config defaults, toggle state, language effects on alerts)
+  - FaceStoreTest: 8 tests (cosine similarity — identical, orthogonal, opposite, threshold)
+  - FlowFaceRecognitionTest: 8 tests (driver name schema, cosine similarity, pipeline survival)
+  - CrashLogTest: 7 tests (formatLine, field inclusion, shouldRotate boundary cases)
+  - RearAnalyzerTest: 7 tests (rear camera analysis, person/animal detection)
+  - ThemeApplierTest: 6 tests (applyToConfig per theme, Config state save/restore)
+  - FlowWifiCameraTest: 6 tests (Config.WIFI_CAMERA_URL state management, priority)
+  - SeatMassageChannelTest: 6 tests (VHAL massage properties, cooldown, fallback)
+  - PipelineWatchdogTest: 6 tests (isStalled logic, heartbeat reset)
+  - MemoryPolicyTest: 5 tests (decideAction at various trim levels)
+  - SeatMapTest: 5 tests (default all-vacant, occupied state, equality, enum values)
+  - BootReceiverTest: 4 tests (shouldAutoStart for SA8155/SA8255/SA8295/GENERIC)
+  - ServiceHealthTest: 3 tests (heartbeat age, clear reset, isServiceRunning)
+  - MjpegReconnectTest: 3 tests (nextBackoffDelay doubling, cap at max)
+  - ConfigPrefsTest: 3 tests (preference key values)
+  - InferenceErrorTest: 2 tests (shouldReinitialize at/below threshold)
+  - JourneyWellnessCoachTest: 18 tests (milestone detection, posture percent, HVAC offset, message formatting)
+  - QuietModeControllerTest: 11 tests (sleeping detection, entry/exit transitions, AudioAlerter suppression)
+  - FatigueComfortControllerTest: 16 tests (activation rising edge, deactivation threshold, brightness clamp, lifecycle)
+  - NapModeControllerTest: 13 tests (sleeping detection, wake detection, multi-seat tracking, message formatting)
+  - TripStatsTest: 20 tests (posture percent, all 8 badge conditions, summary formatting)
+  - ChildComfortControllerTest: 13 tests (rear detection, drive time, reminder interval, message formatting)
+  - EcoCabinControllerTest: 15 tests (empty detection, debounce, restore on return, message formatting)
+  - ArrivalControllerTest: 11 tests (deceleration detection, park confirmation, trip time, message formatting)
+  - CabinExperienceManagerTest: 8 tests (event generation, cross-feature coordination, TripStats, reset)
 - On-device validated on Honda SA8155P (ALPSALPINE IVI-SYSTEM, Android 14, 8 CPUs, 7.6 GB RAM) with Logitech C270 via V4L2
 
 ## Performance Budget

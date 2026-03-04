@@ -1,6 +1,9 @@
 package com.incabin
 
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -92,10 +95,34 @@ class DriverProfileStoreTest {
     }
 
     @Test
-    fun themeId_backwardCompat_defaultsWhenNotSpecified() {
-        // Simulates old JSON without themeId field — Gson sets default
+    fun themeId_backwardCompat_kotlinConstructor() {
+        // Kotlin constructor respects default params
         val profile = DriverProfile("Old", 24.0f, "#FF0000")
         assertEquals("comfort", profile.themeId)
+    }
+
+    @Test
+    fun themeId_backwardCompat_gsonDeserialization() {
+        // Old JSON on disk has no themeId field — Gson sets it to null (JVM default)
+        // fixNulls() must correct it to "comfort"
+        val oldJson = """[{"name":"Alice","preferredTempC":24.0,"ambientColorHex":"#FF0000"}]"""
+        val gson = Gson()
+        val type = object : TypeToken<List<DriverProfile>>() {}.type
+        val loaded: List<DriverProfile> = gson.fromJson(oldJson, type)
+        // Without fixNulls, themeId would be null
+        val fixed = loaded.map { DriverProfileStore.fixNulls(it) }
+        assertNotNull(fixed[0].themeId)
+        assertEquals("comfort", fixed[0].themeId)
+        assertEquals("Alice", fixed[0].name)
+        assertEquals(24.0f, fixed[0].preferredTempC, 0.001f)
+        assertEquals("#FF0000", fixed[0].ambientColorHex)
+    }
+
+    @Test
+    fun fixNulls_noOpForCompleteProfile() {
+        val profile = DriverProfile("Bob", 20.0f, "#2ECC71", "energize")
+        val fixed = DriverProfileStore.fixNulls(profile)
+        assertEquals(profile, fixed)
     }
 
     @Test
