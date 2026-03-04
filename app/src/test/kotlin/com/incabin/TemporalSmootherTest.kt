@@ -49,11 +49,11 @@ class TemporalSmootherTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_single_frame_below_sustained_threshold() {
-        // 1 frame of eyes_closed with low EAR: majority says true, but sustained counter < 3 → false
+    fun test_single_frame_eyes_closed_fires_with_min_frames_1() {
+        // 1 frame of eyes_closed with low EAR: majority true, sustained counter=1 >= EYES_CLOSED_MIN_FRAMES(1) → true
         val s = TemporalSmoother(windowSize = 5, threshold = 0.6f)
         val result = s.smooth(makeResult(eyes = true, ear = 0.10f))
-        assertFalse(result.driverEyesClosed) // blink filtered out
+        assertTrue(result.driverEyesClosed)
     }
 
     @Test
@@ -147,7 +147,7 @@ class TemporalSmootherTest {
         s.smooth(makeResult(yawn = true, mar = 0.7f))
         s.smooth(makeResult(yawn = false, mar = null))
         val result = s.smooth(makeResult(yawn = true, mar = 0.8f))
-        // 3 face frames all true -> majority true, streak=2 (frame 4 and 5) >= YAWNING_MIN_FRAMES(2) -> true
+        // 3 face frames all true -> majority true, streak >= YAWNING_MIN_FRAMES(1) -> true
         assertTrue(result.driverYawning)
     }
 
@@ -160,11 +160,11 @@ class TemporalSmootherTest {
     }
 
     @Test
-    fun test_yawning_single_frame_below_sustained_threshold() {
-        // 1 frame of yawning: majority says true (1/1 = 100% >= 60%), but sustained counter < 2 → false
+    fun test_yawning_single_frame_fires_with_min_frames_1() {
+        // 1 frame of yawning: majority says true (1/1 = 100% >= 60%), sustained counter=1 >= YAWNING_MIN_FRAMES(1) → true
         val s = TemporalSmoother(windowSize = 3, threshold = 0.6f)
         val result = s.smooth(makeResult(yawn = true, mar = 0.6f))
-        assertFalse(result.driverYawning)
+        assertTrue(result.driverYawning)
     }
 
     @Test

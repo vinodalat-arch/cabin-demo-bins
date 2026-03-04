@@ -154,7 +154,7 @@ class FlowDriverIdentificationTest {
     @Test
     fun test_face_outside_driver_bbox() {
         // Face center at (400, 400), bbox [50, 50, 200, 200]
-        // Expanded bbox with 20% margin: [20, 20, 230, 230] — still outside
+        // Expanded bbox with 35% margin: [-2.5, -2.5, 252.5, 252.5] — still outside
         assertFalse(FaceAnalyzer.isFaceInDriverRegion(
             400f, 400f, 50f, 50f, 200f, 200f
         ))
@@ -163,20 +163,20 @@ class FlowDriverIdentificationTest {
     @Test
     fun test_face_within_margin_band() {
         // bbox [100, 100, 300, 300], width=200, height=200
-        // 20% margin → expanded to [60, 60, 340, 340]
-        // Face center at (65, 65) → inside expanded, outside original
+        // 35% margin → expanded to [30, 30, 370, 370]
+        // Face center at (35, 35) → inside expanded, outside original
         assertTrue(FaceAnalyzer.isFaceInDriverRegion(
-            65f, 65f, 100f, 100f, 300f, 300f
+            35f, 35f, 100f, 100f, 300f, 300f
         ))
     }
 
     @Test
     fun test_face_beyond_margin() {
         // bbox [100, 100, 300, 300], width=200, height=200
-        // 20% margin → expanded to [60, 60, 340, 340]
-        // Face center at (50, 50) → outside expanded bbox
+        // 35% margin → expanded to [30, 30, 370, 370]
+        // Face center at (25, 25) → outside expanded bbox
         assertFalse(FaceAnalyzer.isFaceInDriverRegion(
-            50f, 50f, 100f, 100f, 300f, 300f
+            25f, 25f, 100f, 100f, 300f, 300f
         ))
     }
 
@@ -194,7 +194,7 @@ class FlowDriverIdentificationTest {
     @Test
     fun test_face_vertical_only_outside() {
         // Face center horizontally inside, but vertically outside
-        // bbox [100, 100, 300, 300], expanded to [60, 60, 340, 340]
+        // bbox [100, 100, 300, 300], expanded to [30, 30, 370, 370]
         // Face at (200, 400) → inside horizontal range, outside vertical
         assertFalse(FaceAnalyzer.isFaceInDriverRegion(
             200f, 400f, 100f, 100f, 300f, 300f

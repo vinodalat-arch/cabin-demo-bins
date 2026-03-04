@@ -98,13 +98,13 @@ class FaceAnalyzer(context: Context) {
          * @param bboxTop      Driver bounding box top edge in pixels
          * @param bboxRight    Driver bounding box right edge in pixels
          * @param bboxBottom   Driver bounding box bottom edge in pixels
-         * @param margin       Expansion margin ratio (0.2 = 20% on each side)
+         * @param margin       Expansion margin ratio (0.35 = 35% on each side)
          * @return true if the face center is within the expanded bbox
          */
         fun isFaceInDriverRegion(
             faceCenterX: Float, faceCenterY: Float,
             bboxLeft: Float, bboxTop: Float, bboxRight: Float, bboxBottom: Float,
-            margin: Float = 0.2f
+            margin: Float = 0.35f
         ): Boolean {
             val w = bboxRight - bboxLeft
             val h = bboxBottom - bboxTop

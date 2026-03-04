@@ -636,7 +636,7 @@ class FaceRegistrationActivity : Activity() {
             statusText.text = "Saved: $name"
             statusText.setTextColor(colorSafe)
             refreshFaceList()
-            showPreferencesDialog(name, driverProfileStore?.get(name), newRegistration = true)
+            showThemePickerDialog(name, driverProfileStore?.get(name), newRegistration = true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save face", e)
             statusText.text = "Save failed"
@@ -675,13 +675,15 @@ class FaceRegistrationActivity : Activity() {
                 setPadding(0, hPad, 0, hPad)
             }
 
-            // Ambient color dot — shows driver's chosen color, or muted if no profile
+            // Theme color dot — shows driver's theme color, or muted if no profile
             val profile = driverProfileStore?.get(name)
+            val theme = if (profile != null) CabinTheme.findById(profile.themeId) else null
             row.addView(View(this).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    if (profile != null) {
-                        setColor(AmbientLightController.parseColorHex(profile.ambientColorHex))
+                    val colorHex = theme?.ambientColorHex ?: profile?.ambientColorHex
+                    if (colorHex != null) {
+                        setColor(AmbientLightController.parseColorHex(colorHex))
                     } else {
                         setColor(colorTextMuted)
                     }
@@ -690,7 +692,7 @@ class FaceRegistrationActivity : Activity() {
                 marginEnd = (8 * dp).toInt()
             })
 
-            // Name + temp subtitle
+            // Name + theme name subtitle
             val nameCol = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
             }
@@ -701,9 +703,9 @@ class FaceRegistrationActivity : Activity() {
                 setSingleLine(true)
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            if (profile != null) {
+            if (theme != null) {
                 nameCol.addView(TextView(this@FaceRegistrationActivity).apply {
-                    text = "%.1f°C".format(profile.preferredTempC)
+                    text = theme.displayName
                     textSize = 11f
                     setTextColor(colorTextMuted)
                     setSingleLine(true)
@@ -768,7 +770,7 @@ class FaceRegistrationActivity : Activity() {
             container.addView(input)
 
             val prefsButton = Button(this).apply {
-                text = "Edit Preferences..."
+                text = "Change Theme..."
                 textSize = 13f
                 setTextColor(colorAccent)
                 isAllCaps = false
@@ -812,7 +814,7 @@ class FaceRegistrationActivity : Activity() {
 
             prefsButton.setOnClickListener {
                 dialog.dismiss()
-                showPreferencesDialog(currentName, driverProfileStore?.get(currentName), newRegistration = false)
+                showThemePickerDialog(currentName, driverProfileStore?.get(currentName), newRegistration = false)
             }
 
             dialog.show()
@@ -822,167 +824,133 @@ class FaceRegistrationActivity : Activity() {
     }
 
     /**
-     * Show a preferences dialog with color swatch picker and temperature slider.
-     * [existingProfile] pre-fills values if editing; null uses defaults.
+     * Show a theme picker dialog with 5 named cabin themes.
+     * Each card shows colored strip, theme name, description, and setting badges.
+     * [existingProfile] pre-selects the profile's theme; null defaults to "comfort".
      * [newRegistration] controls the negative button label (Skip vs Cancel).
      */
-    private fun showPreferencesDialog(name: String, existingProfile: DriverProfile?, newRegistration: Boolean) {
+    private fun showThemePickerDialog(name: String, existingProfile: DriverProfile?, newRegistration: Boolean) {
         try {
             val dp = resources.displayMetrics.density
             val pad = (16 * dp).toInt()
+            val themes = CabinTheme.THEMES
 
             val container = ScrollView(this)
             val layout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(pad, pad, pad, pad)
+                setPadding(pad, pad / 2, pad, pad / 2)
             }
             container.addView(layout)
 
-            // --- Color swatch section ---
-            layout.addView(TextView(this).apply {
-                text = "Ambient Light Color"
-                textSize = 14f
-                setTextColor(colorTextPrimary)
-            })
+            val selectedThemeId = existingProfile?.themeId ?: "comfort"
+            var currentSelectedIndex = themes.indexOfFirst { it.id == selectedThemeId }.coerceAtLeast(0)
+            val cardViews = mutableListOf<LinearLayout>()
 
-            val colors = DriverProfileStore.PRESET_COLORS
-            val swatchSize = (40 * dp).toInt()
-            val swatchMargin = (6 * dp).toInt()
-            val selectedColor = existingProfile?.ambientColorHex ?: colors[0]
-            var currentSelectedIndex = colors.indexOf(selectedColor).coerceAtLeast(0)
-            val swatchViews = mutableListOf<View>()
+            for ((index, theme) in themes.withIndex()) {
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    val cardPad = (10 * dp).toInt()
+                    setPadding(0, cardPad / 2, cardPad, cardPad / 2)
+                    minimumHeight = (56 * dp).toInt()
+                }
 
-            val grid = GridLayout(this).apply {
-                columnCount = 5
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.topMargin = (8 * dp).toInt()
-                layoutParams = lp
-            }
-
-            for ((index, colorHex) in colors.withIndex()) {
-                val swatch = View(this).apply {
-                    val drawable = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(AmbientLightController.parseColorHex(colorHex))
+                // Colored left strip
+                card.addView(View(this).apply {
+                    background = GradientDrawable().apply {
+                        setColor(AmbientLightController.parseColorHex(theme.ambientColorHex))
+                        cornerRadius = 4 * dp
                     }
-                    background = drawable
+                }, LinearLayout.LayoutParams((6 * dp).toInt(), LinearLayout.LayoutParams.MATCH_PARENT).apply {
+                    marginEnd = (10 * dp).toInt()
+                })
+
+                // Text column: name + description + badges
+                val textCol = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
                 }
 
-                val glp = GridLayout.LayoutParams().apply {
-                    width = swatchSize
-                    height = swatchSize
-                    setMargins(swatchMargin, swatchMargin, swatchMargin, swatchMargin)
-                }
-                grid.addView(swatch, glp)
-                swatchViews.add(swatch)
+                textCol.addView(TextView(this@FaceRegistrationActivity).apply {
+                    text = theme.displayName
+                    textSize = 15f
+                    setTextColor(colorTextPrimary)
+                    paint.isFakeBoldText = true
+                    setSingleLine(true)
+                })
 
-                swatch.setOnClickListener {
+                textCol.addView(TextView(this@FaceRegistrationActivity).apply {
+                    text = theme.description
+                    textSize = 12f
+                    setTextColor(colorTextMuted)
+                    setSingleLine(true)
+                })
+
+                // Badges row: temp, brightness, mode
+                val badgeRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.topMargin = (2 * dp).toInt()
+                    layoutParams = lp
+                }
+                val nightLabel = when (theme.nightMode) { 1 -> "Day"; 2 -> "Night"; else -> "Auto" }
+                badgeRow.addView(TextView(this).apply {
+                    text = "%.0f°C  Br:%d  %s".format(theme.tempC, theme.brightness, nightLabel)
+                    textSize = 10f
+                    setTextColor(colorTextSecondary)
+                    setSingleLine(true)
+                })
+                textCol.addView(badgeRow)
+
+                card.addView(textCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                cardViews.add(card)
+
+                card.setOnClickListener {
                     currentSelectedIndex = index
-                    updateSwatchBorders(swatchViews, currentSelectedIndex)
+                    updateThemeCardBorders(cardViews, currentSelectedIndex)
                 }
-            }
 
-            // Set initial selection border
-            layout.addView(grid)
-            updateSwatchBorders(swatchViews, currentSelectedIndex)
-
-            // --- Temperature section ---
-            layout.addView(TextView(this).apply {
-                text = "Preferred Temperature"
-                textSize = 14f
-                setTextColor(colorTextPrimary)
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.topMargin = (16 * dp).toInt()
-                layoutParams = lp
-            })
-
-            val tempLabel = TextView(this).apply {
-                textSize = 16f
-                setTextColor(colorAccent)
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.topMargin = (4 * dp).toInt()
-                layoutParams = lp
-            }
-
-            // SeekBar: 0..24 maps to 16.0-28.0 in 0.5 steps
-            val initialTemp = existingProfile?.preferredTempC ?: 22.0f
-            val seekBar = SeekBar(this).apply {
-                max = 24
-                progress = ((initialTemp - 16.0f) / 0.5f).toInt().coerceIn(0, 24)
-            }
-            tempLabel.text = "%.1f °C".format(initialTemp)
-
-            val minMaxRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                val lp = LinearLayout.LayoutParams(
+                layout.addView(card, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                layoutParams = lp
+                ).apply { bottomMargin = (4 * dp).toInt() })
             }
-            minMaxRow.addView(TextView(this).apply {
-                text = "16°C"
-                textSize = 11f
-                setTextColor(colorTextMuted)
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            minMaxRow.addView(TextView(this).apply {
-                text = "28°C"
-                textSize = 11f
-                setTextColor(colorTextMuted)
-                gravity = Gravity.END
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
-            layout.addView(tempLabel)
-            layout.addView(seekBar, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = (4 * dp).toInt() })
-            layout.addView(minMaxRow)
-
-            seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val temp = 16.0f + progress * 0.5f
-                    tempLabel.text = "%.1f °C".format(temp)
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
+            updateThemeCardBorders(cardViews, currentSelectedIndex)
 
             AlertDialog.Builder(this)
-                .setTitle("Preferences — $name")
+                .setTitle("Theme — $name")
                 .setView(container)
                 .setPositiveButton("Save") { _, _ ->
-                    val tempValue = 16.0f + seekBar.progress * 0.5f
-                    val colorValue = colors[currentSelectedIndex]
-                    driverProfileStore?.save(DriverProfile(name, tempValue, colorValue))
-                    statusText.text = "Preferences saved for $name"
+                    val theme = themes[currentSelectedIndex]
+                    driverProfileStore?.save(DriverProfile(name, theme.tempC, theme.ambientColorHex, theme.id))
+                    statusText.text = "Theme \"${theme.displayName}\" saved for $name"
                     statusText.setTextColor(colorSafe)
+                    refreshFaceList()
                 }
                 .setNegativeButton(if (newRegistration) "Skip" else "Cancel", null)
                 .show()
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to show preferences dialog", e)
+            Log.w(TAG, "Failed to show theme picker dialog", e)
         }
     }
 
-    private fun updateSwatchBorders(swatchViews: List<View>, selectedIndex: Int) {
+    private fun updateThemeCardBorders(cardViews: List<LinearLayout>, selectedIndex: Int) {
         val dp = resources.displayMetrics.density
-        for ((i, swatch) in swatchViews.withIndex()) {
-            val drawable = swatch.background as? GradientDrawable ?: continue
-            if (i == selectedIndex) {
-                drawable.setStroke((3 * dp).toInt(), colorAccent)
-            } else {
-                drawable.setStroke((1 * dp).toInt(), colorTextMuted)
+        for ((i, card) in cardViews.withIndex()) {
+            val bg = GradientDrawable().apply {
+                cornerRadius = 8 * dp
+                if (i == selectedIndex) {
+                    setStroke((2 * dp).toInt(), colorAccent)
+                    setColor(0x1A5B8DEF.toInt()) // subtle accent tint
+                } else {
+                    setStroke((1 * dp).toInt(), colorTextMuted)
+                    setColor(0x00000000)
+                }
             }
+            card.background = bg
         }
     }
 

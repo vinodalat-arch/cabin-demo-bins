@@ -104,7 +104,7 @@ class ConfigConstantsTest {
 
     @Test
     fun test_baseline_calibration_constants() {
-        assertEquals(10, Config.BASELINE_FRAMES)
+        assertEquals(5, Config.BASELINE_FRAMES)
         assertEquals(25.0f, Config.PITCH_BASELINE_DEVIATION, 0.001f)
         assertEquals(3, Config.ANGLE_SMOOTH_WINDOW)
     }
@@ -151,11 +151,11 @@ class ConfigConstantsTest {
 
     @Test
     fun test_sustained_detection_thresholds() {
-        assertEquals(2, Config.EYES_CLOSED_MIN_FRAMES)
+        assertEquals(1, Config.EYES_CLOSED_MIN_FRAMES)
         assertEquals(2, Config.DISTRACTED_MIN_FRAMES)
         assertEquals(2, Config.EATING_MIN_FRAMES)
         assertEquals(2, Config.POSTURE_MIN_FRAMES)
-        assertEquals(2, Config.YAWNING_MIN_FRAMES)
+        assertEquals(1, Config.YAWNING_MIN_FRAMES)
         assertEquals(3, Config.HANDS_OFF_MIN_FRAMES)
         assertEquals(3, Config.CHILD_SLOUCH_MIN_FRAMES)
     }

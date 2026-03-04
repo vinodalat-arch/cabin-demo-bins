@@ -59,7 +59,7 @@ class FlowAsimoHubIntegrationTest {
         )
         val pose = PoseResult(passengerCount = 1)
 
-        // Yawning needs 2 sustained frames (YAWNING_MIN_FRAMES = 2)
+        // Yawning fires on first sustained frame (YAWNING_MIN_FRAMES = 1), feed 3 for full window
         lateinit var smoothed: OutputResult
         repeat(3) {
             smoothed = smoother.smooth(mergeResults(face, pose))

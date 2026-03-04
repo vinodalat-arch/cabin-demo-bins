@@ -226,9 +226,9 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         /**
          * Pure function: build a time-of-day aware welcome greeting.
          * Morning (5-10), Afternoon (11-16), Evening (17-20), Night (21-4).
-         * When [hasProfile] is true, appends a "customizing preferences" suffix.
+         * When [themeName] is non-null, appends "Applying {theme} theme" suffix.
          */
-        fun buildWelcomeGreeting(name: String, hourOfDay: Int, hasProfile: Boolean, isJapanese: Boolean): String {
+        fun buildWelcomeGreeting(name: String, hourOfDay: Int, themeName: String?, isJapanese: Boolean): String {
             if (isJapanese) {
                 val greeting = when (hourOfDay) {
                     in 5..10 -> "おはようございます"
@@ -236,7 +236,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
                     in 17..20 -> "こんばんは"
                     else -> "こんばんは"
                 }
-                val suffix = if (hasProfile) "。お好みの設定に調整しています" else ""
+                val suffix = if (themeName != null) "。${themeName}テーマを適用しています" else ""
                 return "$greeting、${name}さん$suffix"
             } else {
                 val greeting = when (hourOfDay) {
@@ -245,7 +245,7 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
                     in 17..20 -> "Good evening"
                     else -> "Good evening"
                 }
-                val suffix = if (hasProfile) ". Customizing the cabin with your preferences" else ""
+                val suffix = if (themeName != null) ". Applying $themeName theme" else ""
                 return "$greeting, $name$suffix"
             }
         }

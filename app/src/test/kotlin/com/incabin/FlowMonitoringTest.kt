@@ -240,14 +240,10 @@ class FlowMonitoringTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun test_yawning_needs_2_sustained_frames() {
+    fun test_yawning_fires_on_first_sustained_frame() {
         val smoother = TemporalSmoother()
-        // 1 frame yawning → not enough
+        // 1 frame yawning → fires immediately (YAWNING_MIN_FRAMES=1)
         val r1 = smoother.smooth(makeResult(yawn = true, mar = 0.7f))
-        assertFalse("1 frame yawning should not fire", r1.driverYawning)
-
-        // 2nd frame → sustained counter reaches 2 (YAWNING_MIN_FRAMES=2)
-        val r2 = smoother.smooth(makeResult(yawn = true, mar = 0.7f))
-        assertTrue("2 frames yawning should fire", r2.driverYawning)
+        assertTrue("1 frame yawning should fire (MIN_FRAMES=1)", r1.driverYawning)
     }
 }

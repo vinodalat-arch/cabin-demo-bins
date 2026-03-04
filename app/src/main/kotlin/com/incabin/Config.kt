@@ -18,7 +18,7 @@ object Config {
     const val HEAD_YAW_THRESHOLD = 30.0f
     @JvmStatic @Volatile var HEAD_PITCH_THRESHOLD = 35.0f
     const val PITCH_BASELINE_DEVIATION = 25.0f   // distracted = |pitch - baseline| > deviation
-    const val BASELINE_FRAMES = 10               // frames to accumulate for auto-baseline
+    const val BASELINE_FRAMES = 5                // frames to accumulate for auto-baseline
     const val ANGLE_SMOOTH_WINDOW = 3            // moving average window for yaw/pitch
 
     // Pose analysis
@@ -33,12 +33,12 @@ object Config {
     const val SMOOTHER_WINDOW = 3
     const val SMOOTHER_THRESHOLD = 0.6f
     const val FAST_CLEAR_FRAMES = 2
-    const val EYES_CLOSED_MIN_FRAMES = 2      // ~2s at 1fps before reporting eyes_closed
+    const val EYES_CLOSED_MIN_FRAMES = 1      // fire on first sustained true (smoother window=3 already filters noise)
     const val DISTRACTED_MIN_FRAMES = 2       // ~2s — allow quick mirror/blind-spot glances
     const val EATING_MIN_FRAMES = 2           // ~2s — allow quick sips
     const val POSTURE_MIN_FRAMES = 2          // ~2s — allow brief adjustments
     const val HANDS_OFF_MIN_FRAMES = 3         // ~3s — confirm hands truly off wheel
-    const val YAWNING_MIN_FRAMES = 2           // ~2s — filter single-frame mouth-open
+    const val YAWNING_MIN_FRAMES = 1           // fire on first sustained true (smoother window=3 already filters noise)
     const val CHILD_SLOUCH_MIN_FRAMES = 3     // ~3s — kids shift constantly
 
     // Audio — escalation ladder

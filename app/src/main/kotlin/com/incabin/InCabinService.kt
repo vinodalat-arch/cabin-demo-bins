@@ -859,19 +859,20 @@ class InCabinService : Service() {
                 riskLevel = cappedRisk
             )
 
-            // Step 6.5: Welcome greeting + driver profile load on first recognition
+            // Step 6.5: Welcome greeting + theme apply on first recognition
             if (recognizedName != null && recognizedName != lastWelcomedDriverName) {
                 lastWelcomedDriverName = recognizedName
                 val isJapanese = Config.LANGUAGE == "ja"
                 val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
                 val profile = if (Config.ENABLE_DRIVER_PROFILES) driverProfileStore?.get(recognizedName) else null
-                if (profile != null) {
-                    Config.HVAC_BASE_TEMP_C = profile.preferredTempC
-                    Config.CURRENT_DRIVER_AMBIENT_COLOR = profile.ambientColorHex
-                    Log.i(TAG, "Loaded driver profile: $recognizedName (temp=${profile.preferredTempC}°C)")
+                val theme = if (profile != null) CabinTheme.findById(profile.themeId) else null
+                if (theme != null) {
+                    ThemeApplier.applyAll(theme, applicationContext)
+                    Log.i(TAG, "Applied theme '${theme.id}' for $recognizedName")
                 }
+                val themeName = if (isJapanese) theme?.displayNameJa else theme?.displayName
                 alertOrchestrator?.enqueueWelcome(
-                    AudioAlerter.buildWelcomeGreeting(recognizedName, hourOfDay, profile != null, isJapanese)
+                    AudioAlerter.buildWelcomeGreeting(recognizedName, hourOfDay, themeName, isJapanese)
                 )
             }
 
