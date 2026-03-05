@@ -6,7 +6,9 @@ import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Debug
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -109,6 +111,9 @@ class InCabinService : Service() {
     // Resized dynamically if actual frame dimensions differ from initial allocation
     private var pixelBuffer = IntArray(Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT)
     private var pixelBufferSize = Config.CAMERA_WIDTH * Config.CAMERA_HEIGHT
+
+    // --- Grace period handler (10s silence after welcome greeting) ---
+    private val graceHandler = Handler(Looper.getMainLooper())
 
     // --- Inference error tracking ---
     private var consecutiveInferenceErrors = 0
@@ -233,6 +238,8 @@ class InCabinService : Service() {
         // Cancel DeviceSetup if still running
         deviceSetup?.cancel()
         deviceSetup = null
+
+        graceHandler.removeCallbacksAndMessages(null)
 
         watchdog?.stop()
         watchdog = null
@@ -801,7 +808,7 @@ class InCabinService : Service() {
             val faceStartMs = System.currentTimeMillis()
             val bitmap = bgrToBitmap(bgrData, width, height)
             val faceResult = if (poseResult.driverDetected) {
-                faceAnalyzer?.analyze(bitmap, width, height, driverBbox) ?: FaceResult.NO_FACE
+                faceAnalyzer?.analyze(bitmap, width, height, driverBbox, poseResult.passengerCount) ?: FaceResult.NO_FACE
             } else {
                 FaceResult.NO_FACE
             }
@@ -877,6 +884,15 @@ class InCabinService : Service() {
                     alertOrchestrator?.enqueueWelcome(
                         AudioAlerter.buildWelcomeGreeting(recognizedName, hourOfDay, themeName, isJapanese)
                     )
+                    // Activate 10s grace period to suppress safety onset alerts
+                    audioAlerter?.gracePeriodActive = true
+                    graceHandler.postDelayed({ audioAlerter?.gracePeriodActive = false }, 10_000L)
+
+                    // Force HVAC write with theme temperature
+                    if (theme != null) {
+                        vehicleChannelManager?.climateController?.setTemperatureOverride(theme.tempC)
+                    }
+
                     lastWelcomedDriverName = recognizedName // set AFTER success
                 }
             } catch (e: Exception) {

@@ -7,7 +7,7 @@
 namespace incabin {
 
 // ---- Constants ----
-constexpr float YOLO_CONFIDENCE = 0.35f;
+constexpr float YOLO_CONFIDENCE = 0.45f;
 constexpr float YOLO_NMS_IOU = 0.45f;
 constexpr float KP_CONF_THRESHOLD = 0.5f;
 constexpr int YOLO_INPUT_SIZE = 640;

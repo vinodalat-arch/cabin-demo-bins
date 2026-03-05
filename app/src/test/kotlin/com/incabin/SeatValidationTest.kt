@@ -339,16 +339,16 @@ class SeatValidationTest {
 
     @Test fun assign_driverPlusTwoRear_bothRight() {
         // Two people on right side → largest takes RR, other goes to RL
-        val small1 = person(700f, 300f, 800f, 400f) // area=10000
-        val small2 = person(850f, 300f, 980f, 420f) // area=15600
+        val small1 = person(700f, 250f, 850f, 450f) // area=150*200=30000
+        val small2 = person(850f, 250f, 1000f, 450f) // area=150*200=30000
         val m = SeatAssigner.assign(listOf(driverLeft, small1, small2), "left", driverState = "Upright")
         assertTrue(m.rearRight.occupied)
         assertTrue(m.rearLeft.occupied)
     }
 
     @Test fun assign_driverPlusTwoRear_bothLeft() {
-        val small1 = person(100f, 300f, 200f, 400f)
-        val small2 = person(300f, 300f, 430f, 420f)
+        val small1 = person(100f, 250f, 250f, 450f) // area=150*200=30000
+        val small2 = person(300f, 250f, 450f, 450f) // area=150*200=30000
         val m = SeatAssigner.assign(listOf(driverLeft, small1, small2), "left", driverState = "Upright")
         assertTrue(m.rearLeft.occupied)
         assertTrue(m.rearRight.occupied)
@@ -487,17 +487,17 @@ class SeatValidationTest {
     // =====================================================================
 
     @Test fun assign_exactlyAtThreshold_isFront() {
-        // Driver area = 150000. Threshold = 0.40 * 150000 = 60000
-        // Passenger area exactly = 60000 → front row
-        // area = (x2-x1)*(y2-y1) = 200*300 = 60000
-        val pax = person(700f, 100f, 900f, 400f)
+        // Driver area = 150000. Threshold = 0.55 * 150000 = 82500
+        // Passenger area exactly = 82500 → front row
+        // area = (x2-x1)*(y2-y1) = 275*300 = 82500
+        val pax = person(700f, 100f, 975f, 400f)
         val m = SeatAssigner.assign(listOf(driverLeft, pax), "left", driverState = "Upright")
         assertTrue(m.frontPassenger.occupied)
     }
 
     @Test fun assign_justBelowThreshold_isRear() {
-        // area = 200*299 = 59800 < 60000 → rear
-        val pax = person(700f, 100f, 900f, 399f)
+        // area = 275*299 = 82225 < 82500 → rear
+        val pax = person(700f, 100f, 975f, 399f)
         val m = SeatAssigner.assign(listOf(driverLeft, pax), "left", driverState = "Upright")
         assertFalse(m.frontPassenger.occupied)
         assertTrue(m.rearRight.occupied)
@@ -509,11 +509,12 @@ class SeatValidationTest {
         assertTrue(m.frontPassenger.occupied)
     }
 
-    @Test fun assign_tinyBbox_isRear() {
+    @Test fun assign_tinyBbox_isFilteredOut() {
+        // Tiny bbox (area=600) is below 2% of frame area (18432) — filtered as noise
         val tiny = person(800f, 400f, 830f, 420f) // area=30*20=600
         val m = SeatAssigner.assign(listOf(driverLeft, tiny), "left", driverState = "Upright")
         assertFalse(m.frontPassenger.occupied)
-        assertTrue(m.rearRight.occupied)
+        assertFalse(m.rearRight.occupied) // filtered out entirely
     }
 
     // =====================================================================
@@ -521,7 +522,7 @@ class SeatValidationTest {
     // =====================================================================
 
     @Test fun assign_noDriver_allGoToRear() {
-        // No driver → driverArea=0 → area >= 0 is "front" check... actually 0*0.40 = 0, area>=0 is true
+        // No driver → driverArea=0 → area >= 0 is "front" check... actually 0*0.55 = 0, area>=0 is true
         // BUT driverArea=0 → condition is "driverArea > 0f && ..." which is false → rear
         val p1 = person(200f, 200f, 500f, 600f)
         val p2 = person(700f, 200f, 1000f, 600f)

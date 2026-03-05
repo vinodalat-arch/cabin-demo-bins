@@ -53,7 +53,7 @@ class SeatAssignerTest {
         // Driver on left (x=100-400), passenger on right (x=700-1000)
         // Both large bboxes → front row
         val driver = person(100f, 100f, 400f, 600f, isDriver = true)
-        // Driver area = 300*500 = 150000. Passenger area = 300*500 = 150000 >= 0.40*150000 = 60000 → front
+        // Driver area = 300*500 = 150000. Passenger area = 300*500 = 150000 >= 0.55*150000 = 82500 → front
         val passenger = person(700f, 100f, 1000f, 600f)
         val map = SeatAssigner.assign(listOf(driver, passenger), "left", driverState = "Upright")
         assertTrue(map.driver.occupied)
@@ -79,7 +79,7 @@ class SeatAssignerTest {
         // Front passenger right, large bbox → front row
         val frontPax = person(700f, 100f, 1000f, 600f)
         // Rear left: small bbox on left side
-        val rearL = person(100f, 200f, 250f, 400f)  // area=150*200=30000, < 0.40*150000=60000 → rear
+        val rearL = person(100f, 200f, 250f, 400f)  // area=150*200=30000, < 0.55*150000=82500 → rear
         // Rear right: small bbox on right side
         val rearR = person(800f, 200f, 950f, 400f)
         val map = SeatAssigner.assign(
@@ -110,8 +110,8 @@ class SeatAssignerTest {
     @Test
     fun test_assign_rearOnly_smallBboxes() {
         val driver = person(100f, 100f, 400f, 600f, isDriver = true)
-        // Small bbox on right side (area < 40% of driver area) → rear
-        val small = person(800f, 300f, 900f, 400f)  // area=100*100=10000, < 60000 → rear
+        // Smaller bbox on right side (area < 55% of driver area) → rear
+        val small = person(750f, 200f, 950f, 400f)  // area=200*200=40000, < 0.55*150000=82500 → rear
         val map = SeatAssigner.assign(listOf(driver, small), "left", driverState = "Upright")
         assertTrue(map.driver.occupied)
         assertFalse(map.frontPassenger.occupied)
@@ -140,8 +140,8 @@ class SeatAssignerTest {
     @Test
     fun test_assign_multipleOnSameSide_takesLargest() {
         val driver = person(100f, 100f, 400f, 600f, isDriver = true)
-        // Two small bboxes on right side, both rear
-        val small = person(800f, 300f, 880f, 400f)   // area=80*100=8000
+        // Two bboxes on right side, both rear (< 55% of driver area)
+        val small = person(800f, 200f, 950f, 400f)   // area=150*200=30000
         val bigger = person(700f, 200f, 900f, 450f)  // area=200*250=50000
         val map = SeatAssigner.assign(listOf(driver, small, bigger), "left", driverState = "Upright")
         // Largest on right side is 'bigger'
@@ -151,7 +151,7 @@ class SeatAssignerTest {
     @Test
     fun test_assign_badPosture_mapsSleeping() {
         val driver = person(100f, 100f, 400f, 600f, isDriver = true)
-        val pax = person(800f, 300f, 900f, 400f, badPosture = true)
+        val pax = person(750f, 200f, 950f, 400f, badPosture = true) // area=200*200=40000 > min area
         val map = SeatAssigner.assign(listOf(driver, pax), "left", driverState = "Upright")
         assertEquals("Sleeping", map.rearRight.state)
     }

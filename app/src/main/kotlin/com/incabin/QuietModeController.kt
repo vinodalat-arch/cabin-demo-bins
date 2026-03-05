@@ -61,11 +61,8 @@ class QuietModeController {
         }
 
         fun formatMessage(entering: Boolean, isJapanese: Boolean): String {
-            return if (isJapanese) {
-                if (entering) "" else "みなさん起きました"
-            } else {
-                if (entering) "" else "Everyone's awake"
-            }
+            // Silent — quiet mode transitions don't need voice output
+            return ""
         }
     }
 }

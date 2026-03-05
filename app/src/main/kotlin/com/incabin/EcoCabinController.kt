@@ -89,13 +89,8 @@ class EcoCabinController {
         }
 
         fun formatMessage(activating: Boolean, isJapanese: Boolean): String {
-            return if (isJapanese) {
-                if (activating) "車内を節電モードにしました。またお会いしましょう！"
-                else "おかえりなさい！"
-            } else {
-                if (activating) "Cabin secured. See you next time!"
-                else "Welcome back!"
-            }
+            // Silent — eco mode transitions don't need voice output
+            return ""
         }
     }
 }

@@ -56,7 +56,7 @@ class ConfigConstantsTest {
 
     @Test
     fun test_yolo_confidence_thresholds() {
-        assertEquals(0.35f, Config.YOLO_CONFIDENCE, 0.001f)
+        assertEquals(0.45f, Config.YOLO_CONFIDENCE, 0.001f)
         assertEquals(0.45f, Config.YOLO_NMS_IOU, 0.001f)
     }
 
@@ -104,7 +104,7 @@ class ConfigConstantsTest {
 
     @Test
     fun test_baseline_calibration_constants() {
-        assertEquals(5, Config.BASELINE_FRAMES)
+        assertEquals(3, Config.BASELINE_FRAMES)
         assertEquals(25.0f, Config.PITCH_BASELINE_DEVIATION, 0.001f)
         assertEquals(3, Config.ANGLE_SMOOTH_WINDOW)
     }
@@ -399,7 +399,7 @@ class ConfigConstantsTest {
 
     @Test
     fun test_seat_front_row_area_ratio() {
-        assertEquals(0.40f, Config.SEAT_FRONT_ROW_AREA_RATIO, 0.001f)
+        assertEquals(0.55f, Config.SEAT_FRONT_ROW_AREA_RATIO, 0.001f)
     }
 
     // -------------------------------------------------------------------------

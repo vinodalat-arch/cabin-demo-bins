@@ -49,8 +49,10 @@ object SeatAssigner {
             SeatState(occupied = false, state = "Vacant")
         }
 
-        // 2. Process non-driver persons
-        val nonDrivers = persons.filter { !it.isDriver }
+        // 2. Process non-driver persons — filter out tiny detections (< 2% of frame area)
+        val frameArea = (frameWidth * Config.CAMERA_HEIGHT).toFloat()
+        val minArea = frameArea * 0.02f
+        val nonDrivers = persons.filter { !it.isDriver && (it.x2 - it.x1) * (it.y2 - it.y1) >= minArea }
         if (nonDrivers.isEmpty()) {
             return SeatMap(
                 driver = driverSeat,

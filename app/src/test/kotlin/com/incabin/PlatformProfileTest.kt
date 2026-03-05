@@ -161,9 +161,9 @@ class PlatformProfileTest {
     // --- Audio Usage ---
 
     @Test
-    fun test_sa8155_uses_sonification() {
+    fun test_sa8155_uses_assistant() {
         val profile = PlatformProfile.forPlatform(Platform.SA8155)
-        assertEquals(PlatformProfile.USAGE_ASSISTANCE_SONIFICATION, profile.audioUsage)
+        assertEquals(PlatformProfile.USAGE_ASSISTANT, profile.audioUsage)
     }
 
     @Test

@@ -151,8 +151,7 @@ class AlertOrchestrator(
             val adjustment = vehicleChannelManager?.climateController?.update(result.passengerCount, seatMap)
             if (adjustment != null) {
                 val msg = ClimateController.formatAlertMessage(adjustment, Config.LANGUAGE == "ja")
-                audioAlerter.enqueueWelcome(msg)
-                Log.i(TAG, "Climate adjustment: $msg")
+                Log.i(TAG, "Climate adjustment (silent): $msg")
             }
         } catch (e: Exception) {
             Log.w(TAG, "Climate controller update failed", e)

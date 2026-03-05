@@ -45,6 +45,7 @@ data class PlatformProfile(
 
         // Audio usage constants (mirrors AudioAttributes values for unit test compatibility)
         const val USAGE_ALARM = 4
+        const val USAGE_ASSISTANT = 12
         const val USAGE_ASSISTANCE_SONIFICATION = 13
 
         /** Detect platform from device Build properties and return the appropriate profile. */
@@ -100,7 +101,7 @@ data class PlatformProfile(
                 poseThreadAffinity = "4;5;6",
                 faceRecThreadCount = 2,
                 faceRecThreadAffinity = "5",
-                audioUsage = USAGE_ASSISTANCE_SONIFICATION,
+                audioUsage = USAGE_ASSISTANT,
                 cameraStrategy = CameraStrategy.V4L2_FIRST,
                 headPitchThreshold = 35.0f,  // Camera mount angle causes ~5-10° pitch baseline
                 enableVehicleChannels = true

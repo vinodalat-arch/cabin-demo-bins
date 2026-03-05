@@ -173,10 +173,10 @@ class FlowDriverIdentificationTest {
     @Test
     fun test_face_beyond_margin() {
         // bbox [100, 100, 300, 300], width=200, height=200
-        // 35% margin → expanded to [30, 30, 370, 370]
-        // Face center at (25, 25) → outside expanded bbox
+        // 50% margin → expanded to [0, 0, 400, 400]
+        // Face center at (-10, -10) → outside expanded bbox
         assertFalse(FaceAnalyzer.isFaceInDriverRegion(
-            25f, 25f, 100f, 100f, 300f, 300f
+            -10f, -10f, 100f, 100f, 300f, 300f
         ))
     }
 
@@ -194,10 +194,10 @@ class FlowDriverIdentificationTest {
     @Test
     fun test_face_vertical_only_outside() {
         // Face center horizontally inside, but vertically outside
-        // bbox [100, 100, 300, 300], expanded to [30, 30, 370, 370]
-        // Face at (200, 400) → inside horizontal range, outside vertical
+        // bbox [100, 100, 300, 300], expanded to [0, 0, 400, 400]
+        // Face at (200, 450) → inside horizontal range, outside vertical
         assertFalse(FaceAnalyzer.isFaceInDriverRegion(
-            200f, 400f, 100f, 100f, 300f, 300f
+            200f, 450f, 100f, 100f, 300f, 300f
         ))
     }
 

@@ -350,6 +350,26 @@ PoseResult PoseAnalyzer::analyze(const uint8_t* bgr_data, int width, int height,
 
     // 1. Run pose model on full frame
     auto persons = runPoseModel(bgr_data, width, height);
+
+    // 1a. Filter out ghost detections (chairs, objects) — require at least 3 keypoints
+    // above confidence threshold. Real humans always have nose + shoulders visible.
+    constexpr int MIN_VALID_KEYPOINTS = 3;
+    constexpr float MIN_BBOX_AREA_RATIO = 0.02f; // 2% of frame area
+    float frame_area = static_cast<float>(width) * height;
+    persons.erase(
+        std::remove_if(persons.begin(), persons.end(), [frame_area](const Detection& det) {
+            // Filter by minimum bbox area (noise/small artifacts)
+            if (det.area() < MIN_BBOX_AREA_RATIO * frame_area) return true;
+            // Filter by minimum keypoint count
+            int valid_kps = 0;
+            for (int k = 0; k < NUM_KEYPOINTS; k++) {
+                if (det.keypoints[k].conf > KP_CONF_THRESHOLD) valid_kps++;
+            }
+            return valid_kps < MIN_VALID_KEYPOINTS;
+        }),
+        persons.end()
+    );
+
     if (persons.empty()) {
         LOGI("No persons detected");
         result.driver_detected = false;

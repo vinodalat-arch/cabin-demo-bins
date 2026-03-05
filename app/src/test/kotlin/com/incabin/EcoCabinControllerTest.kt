@@ -73,25 +73,25 @@ class EcoCabinControllerTest {
     @Test
     fun formatMessage_activate_english() {
         val msg = EcoCabinController.formatMessage(activating = true, isJapanese = false)
-        assertTrue(msg.contains("Cabin secured"))
+        assertEquals("", msg) // Silent — no TTS for eco transitions
     }
 
     @Test
     fun formatMessage_deactivate_english() {
         val msg = EcoCabinController.formatMessage(activating = false, isJapanese = false)
-        assertEquals("Welcome back!", msg)
+        assertEquals("", msg) // Silent — no TTS for eco transitions
     }
 
     @Test
     fun formatMessage_activate_japanese() {
         val msg = EcoCabinController.formatMessage(activating = true, isJapanese = true)
-        assertTrue(msg.contains("節電モード"))
+        assertEquals("", msg) // Silent — no TTS for eco transitions
     }
 
     @Test
     fun formatMessage_deactivate_japanese() {
         val msg = EcoCabinController.formatMessage(activating = false, isJapanese = true)
-        assertEquals("おかえりなさい！", msg)
+        assertEquals("", msg) // Silent — no TTS for eco transitions
     }
 
     // -- controller lifecycle --
@@ -123,7 +123,7 @@ class EcoCabinControllerTest {
         val event = ctrl.update(occupied, true, 150, 22.0f, false)
         assertNotNull(event)
         assertFalse(ctrl.active)
-        assertTrue(event!!.message.contains("Welcome") || event.message.contains("おかえり"))
+        assertEquals("", event!!.message) // Silent eco transitions
     }
 
     @Test

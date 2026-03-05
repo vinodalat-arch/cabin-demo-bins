@@ -53,13 +53,13 @@ class QuietModeControllerTest {
     @Test
     fun format_message_wake_english() {
         val msg = QuietModeController.formatMessage(entering = false, isJapanese = false)
-        assertEquals("Everyone's awake", msg)
+        assertEquals("", msg) // Silent — no TTS for quiet mode transitions
     }
 
     @Test
     fun format_message_wake_japanese() {
         val msg = QuietModeController.formatMessage(entering = false, isJapanese = true)
-        assertEquals("みなさん起きました", msg)
+        assertEquals("", msg) // Silent — no TTS for quiet mode transitions
     }
 
     // -- state transitions --

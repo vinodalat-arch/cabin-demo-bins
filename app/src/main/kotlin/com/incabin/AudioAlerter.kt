@@ -521,6 +521,15 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         val now = SystemClock.elapsedRealtime()
         val isJapanese = Config.LANGUAGE == "ja"
 
+        // --- Grace period: suppress onset alerts for 10s after welcome greeting ---
+        // CRITICAL alerts (child left behind, emergency) bypass via enqueueCritical()
+        if (gracePeriodActive) {
+            prevDangers = current
+            prevDriverDetected = result.driverDetected
+            prevDuration = duration
+            return
+        }
+
         // --- No-driver alert (before DangerSnapshot logic) ---
         if (shouldAlertNoDriver(result.driverDetected, result.passengerCount, prevDriverDetected, now, cooldownMap)) {
             val noDriverText = if (isJapanese) "運転者未検出" else "No driver detected"
@@ -659,9 +668,20 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
     /** When true, INFO-tier announcements are suppressed (quiet mode for sleeping passengers). */
     @Volatile var quietMode = false
 
+    /** Grace period: suppress safety onset alerts for 10s after welcome greeting. */
+    @Volatile var gracePeriodActive = false
+
+    /** Last time an INFO-tier announcement was spoken, for 15s throttle. */
+    private var lastInfoAnnouncementMs = 0L
+    private val infoThrottleMs = 15_000L
+
     fun enqueueWelcome(text: String) {
         if (quietMode) return
-        val msg = AlertMessage(AlertPriority.INFO, text, null, false, SystemClock.elapsedRealtime())
+        if (text.isBlank()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastInfoAnnouncementMs < infoThrottleMs) return
+        lastInfoAnnouncementMs = now
+        val msg = AlertMessage(AlertPriority.INFO, text, null, false, now)
         enqueueWithPriority(msg)
     }
 
@@ -720,6 +740,8 @@ class AudioAlerter(context: Context, private val audioUsage: Int = AudioAttribut
         escalationMap.clear()
         prevPassengerBadPosture.clear()
         prevRearResult = null
+        gracePeriodActive = false
+        lastInfoAnnouncementMs = 0L
     }
 
     fun close() {

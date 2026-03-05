@@ -116,6 +116,9 @@ class ClimateController(private val propertyManager: Any) {
 
     val available: Boolean
     val hasZoneControl: Boolean
+    /** Area IDs discovered from VHAL property config at probe time. */
+    var discoveredAreaIds: IntArray = intArrayOf()
+        private set
     private var currentTemp: Float = Config.HVAC_BASE_TEMP_C
     private var targetTemp: Float = Config.HVAC_BASE_TEMP_C
     private var lastStableCount: Int = -1
@@ -126,7 +129,8 @@ class ClimateController(private val propertyManager: Any) {
         available = probeAndReadBase()
         hasZoneControl = if (available) probeZoneControl() else false
         if (available) {
-            Log.i(TAG, "ClimateController available, base temp=${Config.HVAC_BASE_TEMP_C}°C, zone=$hasZoneControl")
+            Log.i(TAG, "ClimateController available, base temp=${Config.HVAC_BASE_TEMP_C}°C, " +
+                "zone=$hasZoneControl, areaIds=${discoveredAreaIds.map { "0x${it.toString(16)}" }}")
         } else {
             Log.i(TAG, "ClimateController not available (HVAC_TEMPERATURE_SET property missing)")
         }
@@ -156,27 +160,46 @@ class ClimateController(private val propertyManager: Any) {
     }
 
     /**
-     * Probe HVAC_TEMPERATURE_SET availability and read current value as base.
+     * Probe HVAC_TEMPERATURE_SET availability, discover area IDs, and read current value as base.
      */
     private fun probeAndReadBase(): Boolean {
         return try {
             val getListMethod = propertyManager.javaClass.getMethod("getPropertyList")
             val propertyList = getListMethod.invoke(propertyManager) as? List<*> ?: return false
-            val ids = propertyList.mapNotNull { config ->
+
+            // Find HVAC_TEMPERATURE_SET config and extract area IDs
+            var foundConfig: Any? = null
+            for (config in propertyList) {
+                if (config == null) continue
                 try {
-                    val propIdField = config!!.javaClass.getField("propertyId")
-                    propIdField.getInt(config)
-                } catch (_: Exception) { null }
-            }.toSet()
+                    val propIdField = config.javaClass.getField("propertyId")
+                    if (propIdField.getInt(config) == Config.HVAC_TEMPERATURE_SET_PROPERTY_ID) {
+                        foundConfig = config
+                        break
+                    }
+                } catch (_: Exception) {}
+            }
+            if (foundConfig == null) return false
 
-            if (Config.HVAC_TEMPERATURE_SET_PROPERTY_ID !in ids) return false
+            // Auto-discover area IDs from property config
+            try {
+                val areaIdsMethod = foundConfig.javaClass.getMethod("getAreaIds")
+                val areaIds = areaIdsMethod.invoke(foundConfig) as? IntArray
+                if (areaIds != null && areaIds.isNotEmpty()) {
+                    discoveredAreaIds = areaIds
+                    Log.i(TAG, "Discovered HVAC area IDs: ${areaIds.map { "0x${it.toString(16)}" }}")
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Could not discover HVAC area IDs", e)
+            }
 
-            // Read current temperature as base
+            // Read current temperature as base using first discovered area ID (or 0 as fallback)
+            val readAreaId = if (discoveredAreaIds.isNotEmpty()) discoveredAreaIds[0] else 0
             val getPropertyMethod = propertyManager.javaClass.getMethod(
                 "getProperty", Class::class.java, Int::class.java, Int::class.java
             )
             val result = getPropertyMethod.invoke(
-                propertyManager, java.lang.Float::class.java, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, 0
+                propertyManager, java.lang.Float::class.java, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, readAreaId
             )
             if (result != null) {
                 val getValueMethod = result.javaClass.getMethod("getValue")
@@ -185,7 +208,7 @@ class ClimateController(private val propertyManager: Any) {
                     Config.HVAC_BASE_TEMP_C = temp
                     currentTemp = temp
                     targetTemp = temp
-                    Log.i(TAG, "Read HVAC base temperature: ${temp}°C")
+                    Log.i(TAG, "Read HVAC base temperature: ${temp}°C (areaId=0x${readAreaId.toString(16)})")
                 }
             }
             true
@@ -234,10 +257,17 @@ class ClimateController(private val propertyManager: Any) {
             currentTemp = nextTemp
 
             // Per-zone HVAC: write different temps per zone based on occupancy
-            if (Config.ENABLE_ZONE_HVAC && seatMap != null && hasZoneControl) {
-                val zoneTemps = computeZoneTemps(currentTemp, seatMap, Config.DRIVER_SEAT_SIDE)
-                for ((areaId, temp) in zoneTemps) {
-                    writeTemperature(temp, areaId)
+            if (Config.ENABLE_ZONE_HVAC && seatMap != null && hasZoneControl && discoveredAreaIds.size >= 2) {
+                // Map discovered area IDs: first = driver side, second = passenger side
+                val driverAreaId = discoveredAreaIds[0]
+                val paxAreaId = discoveredAreaIds[1]
+                val ecoTemp = (currentTemp + Config.HVAC_ZONE_ECO_OFFSET_C).coerceAtMost(Config.CLIMATE_MAX_TEMP_C)
+                writeTemperature(if (seatMap.driver.occupied) currentTemp else ecoTemp, driverAreaId)
+                writeTemperature(if (seatMap.frontPassenger.occupied) currentTemp else ecoTemp, paxAreaId)
+                // Rear zones: write to remaining discovered area IDs if any
+                for (i in 2 until discoveredAreaIds.size) {
+                    val rearOccupied = seatMap.rearLeft.occupied || seatMap.rearCenter.occupied || seatMap.rearRight.occupied
+                    writeTemperature(if (rearOccupied) currentTemp else ecoTemp, discoveredAreaIds[i])
                 }
             } else {
                 writeTemperature(currentTemp)
@@ -274,13 +304,26 @@ class ClimateController(private val propertyManager: Any) {
         writeTemperature(tempC.coerceIn(Config.CLIMATE_MIN_TEMP_C, Config.CLIMATE_MAX_TEMP_C))
     }
 
-    private fun writeTemperature(tempC: Float, areaId: Int = 0) {
+    private fun writeTemperature(tempC: Float, areaId: Int = -1) {
         try {
             val setMethod = propertyManager.javaClass.getMethod(
                 "setFloatProperty", Int::class.java, Int::class.java, Float::class.java
             )
-            setMethod.invoke(propertyManager, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, areaId, tempC)
-            Log.d(TAG, "HVAC temperature set to ${tempC}°C (area=0x${areaId.toString(16)})")
+            if (areaId >= 0) {
+                // Explicit area ID (zone control)
+                setMethod.invoke(propertyManager, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, areaId, tempC)
+                Log.d(TAG, "HVAC temperature set to ${tempC}°C (area=0x${areaId.toString(16)})")
+            } else if (discoveredAreaIds.isNotEmpty()) {
+                // Write to all discovered area IDs
+                for (id in discoveredAreaIds) {
+                    setMethod.invoke(propertyManager, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, id, tempC)
+                    Log.d(TAG, "HVAC temperature set to ${tempC}°C (area=0x${id.toString(16)})")
+                }
+            } else {
+                // Fallback: write to area 0
+                setMethod.invoke(propertyManager, Config.HVAC_TEMPERATURE_SET_PROPERTY_ID, 0, tempC)
+                Log.d(TAG, "HVAC temperature set to ${tempC}°C (area=0)")
+            }
         } catch (e: Exception) {
             Log.w(TAG, "writeTemperature($tempC, area=$areaId) failed", e)
         }

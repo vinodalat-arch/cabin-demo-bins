@@ -104,7 +104,7 @@ class FaceAnalyzer(context: Context) {
         fun isFaceInDriverRegion(
             faceCenterX: Float, faceCenterY: Float,
             bboxLeft: Float, bboxTop: Float, bboxRight: Float, bboxBottom: Float,
-            margin: Float = 0.35f
+            margin: Float = 0.50f
         ): Boolean {
             val w = bboxRight - bboxLeft
             val h = bboxBottom - bboxTop
@@ -205,7 +205,7 @@ class FaceAnalyzer(context: Context) {
      * @return [FaceResult] with detection flags and metric values, or [FaceResult.NO_FACE] defaults.
      */
     fun analyze(bitmap: Bitmap, frameWidth: Int, frameHeight: Int,
-                driverBbox: FloatArray? = null): FaceResult {
+                driverBbox: FloatArray? = null, personCount: Int = 1): FaceResult {
         // Wrap the bitmap for MediaPipe
         val mpImage = BitmapImageBuilder(bitmap).build()
 
@@ -228,7 +228,8 @@ class FaceAnalyzer(context: Context) {
         val landmarks = result.faceLandmarks()[0]
 
         // Spatial validation: check if the detected face is in the driver region
-        if (driverBbox != null && driverBbox.size == 4) {
+        // Skip spatial check when only 1 person detected — the face must be the driver's
+        if (driverBbox != null && driverBbox.size == 4 && personCount > 1) {
             val noseLm = landmarks[1] // nose tip — most stable facial landmark
             val faceCenterX = noseLm.x() * frameWidth
             val faceCenterY = noseLm.y() * frameHeight

@@ -1,7 +1,7 @@
 # In-Cabin AI Perception
 
 ## Status
-Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, per-seat passenger position detection, premium CarSeatMapView with metallic sedan rendering, mock VLM test server with 15 controllable scenarios, smart cabin IVI features (child left-behind, drowsiness wake, seat massage, ambient light, per-zone HVAC, emergency score override), ASIMO companion hub with animated mascot, driver personalization with named cabin themes (5 presets: Comfort/Energize/Relax/Night Drive/Eco), minimal/detailed dashboard mode with passenger seat color capping, and 8 smart cabin comfort features (journey wellness coach, quiet mode, fatigue comfort, nap mode, trip stats with badges, child comfort, eco cabin, arrival detection) via CabinExperienceManager. Child detection ratio tightened (0.65→0.50 bbox, 0.7→0.55 shoulder) to reduce rear-seat adult misclassification. Build verified (`assembleDebug` + all 1092 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
+Implementation complete with pre-deployment hardening, architectural hardening pass, on-device performance tuning, premium UI redesign, face recognition, multi-platform support, automated camera setup, runtime preview toggle, premium audio alerter redesign, detection accuracy fine-tuning, WiFi camera (MJPEG) support, user flow documentation, IVI deployment robustness hardening, seat-side driver identification with face alignment and driver-absent detection, settings/status UI separation with hidden settings overlay (5-tap gesture), emulator camera support, independent face registration (own camera + FaceDetectorLite), multi-modal IVI alert orchestrator with 5-level escalation and vehicle channel integration, remote VLM inference mode (bridge to external vLLM with configurable FPS), vehicle speed reading from VHAL with speed-scaled escalation, auto-switch VLM mode on URL save, occupancy-based HVAC climate control, per-seat passenger position detection, premium CarSeatMapView with metallic sedan rendering, mock VLM test server with 15 controllable scenarios, smart cabin IVI features (child left-behind, drowsiness wake, seat massage, ambient light, per-zone HVAC, emergency score override), ASIMO companion hub with animated mascot, driver personalization with named cabin themes (5 presets: Comfort/Energize/Relax/Night Drive/Eco), minimal/detailed dashboard mode with passenger seat color capping, and 8 smart cabin comfort features (journey wellness coach, quiet mode, fatigue comfort, nap mode, trip stats with badges, child comfort, eco cabin, arrival detection) via CabinExperienceManager. Child detection ratio tightened (0.65→0.50 bbox, 0.7→0.55 shoulder) to reduce rear-seat adult misclassification. Validation feedback fixes: HVAC area ID auto-discovery (Honda 49/68), YOLO pose confidence raised to 0.45 with min keypoint filter (chairs no longer detected as passengers), seat assignment ratio 0.40→0.55, face-to-driver margin widened 0.35→0.50 with single-person bypass (sleep/yawn detection restored), TTS chattiness reduced (15s INFO throttle, grace period, silent eco/quiet transitions), audio routing changed to USAGE_ASSISTANT on SA8155 (voice speaker). Build verified (`assembleDebug` + all 1092 unit tests pass). On-device validated: ~2-3s detection latency, ~630ms avg frame time. APK size: 84 MB.
 
 ## Target
 Qualcomm SA8155P / SA8295P (Kryo 485/585 CPU-only). Android Automotive 14. Debug build. USB webcam. Single APK supports both platforms + generic Android + Android emulator (Mac webcam via Camera2).
@@ -62,7 +62,7 @@ Single APK supports SA8155, SA8295, generic Android, and Android emulator. `Plat
 |---|---|---|---|
 | Pose threads / affinity | 4 / cores 4-7 | 4 / OS-scheduled | 4 / OS-scheduled |
 | Face rec threads / affinity | 2 / core 5 | 2 / OS-scheduled | 2 / OS-scheduled |
-| Audio usage | ASSISTANCE_SONIFICATION | ALARM | ALARM |
+| Audio usage | ASSISTANT | ALARM | ALARM |
 | Camera strategy | V4L2 first | V4L2 first | Camera2 first |
 | Automated setup (ODK, chmod, pm grant) | Yes | Yes | No |
 | Boot auto-start | Yes | Yes | No |
@@ -120,11 +120,13 @@ Runtime toggle in settings panel (hidden by default, 5-tap to open) enables/disa
 | `mobilefacenet-fp16.onnx` | ONNX FP16 | ~6.5 MB | InsightFace buffalo_sc w600k_mbf → FP16 convert |
 
 ## Key Thresholds
-- EAR < 0.21 → eyes closed (fallback); after 10-frame calibration: EAR < baseline × 0.65
+- EAR < 0.21 → eyes closed (fallback); after 3-frame calibration: EAR < baseline × 0.65
 - MAR > 0.5 → yawning
-- |yaw| > 30° or |pitch| > 35° → distracted (fallback); after 10-frame calibration: |pitch - baseline| > 25°
+- |yaw| > 30° or |pitch| > 35° → distracted (fallback); after 3-frame calibration: |pitch - baseline| > 25°
 - Yaw/pitch smoothed via 3-frame moving average before thresholding
-- YOLO confidence > 0.35 (pose), Phone > 0.45, Food/drink > 0.50, NMS IoU 0.45
+- YOLO confidence > 0.45 (pose), Phone > 0.45, Food/drink > 0.50, NMS IoU 0.45
+- Pose min keypoint filter: ≥3 keypoints with conf > 0.5 (eliminates chairs/objects)
+- Pose min bbox area: 2% of frame area (eliminates noise detections)
 - Phone: COCO class 67, Food/drink: classes 39-48
 - Posture lean > 30°, Child slouch > 20°
 - Head turn: nose offset > 30% of shoulder width
@@ -135,7 +137,7 @@ Runtime toggle in settings panel (hidden by default, 5-tap to open) enables/disa
 - Sustained detection: eyes 1 frame, yawning 1 frame, distracted 2 frames, eating 2 frames, posture 2 frames, hands_off 3 frames, child slouch 3 frames
 - V4L2 reconnect: 3 consecutive failures triggers disconnect, backoff 2s→30s max
 - Face recognition: cosine similarity > 0.5, every 5th frame, 512-dim embedding
-- Seat assignment: front row if bbox area >= 40% of driver bbox area
+- Seat assignment: front row if bbox area >= 55% of driver bbox area; min 2% frame area filter
 
 ## Risk Scoring
 ```
@@ -147,17 +149,17 @@ score >= 3 → high, >= 1 → medium, else → low
 
 ### Face Analysis (Kotlin + MediaPipe + OpenCV)
 - **EAR**: Right eye [33,160,158,133,153,144], Left eye [362,385,387,263,373,380]. Formula: (dist(p2,p6)+dist(p3,p5))/(2*dist(p1,p4))
-- **EAR auto-baseline**: First 5 frames with face detected accumulate EAR samples; baseline = mean. After calibration, eyes closed = `ear < baseline × 0.65` (adapts to individual eye geometry). Before calibration, falls back to fixed `ear < 0.21`
+- **EAR auto-baseline**: First 3 frames with face detected accumulate EAR samples; baseline = mean. After calibration, eyes closed = `ear < baseline × 0.65` (adapts to individual eye geometry). Before calibration, falls back to fixed `ear < 0.21`
 - **MAR**: Landmarks 13,14,61,291,0,17. Formula: (dist(top,bottom)+dist(upper_mid,lower_mid))/(2*dist(left,right))
 - **Head Pose**: solvePnP with landmarks [1,152,33,263,61,291], 3D model points, Euler angle extraction
 - **Angle smoothing**: Yaw and pitch values smoothed via 3-frame moving average (`ArrayDeque`) before boolean thresholding. Eliminates solvePnP single-frame spikes
-- **Pitch auto-baseline**: First 5 frames accumulate smoothed pitch; baseline = mean. After calibration, distracted = `|pitch - baseline| > 25°` (eliminates camera mounting angle bias). Before calibration, falls back to fixed `|pitch| > 35°`
+- **Pitch auto-baseline**: First 3 frames accumulate smoothed pitch; baseline = mean. After calibration, distracted = `|pitch - baseline| > 25°` (eliminates camera mounting angle bias). Before calibration, falls back to fixed `|pitch| > 35°`
 - **Baseline lifecycle**: FaceAnalyzer is recreated each monitoring session — baselines reset automatically on stop/start
-- **Face-to-driver spatial validation**: When driver bbox is available from pose analysis, nose landmark (index 1) must fall within the driver bbox expanded by 35% margin. Face outside driver region → returns `FaceResult.NO_FACE`. Pure `isFaceInDriverRegion()` companion function for testability
+- **Face-to-driver spatial validation**: When driver bbox is available from pose analysis and multiple persons detected, nose landmark (index 1) must fall within the driver bbox expanded by 50% margin. Face outside driver region → returns `FaceResult.NO_FACE`. When only 1 person detected (driver alone), spatial check is bypassed — the face must be the driver's. Pure `isFaceInDriverRegion()` companion function for testability
 - **Import note**: `FaceLandmarkerOptions` is a nested class — import as `FaceLandmarker.FaceLandmarkerOptions`
 
 ### Pose Analysis (C++ + ONNX Runtime)
-- **YOLOv8n-pose**: Output [1,56,8400] → transpose → filter conf>0.35 → NMS IoU 0.45
+- **YOLOv8n-pose**: Output [1,56,8400] → transpose → filter conf>0.45 → NMS IoU 0.45 → min keypoint filter (≥3 kps with conf>0.5) → min bbox area filter (2% of frame)
 - **YOLOv8n detect**: Output [1,84,8400] → transpose → argmax class scores → filter → NMS. Per-class confidence thresholds threaded through `runDetectModel` → `parseDetectOutput`
 - **Driver**: Largest bbox by area on the driver's side of the frame (seat side configurable via `Config.DRIVER_SEAT_SIDE`). If no person on driver side, `driver_detected=false` and driver-specific detections (phone, posture, eating, face analysis) are skipped
 - **Posture**: 4 checks (torso lean, head droop, head turn, face not visible)
@@ -186,7 +188,9 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Beep-TTS coordination**: Single worker thread — beep plays inline (1s, blocking) → 200ms gap → TTS speak. No overlap, no separate Beep-Player thread
 - **Shorter messages**: "Phone", "Eyes closed", "Yawning", "Distracted", "Eating", "Posture", "Child slouching" (Japanese equivalents follow same brevity)
 - **Multiple simultaneous dangers**: Joined as single message sorted by priority — "Phone. Eyes closed" (CRITICAL parts first, then WARNING)
-- **Audio routing**: Platform-specific — `USAGE_ASSISTANCE_SONIFICATION` on SA8155 (Honda BSP quirk), `USAGE_ALARM` on SA8295 and generic Android. Parameterized via `audioUsage` constructor parameter
+- **Audio routing**: Platform-specific — `USAGE_ASSISTANT` on SA8155 (voice speaker, matching vr-assist-sa8155 app), `USAGE_ALARM` on SA8295 and generic Android. Parameterized via `audioUsage` constructor parameter
+- **Grace period**: After welcome greeting, `gracePeriodActive` flag suppresses onset safety alerts for 10 seconds. CRITICAL alerts still pass. Cleared via Handler delayed callback
+- **INFO throttle**: 15s minimum interval between INFO-tier `enqueueWelcome()` announcements to reduce chattiness
 - First frame: store state only, no announcement
 - TTS retry: if init fails, schedules one retry after 3s via stored Handler; `ttsRetried` flag prevents loops; Handler callbacks cancelled in `close()` to prevent leak if service destroyed within 3s
 - **Testability**: `buildAlerts()` and `buildEscalationAlert()` are companion functions with no Android dependencies — fully unit-testable
@@ -280,7 +284,7 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Debounce**: Only adjusts after count is stable for 5 consecutive frames (~5s at 1fps)
 - **Ramp**: Steps 0.5°C per update cycle (no instant jumps)
 - **On count=0**: Reverts to base temperature
-- **VHAL integration**: Probes `HVAC_TEMPERATURE_SET` (0x15600503, Float) via reflection. Reads initial temperature as base. Writes via `setFloatProperty()`. Graceful no-op on generic Android
+- **VHAL integration**: Probes `HVAC_TEMPERATURE_SET` (0x15600503, Float) via reflection. **Auto-discovers area IDs** from property config (e.g. Honda uses 49/68 instead of standard 0x01/0x04). Reads initial temperature as base using first discovered area ID. Writes via `setFloatProperty()` to all discovered area IDs. Graceful no-op on generic Android
 - **Toggle**: `Config.ENABLE_AUTO_CLIMATE` (off by default, persisted in SharedPreferences, UI toggle in settings overlay)
 - **Lifecycle**: Created in `VehicleChannelManager.registerChannels()`. Called per-frame from `AlertOrchestrator.evaluate()`. Restores base temp on `resetState()` and `close()`
 - **TTS announcement**: `update()` returns `ClimateAdjustment` when target changes; AlertOrchestrator speaks via `enqueueWelcome()` at INFO priority. EN: "Temperature adjusted to 21.0 degrees, 3 occupants" / JA: "空調21.0度に調整、乗員3名". Fires once per target change, not per ramp step
@@ -291,7 +295,7 @@ score >= 3 → high, >= 1 → medium, else → low
 - **Data model**: `SeatMap` (4× `SeatState(occupied: Boolean, state: String)`), `Seat` enum. States: Upright, Sleeping, Distracted, Phone, Eating, Yawning, Vacant
 - **Local mode algorithm** (`SeatAssigner.assign()`):
   - Driver: Already tagged by C++ (`isDriver=true`). State derived from OutputResult detections via `deriveDriverState()`
-  - Front/rear discrimination: `bboxArea >= SEAT_FRONT_ROW_AREA_RATIO (0.40) × driverArea` → front row
+  - Front/rear discrimination: `bboxArea >= SEAT_FRONT_ROW_AREA_RATIO (0.55) × driverArea` → front row; min 2% frame area filter eliminates noise
   - Left/right: bbox center x vs frame midline (640px). `Config.DRIVER_SEAT_SIDE` determines passenger side
   - Priority: driver first → front passenger (largest non-driver on opposite side meeting area threshold) → rear by x-coordinate (largest per side)
   - Passenger state: `badPosture` → "Sleeping", else "Upright" (limited without per-passenger face analysis)

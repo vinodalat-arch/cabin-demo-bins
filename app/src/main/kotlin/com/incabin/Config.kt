@@ -6,7 +6,7 @@ object Config {
     const val CAMERA_HEIGHT = 720
 
     // YOLO
-    const val YOLO_CONFIDENCE = 0.35f
+    const val YOLO_CONFIDENCE = 0.45f
     const val YOLO_NMS_IOU = 0.45f
     const val YOLO_PHONE_CLASS = 67
     val FOOD_DRINK_CLASSES = intArrayOf(39, 40, 41, 42, 43, 44, 45, 46, 47, 48)
@@ -18,7 +18,7 @@ object Config {
     const val HEAD_YAW_THRESHOLD = 30.0f
     @JvmStatic @Volatile var HEAD_PITCH_THRESHOLD = 35.0f
     const val PITCH_BASELINE_DEVIATION = 25.0f   // distracted = |pitch - baseline| > deviation
-    const val BASELINE_FRAMES = 5                // frames to accumulate for auto-baseline
+    const val BASELINE_FRAMES = 3                // frames to accumulate for auto-baseline
     const val ANGLE_SMOOTH_WINDOW = 3            // moving average window for yaw/pitch
 
     // Pose analysis
@@ -152,7 +152,7 @@ object Config {
     const val CLIMATE_RAMP_STEP_C = 0.5f                      // Max °C change per update
 
     // Auto climate toggle (toggleable at runtime via UI; persisted in SharedPreferences)
-    @JvmStatic @Volatile var ENABLE_AUTO_CLIMATE = false
+    @JvmStatic @Volatile var ENABLE_AUTO_CLIMATE = true
 
     // HVAC zone control — per-zone temperature management
     @JvmStatic @Volatile var ENABLE_ZONE_HVAC = false
@@ -206,7 +206,7 @@ object Config {
     const val EMERGENCY_HYSTERESIS = 10
 
     // Seat assignment
-    const val SEAT_FRONT_ROW_AREA_RATIO = 0.40f  // bbox area ratio for front/rear discrimination
+    const val SEAT_FRONT_ROW_AREA_RATIO = 0.55f  // bbox area ratio for front/rear discrimination
 
     // Journey Wellness Coach
     @JvmStatic @Volatile var ENABLE_WELLNESS_COACH = true
