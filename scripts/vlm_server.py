@@ -328,9 +328,9 @@ def parse_file_result(data: dict) -> dict:
         result["seat_map"] = {
             "driver": seat_entry("DRIVER_STATE", is_driver=True),
             "front_passenger": seat_entry("FRONT_PASSENGER_STATE"),
-            "rear_left": seat_entry("REAR_LEFT_STATE"),
+            "rear_left": seat_entry("REAR_RIGHT_STATE"),     # file-based: camera-mirrored
             "rear_center": seat_entry("REAR_CENTER_STATE"),
-            "rear_right": seat_entry("REAR_RIGHT_STATE"),
+            "rear_right": seat_entry("REAR_LEFT_STATE"),     # file-based: camera-mirrored
         }
 
     except Exception as e:
